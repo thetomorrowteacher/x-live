@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFLX Lite — Classroom</title>
+<!-- ═══════════════════════════════════════════════════════════════════
+     PFLX LITE v0.1 (EXO spec v1.1 Phase 4, Aug 2026)
+     ONE standalone classroom app — ClassDojo speed, Classcraft game
+     layer, powered by the PFLX economy that already exists.
+     · Identity: PFLX Platform (sso URL params / postMessage), same
+       contract as Battle Arena. Standalone = Demo Mode.
+     · XC awards/fines/upgrades ride PflxDataBus (pflx_award_proposed
+       to the Platform parent — Console stays the ONLY balance
+       authority). Every action also writes a lite_activity audit row,
+       which powers the weekly / most-improved boards.
+     · Roster: X-Coin seed (read-only) + player_avatars EXO renders.
+     · Cloud keys owned by Lite: pflx_lite_config, pflx_lite_qsets,
+       pflx_lite_room_* (Vault Rush rooms). Table: lite_activity.
+     ═══════════════════════════════════════════════════════════════════ -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body { background:radial-gradient(ellipse at 50% -20%, #101b3f 0%, #060a18 65%);
+         color:#eaf0ff; font-family:'Rajdhani',sans-serif; user-select:none; overflow-x:hidden; }
+  button { font-family:inherit; }
+  #app { max-width:1180px; margin:0 auto; padding:14px 16px 40px; }
+  .hd { display:flex; align-items:center; gap:12px; padding:6px 0 14px; flex-wrap:wrap; }
+  .hd .logo { font-family:'Orbitron'; font-weight:900; font-size:18px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 16px rgba(0,229,255,0.4); }
+  .hd .logo b { color:#ffd166; }
+  .hd .sub { font-size:12px; color:#8a93b8; }
+  .hd .sp { flex:1; }
+  .tabbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .tab { cursor:pointer; padding:10px 16px; border-radius:12px; font-family:'Orbitron'; font-size:10.5px; font-weight:800;
+         letter-spacing:0.08em; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); color:#9aa3c8; }
+  .tab.on { border-color:#39c0ff; background:rgba(57,192,255,0.13); color:#7de9ff; }
+  .card { background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.09); border-radius:16px; padding:16px; }
+  .cardT { font-family:'Orbitron'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#9aa3c8; margin-bottom:12px; text-transform:uppercase; }
+  .bigbtn { cursor:pointer; border-radius:14px; padding:12px 18px; font-family:'Orbitron'; font-size:11px; font-weight:800; letter-spacing:0.08em;
+            border:1px solid rgba(57,192,255,0.45); background:rgba(57,192,255,0.12); color:#7de9ff; transition:all .13s; }
+  .bigbtn:hover { background:rgba(57,192,255,0.24); }
+  .bigbtn.gold { border-color:rgba(255,209,102,0.55); background:rgba(255,209,102,0.12); color:#ffd166; }
+  .bigbtn.red { border-color:rgba(255,94,120,0.5); background:rgba(255,94,120,0.1); color:#ff8ba0; }
+  .bigbtn.green { border-color:rgba(72,230,150,0.5); background:rgba(72,230,150,0.1); color:#7dffb8; }
+  .bigbtn.ghost { border-color:rgba(255,255,255,0.14); background:rgba(255,255,255,0.03); color:#9aa3c8; }
+  /* roster tiles */
+  #roster { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:12px; }
+  .ptile { position:relative; cursor:pointer; background:rgba(255,255,255,0.045); border:2px solid rgba(255,255,255,0.09);
+           border-radius:16px; padding:12px 8px 10px; text-align:center; transition:all .14s; }
+  .ptile:hover { border-color:rgba(57,192,255,0.5); transform:translateY(-2px); }
+  .ptile.sel { border-color:#ffd166; background:rgba(255,209,102,0.09); box-shadow:0 0 14px rgba(255,209,102,0.25); }
+  .ptile .av { width:58px; height:58px; margin:0 auto 6px; }
+  .ptile .av svg { width:100%; height:100%; filter:drop-shadow(0 0 8px rgba(120,140,255,0.5)); }
+  .ptile .av .ph { width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg,#26335f,#101b3f);
+                   display:flex; align-items:center; justify-content:center; font-family:'Orbitron'; font-weight:800; color:#7de9ff; font-size:16px; }
+  .ptile .nm { font-family:'Orbitron'; font-size:9px; font-weight:800; color:#fff; letter-spacing:0.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ptile .xc { font-size:11px; color:#ffd166; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .ptile .tm { position:absolute; top:6px; left:6px; font-family:'Orbitron'; font-size:7px; padding:2px 6px; border-radius:6px; color:#fff; }
+  .burst { position:absolute; top:4px; right:8px; font-family:'Orbitron'; font-weight:900; font-size:14px; pointer-events:none; opacity:0; }
+  .burst.show { animation:bPop 1.1s ease forwards; }
+  @keyframes bPop { 0%{opacity:0; transform:translateY(6px) scale(.6);} 25%{opacity:1; transform:translateY(-6px) scale(1.2);} 100%{opacity:0; transform:translateY(-24px);} }
+  /* action tray */
+  #tray { position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:80; display:none; align-items:center; gap:8px;
+          background:rgba(8,12,28,0.97); border:1px solid rgba(255,209,102,0.4); border-radius:16px; padding:10px 14px; max-width:96vw; overflow-x:auto;
+          box-shadow:0 8px 40px rgba(0,0,0,0.6); }
+  #tray.on { display:flex; }
+  .traybtn { cursor:pointer; white-space:nowrap; border-radius:12px; padding:9px 13px; font-family:'Orbitron'; font-size:9.5px; font-weight:800;
+             letter-spacing:0.05em; border:1px solid rgba(72,230,150,0.45); background:rgba(72,230,150,0.1); color:#7dffb8; }
+  .traybtn.fine { border-color:rgba(255,94,120,0.45); background:rgba(255,94,120,0.09); color:#ff8ba0; }
+  .traybtn.misc { border-color:rgba(179,136,255,0.45); background:rgba(179,136,255,0.1); color:#cbb8ff; }
+  /* leaderboard */
+  .lbrow { display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:12px; background:rgba(255,255,255,0.03); margin-bottom:7px; }
+  .lbrow .pos { font-family:'Orbitron'; font-weight:900; width:34px; text-align:center; font-size:14px; color:#8a93b8; }
+  .lbrow .av { width:38px; height:38px; } .lbrow .av svg { width:100%; height:100%; }
+  .lbrow .nm { font-family:'Orbitron'; font-size:10.5px; font-weight:800; color:#fff; flex:1; }
+  .lbrow .val { font-family:'Orbitron'; font-size:13px; font-weight:900; color:#ffd166; font-variant-numeric:tabular-nums; }
+  .lbrow.top1 { background:linear-gradient(90deg,rgba(255,209,102,0.16),rgba(255,255,255,0.03)); border:1px solid rgba(255,209,102,0.35); }
+  .lbrow.top1 .pos { color:#ffd166; }
+  /* modal */
+  #modal { position:fixed; inset:0; z-index:120; background:rgba(3,5,14,0.8); display:none; align-items:center; justify-content:center; padding:18px; }
+  #modal.on { display:flex; }
+  #modalBox { background:#0c1228; border:1px solid rgba(57,192,255,0.35); border-radius:18px; padding:22px; width:100%; max-width:520px; max-height:88vh; overflow-y:auto; }
+  input, select, textarea { background:rgba(255,255,255,0.06); border:1px solid rgba(57,192,255,0.3); border-radius:10px; color:#fff;
+          padding:9px 11px; font-family:'Rajdhani'; font-size:14px; width:100%; }
+  label { font-size:11px; color:#8a93b8; letter-spacing:0.06em; display:block; margin:10px 0 4px; text-transform:uppercase; font-family:'Orbitron'; font-weight:700; }
+  /* projector */
+  #proj { position:fixed; inset:0; z-index:200; background:radial-gradient(ellipse at 50% -20%, #101b3f 0%, #05070f 70%); display:none;
+          flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; }
+  #proj.on { display:flex; }
+  .projTitle { font-family:'Orbitron'; font-weight:900; font-size:clamp(22px,3.6vw,40px); letter-spacing:0.14em; color:#7de9ff; margin-bottom:22px; }
+  /* wheel */
+  #wheelWrap { position:relative; width:min(66vh,420px); height:min(66vh,420px); }
+  #wheel { width:100%; height:100%; border-radius:50%; border:6px solid rgba(57,192,255,0.4); transition:transform 4.2s cubic-bezier(.12,.7,.1,1); }
+  #wheelPin { position:absolute; top:-16px; left:50%; transform:translateX(-50%); font-size:30px; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:300; background:rgba(8,14,32,0.97);
+           border:1px solid rgba(57,192,255,0.45); border-radius:12px; padding:11px 20px; font-family:'Orbitron'; font-size:10px;
+           letter-spacing:0.06em; color:#7de9ff; }
+  .goalwrap { height:26px; border-radius:13px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,209,102,0.3); overflow:hidden; position:relative; }
+  .goalfill { height:100%; background:linear-gradient(90deg,#39c0ff,#ffd166); transition:width .8s ease; }
+  .goaltxt { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Orbitron'; font-size:10px; font-weight:800; color:#fff; letter-spacing:0.08em; }
+  .demoBanner { background:rgba(255,209,102,0.1); border:1px solid rgba(255,209,102,0.4); color:#ffd166; border-radius:12px;
+                padding:9px 14px; font-size:12px; margin-bottom:14px; text-align:center; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+  @media (max-width:640px){ .grid2 { grid-template-columns:1fr; } }
+  .feedrow { display:flex; gap:10px; align-items:center; font-size:12.5px; color:#aeb6d8; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,0.05); }
+  .feedrow b { color:#fff; } .feedrow .t { margin-left:auto; font-size:10px; color:#5c6488; white-space:nowrap; }
+  .upcard { border:1px solid rgba(179,136,255,0.35); background:rgba(179,136,255,0.07); border-radius:14px; padding:14px; text-align:center; }
+  .upcard .ic { font-size:26px; } .upcard .lb { font-family:'Orbitron'; font-size:10px; font-weight:800; color:#fff; margin:6px 0; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="tray"></div>
+<div id="modal"><div id="modalBox"></div></div>
+<div id="proj"></div>
+<div id="toastBox"></div>
+<script>
+// ═══════════ CORE ═══════════
+const SUPABASE_URL = 'https://hyxiagexyptzvetqjmnj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5eGlhZ2V4eXB0enZldHFqbW5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwODM4MTYsImV4cCI6MjA4OTY1OTgxNn0.hqHVlRu775dZfJrKxSFMNEPhANu5EFm7gJpaJ3RnbnY';
+const XCOIN_SEED_URL = 'https://pflx-xcoin-app.vercel.app/seed-data.json';
+const SB_HEADERS = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inPlatform = (window.parent !== window);
+
+async function kvLoad(key) {
+  try { const r = await fetch(SUPABASE_URL + '/rest/v1/app_data?key=eq.' + key + '&select=data', { headers: SB_HEADERS });
+    if (!r.ok) return null; const rows = await r.json(); return rows.length ? rows[0].data : null; } catch (e) { return null; }
+}
+async function kvSave(key, value) {
+  try { const r = await fetch(SUPABASE_URL + '/rest/v1/app_data', { method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, SB_HEADERS),
+    body: JSON.stringify({ key: key, data: value }) }); return r.ok; } catch (e) { return false; }
+}
+
+const L = {
+  me: null, isHost: false, demo: !inPlatform,
+  screen: 'class', boardTab: 'weekly',
+  roster: [],          // {id,name,brand,xc,totalXc,badges,cohort,studioId,image}
+  exo: {},             // player_id -> avatar row
+  cfg: null, activity: [], selected: {}, timers: {},
+  loaded: { roster: false, cfg: false, activity: false }
+};
+
+const DEFAULT_CFG = {
+  cohort: '', // '' = whole roster
+  awards: [
+    { label: 'Positive Participant', icon: '🙋', xc: 100 }, { label: 'Peer Supporter', icon: '🤝', xc: 100 },
+    { label: 'Time Manager', icon: '⏰', xc: 100 }, { label: 'Growth Mindset', icon: '🌱', xc: 100 },
+    { label: 'Critical Thinker', icon: '🧠', xc: 100 }, { label: 'Master Collaborator', icon: '👥', xc: 100 }
+  ],
+  fines: [ { label: 'Off Task', icon: '📵', xc: -25 }, { label: 'Disruption', icon: '🔇', xc: -50 } ],
+  tax: { label: 'Tax Day', icon: '🏛️', xc: -100 },
+  upgrades: [
+    { id: 'up-line', label: 'Front of the Line', icon: '🎫', cost: 300 },
+    { id: 'up-music', label: 'Music Picker', icon: '🎵', cost: 500 },
+    { id: 'up-seat', label: 'Choose Your Seat', icon: '🪑', cost: 400 }
+  ],
+  teams: { names: [], assign: {} },
+  goal: { label: 'Class Reward Party', target: 10000 },
+  boards: { showRanks: true, top5Only: false },
+  updatedAt: 0
+};
+
+// ── identity (same platform contract as Battle Arena) ──
+function adoptFromParams() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (p.get('sso') !== 'pflx') return false;
+    L.me = { id: p.get('id') || 'host', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
+    L.isHost = /admin|host|teacher/i.test(L.me.role) || p.get('host') === '1';
+    L.demo = false;
+    return true;
+  } catch (e) { return false; }
+}
+window.addEventListener('message', function (e) {
+  let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (er) { return; } }
+  if (!m || !m.type) return;
+  if ((m.type === 'pflx_identity_broadcast' || m.type === 'pflx_identity_response') && m.user) {
+    L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student' };
+    L.isHost = /admin|host|teacher/i.test(L.me.role) || m.user.isHost === true;
+    L.demo = false; render();
+  }
+  if (m.type === 'pflx_player_changed' && m.player) {
+    const p = L.roster.find(r => r.id === m.player.id);
+    if (p) { p.xc = (typeof m.player.xc === 'number') ? m.player.xc : (m.player.xcoin || p.xc); p.totalXc = m.player.totalXcoin || p.totalXc; render(); }
+  }
+});
+try { if (inPlatform) window.parent.postMessage(JSON.stringify({ type: 'pflx_identity_request' }), '*'); } catch (e) {}
+try { if (inPlatform) window.parent.postMessage(JSON.stringify({ type: 'pflx_subapp_ready', app: 'pflx-lite' }), '*'); } catch (e) {}
+
+// ── data loads ──
+const DEMO_ROSTER = [
+  ['d1','Nova','studio-gentech',1240],['d2','Pixel','studio-innov8',860],['d3','Echo','studio-mindforge',1580],
+  ['d4','Fable','studio-emagination',420],['d5','Circuit','studio-gentech',2100],['d6','Lyric','studio-mindforge',690],
+  ['d7','Vex','studio-innov8',950],['d8','Story','studio-emagination',1330]
+].map(a => ({ id: a[0], name: a[1], brand: a[1], cohort: 'Demo Class', studioId: a[2], xc: a[3], totalXc: a[3] + 2000, badges: (a[3]/400|0), image: null }));
+
+async function loadRoster() {
+  try {
+    const r = await fetch(XCOIN_SEED_URL); if (!r.ok) throw 0;
+    const d = await r.json();
+    L.roster = (d.users || []).filter(u => (u.role || 'player') === 'player').map(u => ({
+      id: u.id, name: u.name, brand: u.brandName || u.name, cohort: u.cohort || '',
+      studioId: u.studioId || '', xc: u.xcoin || 0, totalXc: u.totalXcoin || 0,
+      badges: u.digitalBadges || 0, image: u.image || null
+    }));
+  } catch (e) { L.roster = DEMO_ROSTER.slice(); L.demo = L.demo || !L.roster.length; }
+  if (!L.roster.length) L.roster = DEMO_ROSTER.slice();
+  L.loaded.roster = true; render();
+}
+async function loadExo() {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/player_avatars?select=*', { headers: SB_HEADERS });
+    if (r.ok) (await r.json()).forEach(row => { L.exo[row.player_id] = row; });
+  } catch (e) {}
+  render();
+}
+async function loadCfg() {
+  const d = await kvLoad('pflx_lite_config');
+  L.cfg = Object.assign({}, DEFAULT_CFG, d || {});
+  L.cfg.teams = Object.assign({ names: [], assign: {} }, L.cfg.teams || {});
+  L.cfg.boards = Object.assign({}, DEFAULT_CFG.boards, L.cfg.boards || {});
+  L.loaded.cfg = true; render();
+}
+function saveCfg() { L.cfg.updatedAt = Date.now(); kvSave('pflx_lite_config', L.cfg); }
+async function loadActivity() {
+  try {
+    const since = new Date(Date.now() - 15 * 86400000).toISOString();
+    const r = await fetch(SUPABASE_URL + '/rest/v1/lite_activity?ts=gte.' + since + '&select=*&order=ts.desc&limit=800', { headers: SB_HEADERS });
+    if (r.ok) L.activity = await r.json();
+  } catch (e) {}
+  L.loaded.activity = true; render();
+}
+function classRoster() {
+  const c = (L.cfg && L.cfg.cohort) || '';
+  return c ? L.roster.filter(p => (p.cohort || '').split(',').map(s => s.trim()).indexOf(c) !== -1 || p.cohort === c) : L.roster;
+}
+function cohortList() {
+  const set = {};
+  L.roster.forEach(p => (p.cohort || '').split(',').map(s => s.trim()).filter(Boolean).forEach(c => set[c] = 1));
+  return Object.keys(set).sort();
+}
+
+// ── EXO renderer (compact copy — SOURCE OF TRUTH is Battle Arena
+//    public/preview.html; keep palettes/stage shapes in sync) ──
+const EXO_LINES = {
+  ironwright: { name:'IRONWRIGHT', stages:['Cogling','Gearframe','Forgeguard','Titanwright','Omniforge'],
+    colorways:{ default:{a:'#06b6d4',b:'#155e75',glow:'#67e8f9'}, magma:{a:'#f97316',b:'#7c2d12',glow:'#fdba74'}, titan:{a:'#94a3b8',b:'#334155',glow:'#e2e8f0'}, verdant:{a:'#22c55e',b:'#14532d',glow:'#86efac'}, gilded:{a:'#fbbf24',b:'#78350f',glow:'#fef3c7'} } },
+  resonant: { name:'RESONANT', stages:['Emberling','Pulseframe','Chorusguard','Soulbeacon','Luminarch'],
+    colorways:{ default:{a:'#f43f5e',b:'#881337',glow:'#fda4af'}, aurora:{a:'#2dd4bf',b:'#134e4a',glow:'#99f6e4'}, solar:{a:'#f59e0b',b:'#78350f',glow:'#fcd34d'}, violet:{a:'#a78bfa',b:'#4c1d95',glow:'#ddd6fe'}, nova:{a:'#f8fafc',b:'#475569',glow:'#ffffff'} } },
+  mythweaver: { name:'MYTHWEAVER', stages:['Sketchling','Fableframe','Dreamguard','Mythmaker','Worldsmith'],
+    colorways:{ default:{a:'#2563eb',b:'#1e3a8a',glow:'#93c5fd'}, inkgold:{a:'#eab308',b:'#713f12',glow:'#fde047'}, rose:{a:'#ec4899',b:'#831843',glow:'#f9a8d4'}, forest:{a:'#10b981',b:'#064e3b',glow:'#6ee7b7'}, starlit:{a:'#818cf8',b:'#1e1b4b',glow:'#c7d2fe'} } },
+  neonborn: { name:'NEONBORN', stages:['Bitling','Glitchframe','Neonguard','Cipher','Singularity'],
+    colorways:{ default:{a:'#9333ea',b:'#3b0764',glow:'#d8b4fe'}, ultraviolet:{a:'#7c3aed',b:'#2e1065',glow:'#c4b5fd'}, acid:{a:'#84cc16',b:'#365314',glow:'#d9f99d'}, chrome:{a:'#e11d48',b:'#4c0519',glow:'#fecdd3'}, inferno:{a:'#f97316',b:'#7f1d1d',glow:'#fdba74'} } }
+};
+function exoCoreSVG(exo, size) {
+  const line = EXO_LINES[exo.line]; if (!line) return '';
+  const cw = line.colorways[exo.colorway] || line.colorways.default;
+  const gid = 'lx-' + exo.line + '-' + (exo.colorway || 'd');
+  let motif = '';
+  if (exo.line === 'ironwright') motif = '<polygon points="50,36 62,43 62,57 50,64 38,57 38,43" fill="none" stroke="' + cw.glow + '" stroke-width="2.5" opacity="0.9"/><circle cx="50" cy="50" r="5" fill="' + cw.glow + '"/>';
+  else if (exo.line === 'resonant') motif = '<g fill="none" stroke="' + cw.glow + '" stroke-linecap="round"><path d="M38,50 a12,12 0 0 1 24,0" stroke-width="2.5" opacity="0.9"/><path d="M32,52 a18,18 0 0 1 36,0" stroke-width="2" opacity="0.55"/></g><circle cx="50" cy="56" r="4.5" fill="' + cw.glow + '"/>';
+  else if (exo.line === 'mythweaver') motif = '<path d="M50,30 c14,4 16,20 4,26 c10,2 14,12 6,18 c-2,-8 -12,-10 -16,-4 c-6,-10 0,-18 8,-20 c-10,-4 -10,-16 -2,-20z" fill="' + cw.glow + '" opacity="0.85"/>';
+  else motif = '<g fill="' + cw.glow + '"><rect x="34" y="40" width="24" height="5" opacity="0.9"/><rect x="42" y="49" width="24" height="5" opacity="0.65"/><rect x="36" y="58" width="18" height="5" opacity="0.8"/></g>';
+  return '<svg viewBox="0 0 100 100" width="' + size + '" height="' + size + '"><defs><radialGradient id="' + gid + '" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="' + cw.a + '"/><stop offset="100%" stop-color="' + cw.b + '"/></radialGradient></defs><circle cx="50" cy="50" r="30" fill="url(#' + gid + ')" stroke="' + cw.glow + '" stroke-width="1.5"/><circle cx="50" cy="50" r="36" fill="none" stroke="' + cw.a + '" stroke-width="1" opacity="0.35"/>' + motif + '</svg>';
+}
+function exoAvatarHTML(pid, size, fallbackName) {
+  const ex = L.exo[pid];
+  if (ex && EXO_LINES[ex.line]) return exoCoreSVG(ex, size);
+  const initials = (fallbackName || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  return '<div class="ph" style="width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size / 3.4) + 'px">' + esc(initials) + '</div>';
+}
+
+// ── economy actions: proposals via PflxDataBus + lite_activity audit ──
+function postAward(playerId, awardObj) {
+  try { if (inPlatform) window.parent.postMessage(JSON.stringify({ type: 'pflx_award_proposed', playerId: playerId, source: 'lite', award: awardObj }), '*'); } catch (e) {}
+}
+async function liteLog(playerId, kind, label, xc) {
+  try {
+    await fetch(SUPABASE_URL + '/rest/v1/lite_activity', { method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, SB_HEADERS),
+      body: JSON.stringify({ cohort: (L.cfg && L.cfg.cohort) || '', player_id: playerId, host_id: (L.me && L.me.id) || '', kind: kind, label: label, xc: xc }) });
+  } catch (e) {}
+  L.activity.unshift({ cohort: (L.cfg && L.cfg.cohort) || '', player_id: playerId, host_id: (L.me && L.me.id) || '', kind: kind, label: label, xc: xc, ts: new Date().toISOString() });
+}
+function applyAction(players, preset, kind) {
+  players.forEach(p => {
+    postAward(p.id, { xc: preset.xc, reason: 'lite.' + kind + '.' + preset.label.toLowerCase().replace(/\s+/g, '-'), noMultiplier: kind !== 'award' || undefined });
+    p.xc = Math.max(0, (p.xc || 0) + preset.xc);
+    if (preset.xc > 0) p.totalXc = (p.totalXc || 0) + preset.xc;
+    liteLog(p.id, kind, preset.label, preset.xc);
+    burst(p.id, (preset.xc > 0 ? '+' : '') + preset.xc);
+  });
+  clearSel(); render();
+  toast(preset.icon + ' ' + preset.label + ' → ' + players.length + ' player' + (players.length === 1 ? '' : 's') + (L.demo ? ' (demo — not saved to real balances)' : ''));
+}
+function grantBadge(players, name) {
+  const id = 'b-lite-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  players.forEach(p => {
+    postAward(p.id, { badge: { id: id, name: name, category: 'primary' }, reason: 'lite.badge' });
+    p.badges = (p.badges || 0) + 1;
+    liteLog(p.id, 'badge', name, 0);
+    burst(p.id, '🎖️');
+  });
+  clearSel(); render(); toast('🎖️ ' + name + ' granted to ' + players.length);
+}
+
+// ── selection + micro UI ──
+function toggleSel(pid) { if (!L.isHost) return; L.selected[pid] ? delete L.selected[pid] : L.selected[pid] = 1; render(); }
+function clearSel() { L.selected = {}; }
+function selPlayers() { return classRoster().filter(p => L.selected[p.id]); }
+function selectAll() { classRoster().forEach(p => L.selected[p.id] = 1); render(); }
+function burst(pid, txt) {
+  setTimeout(() => {
+    const el = document.getElementById('burst-' + pid); if (!el) return;
+    el.textContent = txt; el.style.color = String(txt).indexOf('-') === 0 ? '#ff8ba0' : '#7dffb8';
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  }, 30);
+}
+let _toastT = null;
+function toast(t) {
+  const b = document.getElementById('toastBox');
+  b.innerHTML = '<div class="toast">' + t + '</div>';
+  clearTimeout(_toastT); _toastT = setTimeout(() => { b.innerHTML = ''; }, 2600);
+}
+function modal(html) { document.getElementById('modalBox').innerHTML = html; document.getElementById('modal').classList.add('on'); }
+function modalClose() { document.getElementById('modal').classList.remove('on'); }
+document.addEventListener('click', e => { if (e.target && e.target.id === 'modal') modalClose(); });
+
+// ── leaderboard math ──
+function weekStart(offsetWeeks) {
+  const d = new Date(); const day = (d.getDay() + 6) % 7; // Monday start
+  d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - day - (offsetWeeks || 0) * 7);
+  return d;
+}
+function sumActivity(pid, from, to) {
+  let s = 0;
+  L.activity.forEach(a => {
+    if (a.player_id !== pid) return;
+    const t = new Date(a.ts);
+    if (t >= from && (!to || t < to) && a.xc > 0) s += a.xc;
+  });
+  return s;
+}
+function boardData(tab) {
+  const R = classRoster();
+  if (tab === 'season') return R.map(p => ({ p: p, v: p.totalXc || 0 })).sort((a, b) => b.v - a.v);
+  if (tab === 'weekly') { const w = weekStart(0); return R.map(p => ({ p: p, v: sumActivity(p.id, w) })).sort((a, b) => b.v - a.v); }
+  if (tab === 'improved') {
+    const w0 = weekStart(0), w1 = weekStart(1);
+    return R.map(p => ({ p: p, v: sumActivity(p.id, w0) - sumActivity(p.id, w1, w0) })).sort((a, b) => b.v - a.v);
+  }
+  if (tab === 'teams') {
+    const t = {}; (L.cfg.teams.names || []).forEach(n => t[n] = 0);
+    const w = weekStart(0);
+    R.forEach(p => { const tn = L.cfg.teams.assign[p.id]; if (tn) { t[tn] = (t[tn] || 0) + sumActivity(p.id, w); } });
+    return Object.keys(t).map(n => ({ team: n, v: t[n] })).sort((a, b) => b.v - a.v);
+  }
+  return [];
+}
+const TEAM_COLORS = ['#39c0ff', '#ff8ba0', '#7dffb8', '#ffd166', '#cbb8ff', '#ffb37d'];
+function teamColor(name) { const i = (L.cfg.teams.names || []).indexOf(name); return TEAM_COLORS[(i + TEAM_COLORS.length) % TEAM_COLORS.length]; }
+</script>
+<script>
+// ═══════════ RENDER ═══════════
+function render() {
+  const app = document.getElementById('app');
+  if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Orbitron;color:#7de9ff;letter-spacing:0.2em">PFLX LITE — LOADING…</div>'; return; }
+  const tabs = L.isHost
+    ? [['class', '🏫 CLASS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
+    : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
+  const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
+  app.innerHTML =
+    '<div class="hd"><div class="logo">PFLX <b>LITE</b></div><div class="sub">' +
+    (L.isHost ? 'Host Dashboard · ' + esc(L.cfg.cohort || 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
+    (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
+    (L.demo ? '<div class="demoBanner">DEMO MODE — open PFLX Lite inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
+    '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
+    ({ class: rClass, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
+  renderTray();
+}
+function go(s) { L.screen = s; clearSel(); render(); }
+
+// ── CLASS (roster grid) ──
+function rClass() {
+  const R = classRoster();
+  const goal = L.cfg.goal || DEFAULT_CFG.goal;
+  const w = weekStart(0);
+  const earned = R.reduce((s, p) => s + sumActivity(p.id, w), 0);
+  const pct = Math.min(100, Math.round(earned / Math.max(1, goal.target) * 100));
+  return '<div class="card" style="margin-bottom:14px"><div class="cardT">Class Goal — ' + esc(goal.label) + '</div>' +
+    '<div class="goalwrap"><div class="goalfill" style="width:' + pct + '%"></div><div class="goaltxt">' + earned.toLocaleString() + ' / ' + goal.target.toLocaleString() + ' XC THIS WEEK · ' + pct + '%</div></div></div>' +
+    '<div class="card"><div class="cardT" style="display:flex;gap:10px;align-items:center">Players (' + R.length + ')' +
+    '<span style="margin-left:auto"></span>' +
+    '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="selectAll()">SELECT ALL</button>' +
+    '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="clearSel();render()">CLEAR</button></div>' +
+    '<div id="roster">' + R.map(p => {
+      const team = L.cfg.teams.assign[p.id];
+      return '<div class="ptile ' + (L.selected[p.id] ? 'sel' : '') + '" onclick="toggleSel(\'' + p.id + '\')">' +
+        (team ? '<div class="tm" style="background:' + teamColor(team) + '55;border:1px solid ' + teamColor(team) + '">' + esc(team) + '</div>' : '') +
+        '<div class="burst" id="burst-' + p.id + '"></div>' +
+        '<div class="av">' + exoAvatarHTML(p.id, 58, p.brand) + '</div>' +
+        '<div class="nm">' + esc(p.brand) + '</div><div class="xc">' + (p.xc || 0).toLocaleString() + ' XC</div></div>';
+    }).join('') + '</div></div>';
+}
+function renderTray() {
+  const tray = document.getElementById('tray');
+  const sel = selPlayers();
+  if (!L.isHost || !sel.length) { tray.classList.remove('on'); return; }
+  tray.classList.add('on');
+  tray.innerHTML = '<span style="font-family:Orbitron;font-size:9px;color:#ffd166;white-space:nowrap">' + sel.length + ' SELECTED</span>' +
+    L.cfg.awards.map((a, i) => '<button class="traybtn" onclick="applyAction(selPlayers(), L.cfg.awards[' + i + '], \'award\')">' + a.icon + ' ' + esc(a.label) + ' +' + a.xc + '</button>').join('') +
+    L.cfg.fines.map((f, i) => '<button class="traybtn fine" onclick="applyAction(selPlayers(), L.cfg.fines[' + i + '], \'fine\')">' + f.icon + ' ' + esc(f.label) + ' ' + f.xc + '</button>').join('') +
+    '<button class="traybtn fine" onclick="applyAction(selPlayers(), L.cfg.tax, \'tax\')">' + L.cfg.tax.icon + ' ' + esc(L.cfg.tax.label) + ' ' + L.cfg.tax.xc + '</button>' +
+    '<button class="traybtn misc" onclick="badgeModal()">🎖️ BADGE</button>';
+}
+function badgeModal() {
+  modal('<div class="cardT">Quick Badge Grant → ' + selPlayers().length + ' player(s)</div>' +
+    ['Battle Arena Champion', 'Digital Citizen', 'Innovative Creator', 'Resilient Learner'].map(n =>
+      '<button class="bigbtn" style="margin:4px" onclick="grantBadge(selPlayers(),\'' + n + '\');modalClose()">🎖️ ' + n + '</button>').join('') +
+    '<label>Custom badge name</label><input id="bdgName" placeholder="e.g. Kindness Hero"/>' +
+    '<div style="margin-top:12px;display:flex;gap:8px"><button class="bigbtn gold" onclick="var v=document.getElementById(\'bdgName\').value.trim(); if(v){grantBadge(selPlayers(),v);modalClose();}">GRANT</button>' +
+    '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+
+// ── BOARDS ──
+function rBoards() {
+  const tabs = [['weekly', 'THIS WEEK'], ['season', 'SEASON'], ['teams', 'TEAMS'], ['improved', 'MOST IMPROVED']];
+  const t = L.boardTab;
+  const vis = L.cfg.boards;
+  if (!L.isHost && !vis.showRanks) return '<div class="card" style="text-align:center;color:#8a93b8;padding:40px">Leaderboards are turned off by your teacher right now. Keep earning! 🚀</div>';
+  let rows = '';
+  const data = boardData(t);
+  const shown = (vis.top5Only && !L.isHost) ? data.slice(0, 5) : data;
+  if (t === 'teams') {
+    rows = shown.length ? shown.map((r, i) =>
+      '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '"><div class="pos">' + (i === 0 ? '👑' : i + 1) + '</div>' +
+      '<div style="width:16px;height:16px;border-radius:5px;background:' + teamColor(r.team) + '"></div>' +
+      '<div class="nm">' + esc(r.team) + '</div><div class="val">' + r.v.toLocaleString() + ' XC</div></div>').join('')
+      : '<div style="color:#8a93b8;font-size:12px;padding:16px">No teams yet — make some in TOOLS → Group Maker.</div>';
+  } else {
+    rows = shown.map((r, i) =>
+      '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '"><div class="pos">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div>' +
+      '<div class="av">' + exoAvatarHTML(r.p.id, 38, r.p.brand) + '</div>' +
+      '<div class="nm">' + esc(r.p.brand) + '</div><div class="val">' + r.v.toLocaleString() + (t === 'season' ? '' : ' XC') + '</div></div>').join('');
+  }
+  return '<div class="tabbar">' + tabs.map(x => '<div class="tab ' + (t === x[0] ? 'on' : '') + '" onclick="L.boardTab=\'' + x[0] + '\';render()">' + x[1] + '</div>').join('') + '</div>' +
+    '<div class="card">' + rows + '</div>' +
+    '<div style="font-size:10px;color:#5c6488;margin-top:10px">Weekly + Most Improved count XC awarded through Lite this week (resets Monday). Season shows lifetime earned XC. ' + (L.isHost ? 'Visibility controls are in SETUP.' : '') + '</div>';
+}
+
+// ── TOOLS (randomizer, groups, timer) ──
+function rTools() {
+  return '<div class="grid3">' +
+    '<div class="card"><div class="cardT">🎡 Randomizer</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Spin the wheel of players — full screen on the projector.</div><button class="bigbtn gold" onclick="wheelOpen()">SPIN THE WHEEL</button></div>' +
+    '<div class="card"><div class="cardT">👥 Group Maker</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Instant random teams. Teams feed the team leaderboard and team games.</div>' +
+    '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + Math.max(2, (L.cfg.teams.names || []).length || 2) + '" style="width:70px;text-align:center"/><button class="bigbtn green" onclick="makeTeams()">MAKE</button>' + ((L.cfg.teams.names || []).length ? '<button class="bigbtn ghost" onclick="clearTeams()">CLEAR</button>' : '') + '</div></div>' +
+    '<div class="card"><div class="cardT">⏱️ Timer</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    [1, 3, 5, 10].map(m => '<button class="bigbtn" onclick="timerStart(' + m + ')">' + m + ' MIN</button>').join('') + '</div></div></div>';
+}
+function makeTeams() {
+  const n = Math.max(2, Math.min(6, parseInt(document.getElementById('teamN').value) || 2));
+  const names = ['NOVA', 'ION', 'VOLT', 'ECHO', 'FLUX', 'ORBIT'].slice(0, n);
+  const R = classRoster().slice().sort(() => Math.random() - 0.5);
+  const assign = {};
+  R.forEach((p, i) => assign[p.id] = names[i % n]);
+  L.cfg.teams = { names: names, assign: assign }; saveCfg();
+  toast('👥 ' + n + ' teams drafted'); go('class');
+}
+function clearTeams() { L.cfg.teams = { names: [], assign: {} }; saveCfg(); render(); }
+
+// wheel
+let wheelPlayers = [];
+function wheelOpen() {
+  wheelPlayers = classRoster().slice();
+  if (!wheelPlayers.length) return;
+  const proj = document.getElementById('proj');
+  proj.classList.add('on');
+  const seg = 360 / wheelPlayers.length;
+  const colors = wheelPlayers.map((p, i) => TEAM_COLORS[i % TEAM_COLORS.length] + ' ' + (i * seg) + 'deg ' + ((i + 1) * seg) + 'deg').join(',');
+  proj.innerHTML = '<div class="projTitle">WHO\'S NEXT?</div>' +
+    '<div id="wheelWrap"><div id="wheelPin">🔻</div><div id="wheel" style="background:conic-gradient(' + colors + ')"></div></div>' +
+    '<div id="wheelName" style="font-family:Orbitron;font-weight:900;font-size:30px;color:#ffd166;margin-top:22px;min-height:40px"></div>' +
+    '<div style="display:flex;gap:10px;margin-top:16px"><button class="bigbtn gold" onclick="wheelSpin()">SPIN</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>';
+}
+function wheelSpin() {
+  const n = wheelPlayers.length; if (!n) return;
+  const idx = Math.floor(Math.random() * n);
+  const seg = 360 / n;
+  const target = 360 * 5 + (360 - (idx * seg + seg / 2));
+  const w = document.getElementById('wheel');
+  w.style.transition = 'none'; w.style.transform = 'rotate(0deg)'; void w.offsetWidth;
+  w.style.transition = 'transform 4.2s cubic-bezier(.12,.7,.1,1)';
+  w.style.transform = 'rotate(' + target + 'deg)';
+  document.getElementById('wheelName').textContent = '';
+  setTimeout(() => {
+    const p = wheelPlayers[idx];
+    document.getElementById('wheelName').innerHTML = '🌟 ' + esc(p.brand) + ' 🌟';
+  }, 4300);
+}
+// timer
+function timerStart(mins) {
+  const proj = document.getElementById('proj');
+  proj.classList.add('on');
+  let left = mins * 60;
+  clearInterval(L.timers.main);
+  function draw() {
+    const m = Math.floor(left / 60), s = left % 60;
+    proj.innerHTML = '<div class="projTitle">⏱️ TIMER</div>' +
+      '<div style="font-family:Orbitron;font-weight:900;font-size:clamp(70px,18vw,180px);color:' + (left <= 30 ? '#ff8ba0' : '#eaf0ff') + ';letter-spacing:0.06em">' + m + ':' + String(s).padStart(2, '0') + '</div>' +
+      '<button class="bigbtn ghost" style="margin-top:20px" onclick="projClose()">CLOSE</button>';
+  }
+  draw();
+  L.timers.main = setInterval(() => {
+    left--; if (left < 0) { clearInterval(L.timers.main); projClose(); toast('⏱️ Time\'s up!'); return; }
+    draw();
+  }, 1000);
+}
+// projector rotation
+let projIv = null, projIdx = 0;
+function projOpen() {
+  const proj = document.getElementById('proj'); proj.classList.add('on');
+  const views = ['weekly', 'teams', 'goal'];
+  function draw() {
+    const v = views[projIdx % views.length];
+    let inner = '';
+    if (v === 'goal') {
+      const R = classRoster(); const goal = L.cfg.goal; const w = weekStart(0);
+      const earned = R.reduce((s, p) => s + sumActivity(p.id, w), 0);
+      const pct = Math.min(100, Math.round(earned / Math.max(1, goal.target) * 100));
+      inner = '<div class="projTitle">🎯 ' + esc(goal.label).toUpperCase() + '</div><div style="width:min(80vw,760px)"><div class="goalwrap" style="height:44px;border-radius:22px"><div class="goalfill" style="width:' + pct + '%"></div><div class="goaltxt" style="font-size:17px">' + earned.toLocaleString() + ' / ' + goal.target.toLocaleString() + ' XC · ' + pct + '%</div></div></div>';
+    } else {
+      const data = boardData(v).slice(0, 8);
+      inner = '<div class="projTitle">' + (v === 'weekly' ? '🏆 THIS WEEK' : '👥 TEAM BATTLE') + '</div><div style="width:min(84vw,700px);text-align:left">' +
+        (v === 'teams'
+          ? (data.length ? data.map((r, i) => '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '" style="padding:13px 16px"><div class="pos" style="font-size:19px">' + (i === 0 ? '👑' : i + 1) + '</div><div style="width:20px;height:20px;border-radius:6px;background:' + teamColor(r.team) + '"></div><div class="nm" style="font-size:16px">' + esc(r.team) + '</div><div class="val" style="font-size:19px">' + r.v.toLocaleString() + '</div></div>').join('') : '<div style="color:#8a93b8">No teams yet</div>')
+          : data.map((r, i) => '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '" style="padding:12px 16px"><div class="pos" style="font-size:18px">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div><div class="av">' + exoAvatarHTML(r.p.id, 40, r.p.brand) + '</div><div class="nm" style="font-size:15px">' + esc(r.p.brand) + '</div><div class="val" style="font-size:18px">' + r.v.toLocaleString() + '</div></div>').join('')) +
+        '</div>';
+    }
+    proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
+      '<div style="position:fixed;bottom:22px;left:24px;font-family:Orbitron;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
+  }
+  window.projDrawNow = draw;
+  draw();
+  clearInterval(projIv); projIv = setInterval(() => { projIdx++; draw(); }, 12000);
+}
+function projClose() {
+  clearInterval(projIv); clearInterval(L.timers.main);
+  document.getElementById('proj').classList.remove('on');
+  document.getElementById('proj').innerHTML = '';
+}
+
+// ── PLAY ──
+function rPlay() {
+  return '<div class="grid3">' +
+    '<div class="card"><div class="cardT">💰 Vault Rush</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Blooket-style class game: answer questions, crack vaults, steal gold. Everyone joins with the room code on the projector.</div>' +
+    (L.isHost ? '<button class="bigbtn gold" onclick="location.href=\'games/vault-rush.html?host=1' + (L.demo ? '' : '&sso=pflx&id=' + encodeURIComponent(L.me.id) + '&brand=' + encodeURIComponent(L.me.brand) + '&host=1') + '\'">HOST A GAME</button>'
+      : '<button class="bigbtn gold" onclick="joinRoomModal()">JOIN WITH CODE</button>') + '</div>' +
+    '<div class="card"><div class="cardT">🤖 Battle Arena</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">The full arena — EXO Clash and 18 more game modes — lives in the PFLX Platform.</div>' +
+    '<button class="bigbtn" onclick="toast(\'Open Battle Arena from the PFLX Platform menu\')">OPEN IN PLATFORM</button></div>' +
+    (L.isHost ? '<div class="card"><div class="cardT">📚 Question Sets</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Create sets or import CSV (question,answer per line). Sets power Vault Rush.</div><button class="bigbtn" onclick="qsetsModal()">MANAGE SETS</button></div>' : '') +
+    '</div>';
+}
+function joinRoomModal() {
+  modal('<div class="cardT">Join Vault Rush</div><label>Room code</label><input id="roomCode" maxlength="4" style="text-transform:uppercase;font-family:Orbitron;font-size:22px;text-align:center;letter-spacing:0.4em" placeholder="ABCD"/>' +
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="var c=document.getElementById(\'roomCode\').value.trim().toUpperCase(); if(c.length===4) location.href=\'games/vault-rush.html?room=\'+c+\'&pid=\'+encodeURIComponent((L.me&&L.me.id)||(\'guest-\'+Math.random().toString(36).slice(2,7)))+\'&pname=\'+encodeURIComponent((L.me&&L.me.brand)||\'Player\');">JOIN</button>' +
+    '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+// question sets manager
+async function qsetsModal() {
+  const sets = (await kvLoad('pflx_lite_qsets')) || { sets: [] };
+  window._qsets = sets;
+  modal('<div class="cardT">Question Sets (' + sets.sets.length + ')</div>' +
+    sets.sets.map((s, i) => '<div class="feedrow"><b>' + esc(s.name) + '</b> · ' + s.cards.length + ' questions <span class="t"><button class="bigbtn red" style="padding:5px 10px;font-size:8px" onclick="delQset(' + i + ')">DELETE</button></span></div>').join('') +
+    '<label>New set name</label><input id="qsName" placeholder="e.g. Fractions Week 3"/>' +
+    '<label>Questions — one per line: question, answer</label><textarea id="qsCsv" rows="7" placeholder="2+2, 4&#10;Capital of Japan, Tokyo&#10;H2O is, water"></textarea>' +
+    '<div style="margin-top:12px;display:flex;gap:8px"><button class="bigbtn gold" onclick="addQset()">SAVE SET</button><button class="bigbtn ghost" onclick="modalClose()">DONE</button></div>');
+}
+function addQset() {
+  const name = document.getElementById('qsName').value.trim();
+  const lines = document.getElementById('qsCsv').value.split('\n').map(l => l.trim()).filter(Boolean);
+  const cards = lines.map(l => { const c = l.indexOf(','); return c > 0 ? { term: l.slice(0, c).trim(), definition: l.slice(c + 1).trim() } : null; }).filter(x => x && x.term && x.definition);
+  if (!name || cards.length < 4) { toast('Need a name and at least 4 "question, answer" lines'); return; }
+  window._qsets.sets.push({ id: 'qs-' + Date.now(), name: name, cards: cards, createdBy: (L.me && L.me.id) || '', createdAt: Date.now() });
+  kvSave('pflx_lite_qsets', window._qsets); toast('📚 Saved ' + name); qsetsModal();
+}
+function delQset(i) { window._qsets.sets.splice(i, 1); kvSave('pflx_lite_qsets', window._qsets); qsetsModal(); }
+
+// ── FEED ──
+function rFeed() {
+  const rows = L.activity.slice(0, 60).map(a => {
+    const p = L.roster.find(r => r.id === a.player_id);
+    const icon = { award: '✅', fine: '⚠️', tax: '🏛️', upgrade: '🎁', badge: '🎖️' }[a.kind] || '•';
+    return '<div class="feedrow">' + icon + ' <b>' + esc(p ? p.brand : a.player_id) + '</b> ' + esc(a.label) +
+      (a.xc ? ' <span style="color:' + (a.xc > 0 ? '#7dffb8' : '#ff8ba0') + ';font-weight:700">' + (a.xc > 0 ? '+' : '') + a.xc + ' XC</span>' : '') +
+      '<span class="t">' + new Date(a.ts).toLocaleString() + '</span></div>';
+  }).join('');
+  return '<div class="card"><div class="cardT">Activity Feed (last 15 days)</div>' + (rows || '<div style="color:#8a93b8;font-size:12px">Nothing yet — award something!</div>') + '</div>';
+}
+
+// ── SETUP ──
+function rSetup() {
+  const cs = cohortList();
+  return '<div class="grid2">' +
+    '<div class="card"><div class="cardT">My Class</div><label>Cohort (which players are this class)</label>' +
+    '<select onchange="L.cfg.cohort=this.value;saveCfg();render()"><option value="">All players</option>' + cs.map(c => '<option ' + (L.cfg.cohort === c ? 'selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
+    '<label>Class goal label</label><input value="' + esc(L.cfg.goal.label) + '" onchange="L.cfg.goal.label=this.value;saveCfg()"/>' +
+    '<label>Class goal target (XC / week)</label><input type="number" value="' + L.cfg.goal.target + '" onchange="L.cfg.goal.target=Math.max(100,parseInt(this.value)||10000);saveCfg()"/>' +
+    '<label>Leaderboards</label>' +
+    '<div style="display:flex;gap:14px;font-size:13px;color:#ccc;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:Rajdhani;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.showRanks ? 'checked' : '') + ' onchange="L.cfg.boards.showRanks=this.checked;saveCfg()"/> Players can see boards</label>' +
+    '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:Rajdhani;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.top5Only ? 'checked' : '') + ' onchange="L.cfg.boards.top5Only=this.checked;saveCfg()"/> Top 5 only</label></div></div>' +
+    '<div class="card"><div class="cardT">Quick Buttons</div>' + presetEditor('awards') + presetEditor('fines') +
+    '<div class="cardT" style="margin-top:14px">Upgrades Shop</div>' +
+    L.cfg.upgrades.map((u, i) => '<div class="feedrow">' + u.icon + ' <b>' + esc(u.label) + '</b> · ' + u.cost + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.upgrades.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
+    '<div style="display:flex;gap:6px;margin-top:8px"><input id="upLbl" placeholder="Privilege" style="flex:2"/><input id="upCost" type="number" placeholder="XC" style="flex:1"/><button class="bigbtn green" style="padding:8px 12px" onclick="var l=document.getElementById(\'upLbl\').value.trim(),c=parseInt(document.getElementById(\'upCost\').value)||0; if(l&&c>0){L.cfg.upgrades.push({id:\'up-\'+Date.now(),label:l,icon:\'🎁\',cost:c});saveCfg();render();}">ADD</button></div></div></div>';
+}
+function presetEditor(kind) {
+  const arr = L.cfg[kind];
+  return '<div style="font-size:11px;color:#8a93b8;margin:8px 0 4px;text-transform:uppercase;font-family:Orbitron;font-weight:700">' + (kind === 'awards' ? 'Awards' : 'Fines') + '</div>' +
+    arr.map((a, i) => '<div class="feedrow">' + a.icon + ' <b>' + esc(a.label) + '</b> · ' + a.xc + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.' + kind + '.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
+    '<div style="display:flex;gap:6px;margin-top:6px"><input id="pe-' + kind + '-l" placeholder="Label" style="flex:2"/><input id="pe-' + kind + '-x" type="number" placeholder="XC" style="flex:1"/>' +
+    '<button class="bigbtn green" style="padding:8px 12px" onclick="var l=document.getElementById(\'pe-' + kind + '-l\').value.trim(),x=parseInt(document.getElementById(\'pe-' + kind + '-x\').value)||0; if(l&&x' + (kind === 'fines' ? '<0' : '>0') + '){L.cfg.' + kind + '.push({label:l,icon:\'' + (kind === 'fines' ? '⚠️' : '⭐') + '\',xc:x});saveCfg();render();}">ADD</button></div>';
+}
+
+// ── PLAYER VIEW ──
+function myRecord() { return L.roster.find(p => p.id === (L.me && L.me.id)) || { id: (L.me && L.me.id) || 'me', brand: (L.me && L.me.brand) || 'Player', xc: 0, totalXc: 0, badges: 0 }; }
+function rMe() {
+  const p = myRecord();
+  const ex = L.exo[p.id];
+  const w = weekStart(0);
+  const week = sumActivity(p.id, w);
+  const board = boardData('weekly');
+  const rank = board.findIndex(r => r.p.id === p.id) + 1;
+  const team = L.cfg.teams.assign[p.id];
+  return '<div class="grid2">' +
+    '<div class="card" style="text-align:center"><div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(120,140,255,0.5))">' + exoAvatarHTML(p.id, 150, p.brand) + '</div>' +
+    '<div style="font-family:Orbitron;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex && ex.exo_name ? ex.exo_name : p.brand) + '</div>' +
+    (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Orbitron;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · STAGE ' + (ex.stage || 1) + '</div>' : '<div style="font-size:11px;color:#8a93b8">Visit the EXO Bay in Battle Arena to hatch your EXO!</div>') +
+    '<div style="font-family:Orbitron;font-weight:900;font-size:26px;color:#ffd166;margin-top:12px">' + (p.xc || 0).toLocaleString() + ' XC</div>' +
+    '<div style="font-size:11px;color:#8a93b8">+' + week.toLocaleString() + ' this week' + (L.cfg.boards.showRanks && rank ? ' · #' + rank + ' in class' : '') + (team ? ' · TEAM ' + esc(team) : '') + '</div></div>' +
+    '<div class="card"><div class="cardT">🎖️ My Badges</div><div style="font-size:34px">' + '🎖️'.repeat(Math.min(12, p.badges || 0)) + (p.badges > 12 ? ' +' + (p.badges - 12) : '') + (!p.badges ? '<span style="font-size:12px;color:#8a93b8">None yet — earn your first!</span>' : '') + '</div>' +
+    '<div class="cardT" style="margin-top:16px">📜 My Recent</div>' +
+    L.activity.filter(a => a.player_id === p.id).slice(0, 6).map(a => '<div class="feedrow">' + ({ award: '✅', fine: '⚠️', tax: '🏛️', upgrade: '🎁', badge: '🎖️' }[a.kind] || '•') + ' ' + esc(a.label) + (a.xc ? ' <b style="color:' + (a.xc > 0 ? '#7dffb8' : '#ff8ba0') + '">' + (a.xc > 0 ? '+' : '') + a.xc + '</b>' : '') + '</div>').join('') +
+    '</div></div>';
+}
+function rShop() {
+  const p = myRecord();
+  return '<div class="card"><div class="cardT">🎁 Class Upgrades — spend your XC</div>' +
+    '<div class="grid3">' + L.cfg.upgrades.map((u, i) =>
+      '<div class="upcard"><div class="ic">' + u.icon + '</div><div class="lb">' + esc(u.label) + '</div>' +
+      '<button class="bigbtn gold" style="width:100%" onclick="buyUpgrade(' + i + ')">' + u.cost.toLocaleString() + ' XC</button></div>').join('') + '</div>' +
+    '<div style="font-size:10px;color:#5c6488;margin-top:12px">Your teacher sees every redemption in the feed and makes it happen in class. Balance: ' + (p.xc || 0).toLocaleString() + ' XC</div></div>';
+}
+function buyUpgrade(i) {
+  const u = L.cfg.upgrades[i]; const p = myRecord();
+  if ((p.xc || 0) < u.cost) { toast('Not enough XC — you have ' + (p.xc || 0).toLocaleString()); return; }
+  modal('<div class="cardT">Redeem ' + esc(u.label) + '?</div><div style="font-size:13px;color:#aeb6d8">This spends <b style="color:#ffd166">' + u.cost.toLocaleString() + ' XC</b>. Your teacher gets notified in the feed.</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="confirmUpgrade(' + i + ')">REDEEM</button><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+function confirmUpgrade(i) {
+  const u = L.cfg.upgrades[i]; const p = myRecord();
+  postAward(p.id, { xc: -u.cost, reason: 'lite.upgrade.' + u.id });
+  p.xc = Math.max(0, (p.xc || 0) - u.cost);
+  liteLog(p.id, 'upgrade', u.label, -u.cost);
+  modalClose(); render(); toast('🎁 ' + u.label + ' redeemed! Your teacher has been notified.' + (L.demo ? ' (demo)' : ''));
+}
+
+// ── BOOT ──
+adoptFromParams();
+render();
+loadCfg(); loadRoster(); loadExo(); loadActivity();
+setInterval(loadActivity, 60000);
+</script>
+</body>
+</html>
