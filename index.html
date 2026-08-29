@@ -169,8 +169,8 @@ function adoptFromParams() {
   try {
     const p = new URLSearchParams(location.search);
     if (p.get('sso') !== 'pflx') return false;
-    L.me = { id: p.get('id') || 'host', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
-    L.isHost = /admin|host|teacher/i.test(L.me.role) || p.get('host') === '1';
+    L.me = { id: p.get('id') || '', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
+    L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || p.get('host') === '1';
     L.demo = false;
     return true;
   } catch (e) { return false; }
@@ -180,8 +180,8 @@ window.addEventListener('message', function (e) {
   if (!m || !m.type) return;
   if ((m.type === 'pflx_identity_broadcast' || m.type === 'pflx_identity_response') && m.user) {
     L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student' };
-    L.isHost = /admin|host|teacher/i.test(L.me.role) || m.user.isHost === true;
-    L.demo = false; render();
+    L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || m.user.isHost === true;
+    L.demo = false; resolveMyId(); render();
   }
   if (m.type === 'pflx_player_changed' && m.player) {
     const p = L.roster.find(r => r.id === m.player.id);
@@ -209,7 +209,14 @@ async function loadRoster() {
     }));
   } catch (e) { L.roster = DEMO_ROSTER.slice(); L.demo = L.demo || !L.roster.length; }
   if (!L.roster.length) L.roster = DEMO_ROSTER.slice();
-  L.loaded.roster = true; render();
+  L.loaded.roster = true; resolveMyId(); render();
+}
+function resolveMyId() {
+  if (!L.me || L.me.resolved) return;
+  if (L.me.id && L.roster.some(r => r.id === L.me.id)) { L.me.resolved = true; return; }
+  const b = (L.me.brand || '').toUpperCase();
+  const m = L.roster.find(r => (r.brand || '').toUpperCase() === b || (r.name || '').toUpperCase() === b);
+  if (m) { L.me.id = m.id; L.me.resolved = true; }
 }
 async function loadExo() {
   try {
