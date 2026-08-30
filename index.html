@@ -3,11 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PFLX Lite — Classroom</title>
+<title>PFLX Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PFLX LITE v0.1 (EXO spec v1.1 Phase 4, Aug 2026)
+     PFLX LIVE v0.2 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
+     PATCH LITE v0.2, Aug 30 2026) — internal app key/URL slug/cloud keys
+     stay 'lite' intentionally (pflx-lite repo, pflx_lite_* Supabase keys,
+     data-app="lite" contract with the Console) to avoid touching every
+     call site across repos for a name-only change; only user-facing text
+     says PFLX Live now.
      ONE standalone classroom app — ClassDojo speed, Classcraft game
-     layer, powered by the PFLX economy that already exists.
+     layer, powered by the PFLX economy that already exists. Now also
+     reflects the Console's own Live Sessions (join code / roster /
+     status) when a host starts one — see the LIVE banner + L.liveSession.
      · Identity: PFLX Platform (sso URL params / postMessage), same
        contract as Battle Arena. Standalone = Demo Mode.
      · XC awards/fines/upgrades ride PflxDataBus (pflx_award_proposed
@@ -138,6 +145,7 @@ async function kvSave(key, value) {
 const L = {
   me: null, isHost: false, demo: !inPlatform,
   screen: 'class', boardTab: 'weekly',
+  liveSession: null,   // {sessionId, code, title, host, cohorts, allCohorts, joined:N} | null = no active session
   roster: [],          // {id,name,brand,xc,totalXc,badges,cohort,studioId,image}
   exo: {},             // player_id -> avatar row
   cfg: null, activity: [], selected: {}, timers: {},
@@ -186,6 +194,23 @@ window.addEventListener('message', function (e) {
   if (m.type === 'pflx_player_changed' && m.player) {
     const p = L.roster.find(r => r.id === m.player.id);
     if (p) { p.xc = (typeof m.player.xc === 'number') ? m.player.xc : (m.player.xcoin || p.xc); p.totalXc = m.player.totalXcoin || p.totalXc; render(); }
+  }
+
+  // PFLX LIVE ↔ Console Live Sessions (PATCH LITE v0.2) — the Console's
+  // mcBroadcastToApps() fans these out to every iframe with [data-app],
+  // which already includes this app (data-app="lite" in preview.html) —
+  // no Console-side change was needed to receive them, only to listen.
+  if (m.type === 'pflx_mc_pflx_session_started' || m.type === 'pflx_mc_pflx_session_live_broadcast') {
+    const d = m.data || {};
+    L.liveSession = Object.assign({}, L.liveSession, {
+      sessionId: d.sessionId, code: d.code, title: d.title,
+      host: d.host, cohorts: d.cohorts || [], allCohorts: !!d.allCohorts
+    });
+    render();
+  }
+  if (m.type === 'pflx_mc_pflx_session_ended') {
+    if (!L.liveSession || !m.data || L.liveSession.sessionId === m.data.sessionId) L.liveSession = null;
+    render();
   }
 });
 try { if (inPlatform) window.parent.postMessage(JSON.stringify({ type: 'pflx_identity_request' }), '*'); } catch (e) {}
@@ -390,18 +415,36 @@ function teamColor(name) { const i = (L.cfg.teams.names || []).indexOf(name); re
 </script>
 <script>
 // ═══════════ RENDER ═══════════
+function sessionAppliesToMe() {
+  const s = L.liveSession; if (!s) return false;
+  if (L.isHost || s.allCohorts || !s.cohorts || !s.cohorts.length) return true;
+  const myCohort = (L.me && L.roster.find(r => r.id === L.me.id) || {}).cohort || '';
+  return s.cohorts.indexOf(myCohort) !== -1;
+}
+function liveSessionBanner() {
+  if (!sessionAppliesToMe()) return '';
+  const s = L.liveSession;
+  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.35);border-radius:12px;padding:10px 14px;margin-bottom:12px;">' +
+    '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">\u{1F534} LIVE</span>' +
+    '<span style="font-size:13px;font-weight:700;color:#f0f0ff;">' + esc(s.title || 'Session') + '</span>' +
+    (s.code ? '<span style="font-size:11px;color:#8a93b8;">code <b style="color:#ffd166;letter-spacing:0.08em;">' + esc(s.code) + '</b></span>' : '') +
+    '<span style="flex:1"></span>' +
+    '<span style="font-size:10px;color:rgba(255,255,255,0.45);">Full activity is in the PFLX Platform, this is just the live status.</span>' +
+    '</div>';
+}
 function render() {
   const app = document.getElementById('app');
-  if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Audiowide;color:#7de9ff;letter-spacing:0.2em">PFLX LITE — LOADING…</div>'; return; }
+  if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Audiowide;color:#7de9ff;letter-spacing:0.2em">PFLX LIVE — LOADING…</div>'; return; }
   const tabs = L.isHost
     ? [['class', '🏫 CLASS'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
-    '<div class="hd"><div class="logo">PFLX <b>LITE</b></div><div class="sub">' +
+    '<div class="hd"><div class="logo">PFLX <b>LIVE</b></div><div class="sub">' +
     (L.isHost ? 'Host Dashboard · ' + esc(L.cfg.cohort || 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
     (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
-    (L.demo ? '<div class="demoBanner">DEMO MODE — open PFLX Lite inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
+    (L.demo ? '<div class="demoBanner">DEMO MODE — open PFLX Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
+    liveSessionBanner() +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
     ({ class: rClass, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
@@ -503,7 +546,7 @@ function projTeams() {
   proj.innerHTML = '<div class="projTitle">👥 THE TEAMS</div>' +
     '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:94vw;max-height:70vh;overflow-y:auto">' + cols + '</div>' +
     '<div style="position:fixed;bottom:18px;right:20px"><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-    '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
+    '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LIVE</div>';
 }
 
 // ── BOARDS ──
@@ -655,7 +698,7 @@ function projOpen() {
         '</div>';
     }
     proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-      '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
+      '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LIVE</div>';
   }
   window.projDrawNow = draw;
   draw();
