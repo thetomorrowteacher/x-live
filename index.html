@@ -145,7 +145,8 @@ async function kvSave(key, value) {
 const L = {
   me: null, isHost: false, demo: !inPlatform,
   screen: 'class', boardTab: 'weekly',
-  liveSession: null,   // {sessionId, code, title, host, cohorts, allCohorts, joined:N} | null = no active session
+  liveSession: null,   // {sessionId, code, title, host, cohorts, allCohorts, agenda, currentAgendaIndex} | null = no active session
+  agendaScreenFrom: 'class', // tab to return to when leaving the live Agenda screen
   roster: [],          // {id,name,brand,xc,totalXc,badges,cohort,studioId,image}
   exo: {},             // player_id -> avatar row
   cfg: null, activity: [], selected: {}, timers: {},
@@ -202,19 +203,28 @@ window.addEventListener('message', function (e) {
   // no Console-side change was needed to receive them, only to listen.
   if (m.type === 'pflx_mc_pflx_session_started' || m.type === 'pflx_mc_pflx_session_live_broadcast') {
     const d = m.data || {};
+    const prevIdx = L.liveSession && L.liveSession.currentAgendaIndex;
     L.liveSession = Object.assign({}, L.liveSession, {
       sessionId: d.sessionId, code: d.code, title: d.title,
-      host: d.host, cohorts: d.cohorts || [], allCohorts: !!d.allCohorts
+      host: d.host, cohorts: d.cohorts || [], allCohorts: !!d.allCohorts,
+      agenda: d.agenda || (L.liveSession && L.liveSession.agenda) || [],
+      currentAgendaIndex: d.currentAgendaIndex != null ? d.currentAgendaIndex : ((L.liveSession && L.liveSession.currentAgendaIndex) || 0)
     });
+    if (L.screen === 'liveagenda' && L.liveSession.currentAgendaIndex !== prevIdx) startAgendaTimer();
     render();
   }
   if (m.type === 'pflx_mc_pflx_session_ended') {
-    if (!L.liveSession || !m.data || L.liveSession.sessionId === m.data.sessionId) L.liveSession = null;
+    if (!L.liveSession || !m.data || L.liveSession.sessionId === m.data.sessionId) {
+      L.liveSession = null;
+      stopAgendaTimer();
+      if (L.screen === 'liveagenda') L.screen = L.agendaScreenFrom || (L.isHost ? 'class' : 'me');
+    }
     render();
   }
 });
 try { if (inPlatform) window.parent.postMessage(JSON.stringify({ type: 'pflx_identity_request' }), '*'); } catch (e) {}
 try { if (inPlatform) window.parent.postMessage(JSON.stringify({ type: 'pflx_subapp_ready', app: 'pflx-lite' }), '*'); } catch (e) {}
+window.addEventListener('beforeunload', () => { try { if (typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); } catch (e) {} try { stopAgendaTimer(); } catch (e) {} });
 
 // ── data loads ──
 const DEMO_ROSTER = [
@@ -424,17 +434,128 @@ function sessionAppliesToMe() {
 function liveSessionBanner() {
   if (!sessionAppliesToMe()) return '';
   const s = L.liveSession;
+  const hasAgenda = s.agenda && s.agenda.length;
   return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.35);border-radius:12px;padding:10px 14px;margin-bottom:12px;">' +
     '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">\u{1F534} LIVE</span>' +
     '<span style="font-size:13px;font-weight:700;color:#f0f0ff;">' + esc(s.title || 'Session') + '</span>' +
     (s.code ? '<span style="font-size:11px;color:#8a93b8;">code <b style="color:#ffd166;letter-spacing:0.08em;">' + esc(s.code) + '</b></span>' : '') +
     '<span style="flex:1"></span>' +
-    '<span style="font-size:10px;color:rgba(255,255,255,0.45);">Full activity is in the PFLX Platform, this is just the live status.</span>' +
+    (hasAgenda
+      ? '<button class="bigbtn gold" style="padding:7px 16px;font-size:9.5px;" onclick="joinLiveAgenda()">\u25B6 JOIN LIVE</button>'
+      : '<span style="font-size:10px;color:rgba(255,255,255,0.45);">Full activity is in the PFLX Platform &mdash; the host hasn\'t added an agenda to this session yet.</span>') +
     '</div>';
 }
+
+// ── LIVE AGENDA / GUIDE (PATCH LITE v0.3) ──
+// Read-only for everyone in this patch: the host authors and advances the
+// agenda from the Console (mcAgendaNext/mcAgendaPrev), which re-broadcasts
+// pflx_session_live_broadcast; this screen just displays wherever the class
+// currently is, plus a local countdown timer that restarts whenever the
+// current step changes. Advancing FROM inside PFLX Live is deferred --
+// there's no reverse (iframe -> Console) write channel yet.
+const AGENDA_TYPE_META = {
+  mindful:   { icon: '\u{1F9D8}', label: 'Mindful Moment' },
+  activity:  { icon: '\u{1F4CB}', label: 'Activity' },
+  project:   { icon: '\u{1F6E0}\uFE0F', label: 'Project Work' },
+  game:      { icon: '\u{1F3AE}', label: 'Game / Media' },
+  social:    { icon: '\u{1F91D}', label: 'Social Sprint' },
+  thinkpair: { icon: '\u{1F4AC}', label: 'Think \u00B7 Pair \u00B7 Share' },
+  exit:      { icon: '\u{1F3AB}', label: 'Exit Ticket' },
+  custom:    { icon: '\u270F\uFE0F', label: 'Custom' }
+};
+let agendaTimerIv = null, agendaTimerFor = null;
+
+function joinLiveAgenda() {
+  if (!L.liveSession || !L.liveSession.agenda || !L.liveSession.agenda.length) return;
+  L.agendaScreenFrom = L.screen;
+  L.screen = 'liveagenda';
+  startAgendaTimer();
+  render();
+}
+function leaveLiveAgenda() {
+  stopAgendaTimer();
+  L.screen = L.agendaScreenFrom || (L.isHost ? 'class' : 'me');
+  render();
+}
+function startAgendaTimer() {
+  stopAgendaTimer();
+  const s = L.liveSession; if (!s || !s.agenda) return;
+  const item = s.agenda[s.currentAgendaIndex || 0];
+  agendaTimerFor = s.currentAgendaIndex || 0;
+  if (!item || !item.timer || !item.timer.enabled) return;
+  let remaining = (item.timer.presetMinutes || 5) * 60;
+  const total = remaining;
+  const draw = () => {
+    const bar = document.getElementById('agendaTimerBar');
+    const val = document.getElementById('agendaTimerVal');
+    if (!bar || !val) return;
+    const pct = Math.max(0, Math.round((remaining / total) * 100));
+    bar.style.width = pct + '%';
+    bar.style.background = remaining <= 10 ? '#ff5d7a' : (pct < 30 ? '#ffd166' : '#7dffb8');
+    const m = Math.floor(Math.max(0, remaining) / 60), sec = Math.max(0, remaining) % 60;
+    val.textContent = m + ':' + String(sec).padStart(2, '0');
+  };
+  draw();
+  agendaTimerIv = setInterval(() => {
+    remaining--;
+    if (remaining < 0) { clearInterval(agendaTimerIv); agendaTimerIv = null; draw(); return; }
+    draw();
+  }, 1000);
+}
+function stopAgendaTimer() {
+  if (agendaTimerIv) { clearInterval(agendaTimerIv); agendaTimerIv = null; }
+  agendaTimerFor = null;
+}
+function rLiveAgenda() {
+  const s = L.liveSession;
+  if (!s || !s.agenda || !s.agenda.length) { leaveLiveAgenda(); return ''; }
+  const idx = s.currentAgendaIndex || 0;
+  const item = s.agenda[idx];
+  const meta = AGENDA_TYPE_META[item.type] || AGENDA_TYPE_META.custom;
+  const rail = s.agenda.map((a, i) => {
+    const m = AGENDA_TYPE_META[a.type] || AGENDA_TYPE_META.custom;
+    const active = i === idx;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;margin-bottom:4px;' +
+      (active ? 'background:rgba(255,209,102,0.12);border:1px solid rgba(255,209,102,0.4);' : 'border:1px solid transparent;opacity:0.55;') + '">' +
+      '<span style="font-size:15px;">' + m.icon + '</span>' +
+      '<span style="font-family:Audiowide;font-size:8.5px;font-weight:800;color:' + (active ? '#ffd166' : '#cbd3f0') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(a.title) + '</span>' +
+      '</div>';
+  }).join('');
+  const checklist = (item.checklist && item.checklist.length)
+    ? '<div style="margin-top:16px;">' + item.checklist.map(step =>
+        '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:#dfe4ff;"><span style="color:#7dffb8;">\u2713</span>' + esc(step) + '</div>').join('') + '</div>'
+    : '';
+  const timerBlock = (item.timer && item.timer.enabled)
+    ? '<div style="margin-top:22px;display:flex;flex-direction:column;align-items:center;gap:6px;">' +
+        '<div style="width:min(320px,80vw);height:16px;background:rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;"><div id="agendaTimerBar" style="height:100%;width:100%;background:#7dffb8;transition:width 1s linear,background 0.3s;"></div></div>' +
+        '<div id="agendaTimerVal" style="font-family:Audiowide;font-size:26px;font-weight:900;color:#f0f0ff;"></div>' +
+      '</div>'
+    : '';
+  return '<div style="padding:16px;min-height:100vh;box-sizing:border-box;">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
+    '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">\u{1F534} LIVE</span>' +
+    '<span style="font-family:Audiowide;font-size:12px;font-weight:800;color:#7de9ff;">' + esc(s.title || 'Session') + '</span>' +
+    '<span style="flex:1"></span>' +
+    '<button class="bigbtn ghost" style="padding:7px 14px;font-size:9.5px;" onclick="leaveLiveAgenda()">\u2715 LEAVE</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">' +
+    '<div style="width:150px;flex:0 0 auto;">' + rail + '</div>' +
+    '<div class="card" style="flex:1;min-width:240px;text-align:center;padding:28px 20px;">' +
+    '<div style="font-size:34px;margin-bottom:6px;">' + meta.icon + '</div>' +
+    '<div style="font-family:Audiowide;font-size:9px;letter-spacing:0.16em;color:#a78bfa;margin-bottom:4px;">' + meta.label.toUpperCase() + ' \u00B7 STEP ' + (idx + 1) + ' / ' + s.agenda.length + '</div>' +
+    '<h2 style="font-family:Audiowide;font-size:19px;margin:0 0 10px;color:#f0f0ff;">' + esc(item.title) + '</h2>' +
+    (item.prompt ? '<div style="font-size:14px;color:#c7cdec;line-height:1.5;max-width:440px;margin:0 auto;">' + esc(item.prompt) + '</div>' : '') +
+    checklist + timerBlock +
+    '</div></div></div>';
+}
+
 function render() {
   const app = document.getElementById('app');
   if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Audiowide;color:#7de9ff;letter-spacing:0.2em">PFLX LIVE — LOADING…</div>'; return; }
+  if (L.screen === 'liveagenda' && L.liveSession && L.liveSession.agenda && L.liveSession.agenda.length) {
+    app.innerHTML = rLiveAgenda();
+    return;
+  }
   const tabs = L.isHost
     ? [['class', '🏫 CLASS'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
@@ -449,7 +570,7 @@ function render() {
     ({ class: rClass, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
 }
-function go(s) { L.screen = s; clearSel(); render(); }
+function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
 
 // ── CLASS (roster grid) ──
 function rClass() {
@@ -582,7 +703,88 @@ function rTools() {
     '<div class="card"><div class="cardT">👥 Group Maker</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Instant random teams. Teams feed the team leaderboard and team games.</div>' +
     '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + Math.max(2, (L.cfg.teams.names || []).length || 2) + '" style="width:70px;text-align:center"/><button class="bigbtn green" onclick="makeTeams()">MAKE</button>' + ((L.cfg.teams.names || []).length ? '<button class="bigbtn ghost" onclick="go(\'teams\')">VIEW TEAMS</button>' : '') + '</div></div>' +
     '<div class="card"><div class="cardT">⏱️ Timer</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    [1, 3, 5, 10].map(m => '<button class="bigbtn" onclick="timerStart(' + m + ')">' + m + ' MIN</button>').join('') + '</div></div></div>';
+    [1, 3, 5, 10].map(m => '<button class="bigbtn" onclick="timerStart(' + m + ')">' + m + ' MIN</button>').join('') + '</div></div>' +
+    '<div class="card"><div class="cardT">🔊 Noise Meter</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">ClassDojo-style ambient mic level — green/yellow/red, projector-friendly.</div><button class="bigbtn" id="noiseMeterBtn" onclick="toggleNoiseMeter()">START LISTENING</button></div>' +
+    '</div>';
+}
+
+// ── Noise Meter (ported from the Console's mcToggleNoiseMeter — same
+//    getUserMedia+AnalyserNode approach, adapted to PFLX Live's own UI) ──
+const noiseState = { active: false, ctx: null, stream: null, raf: null };
+function toggleNoiseMeter() {
+  if (noiseState.active) { stopNoiseMeter(); return; }
+  startNoiseMeter();
+}
+function startNoiseMeter() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('🎙️ Microphone access is not supported in this browser.');
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    noiseState.stream = stream;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    noiseState.ctx = ctx;
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    noiseState.active = true;
+    showNoiseMeterUI();
+    let smooth = 0;
+    function tick() {
+      if (!noiseState.active) return;
+      analyser.getByteFrequencyData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      const level = sum / data.length;
+      smooth = smooth * 0.8 + level * 0.2;
+      updateNoiseMeterUI(Math.max(0, Math.min(100, Math.round((smooth / 130) * 100))));
+      noiseState.raf = requestAnimationFrame(tick);
+    }
+    tick();
+    const btn = document.getElementById('noiseMeterBtn');
+    if (btn) btn.textContent = 'STOP LISTENING';
+  }).catch(err => {
+    toast('🎙️ Could not access the microphone: ' + (err && err.message ? err.message : err));
+  });
+}
+function stopNoiseMeter() {
+  noiseState.active = false;
+  if (noiseState.raf) cancelAnimationFrame(noiseState.raf);
+  if (noiseState.stream) { try { noiseState.stream.getTracks().forEach(t => t.stop()); } catch (e) {} }
+  if (noiseState.ctx) { try { noiseState.ctx.close(); } catch (e) {} }
+  noiseState.stream = null;
+  noiseState.ctx = null;
+  const el = document.getElementById('noiseMeterOverlay');
+  if (el) el.remove();
+  const btn = document.getElementById('noiseMeterBtn');
+  if (btn) btn.textContent = 'START LISTENING';
+}
+function showNoiseMeterUI() {
+  const existing = document.getElementById('noiseMeterOverlay');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'noiseMeterOverlay';
+  el.style.cssText = 'position:fixed;bottom:70px;right:16px;background:rgba(10,18,40,0.95);border:1px solid rgba(57,192,255,0.3);border-radius:14px;padding:14px 18px;z-index:9999;font-family:"Exo 2",sans-serif;width:190px;box-shadow:0 10px 40px rgba(0,0,0,0.4);';
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+    '<span style="font-family:Audiowide;font-size:10px;font-weight:900;color:#39c0ff;letter-spacing:0.08em;">🔊 NOISE METER</span>' +
+    '<button onclick="stopNoiseMeter()" style="background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:14px;">✕</button>' +
+    '</div>' +
+    '<div style="height:14px;background:rgba(255,255,255,0.06);border-radius:7px;overflow:hidden;"><div id="noiseMeterBar" style="height:100%;width:0%;background:#7dffb8;transition:width 0.15s,background 0.3s;"></div></div>' +
+    '<div id="noiseMeterLabel" style="text-align:center;font-size:11px;margin-top:6px;color:rgba(255,255,255,0.5);">Listening…</div>';
+  document.body.appendChild(el);
+}
+function updateNoiseMeterUI(level) {
+  const bar = document.getElementById('noiseMeterBar');
+  const label = document.getElementById('noiseMeterLabel');
+  if (!bar) return;
+  bar.style.width = level + '%';
+  const color = level < 35 ? '#7dffb8' : (level < 65 ? '#ffd166' : '#ff5d7a');
+  bar.style.background = color;
+  if (label) label.textContent = level < 35 ? 'Quiet 🙂' : (level < 65 ? 'Getting loud…' : 'TOO LOUD! 🚨');
 }
 const TEAM_NAME_BANK = [
   'NOVA SYNDICATE', 'QUANTUM FORGE', 'HELIX DYNAMICS', 'VOLTEDGE LABS', 'CIPHER COLLECTIVE',
