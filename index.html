@@ -225,6 +225,21 @@ async function loadExo() {
   } catch (e) {}
   render();
 }
+L.cohortNames = [];
+async function loadCohortGroups() {
+  // Canonical cohort registry (Console's Cohort Manager) — the roster alone
+  // only reveals cohorts that currently have players, which hid the rest.
+  try {
+    let groups = await kvLoad('cohortGroups');
+    if (!Array.isArray(groups)) { const alt = await kvLoad('pflx_mc_cohortgroups'); groups = (alt && alt.items) || []; }
+    const names = {};
+    (groups || []).forEach(g => {
+      (Array.isArray(g.cohorts) && g.cohorts.length ? g.cohorts : [g.name]).forEach(c => { if (c) names[String(c).trim()] = 1; });
+    });
+    L.cohortNames = Object.keys(names);
+  } catch (e) {}
+  render();
+}
 async function loadCfg() {
   const d = await kvLoad('pflx_lite_config');
   L.cfg = Object.assign({}, DEFAULT_CFG, d || {});
@@ -242,13 +257,15 @@ async function loadActivity() {
   L.loaded.activity = true; render();
 }
 function classRoster() {
-  const c = (L.cfg && L.cfg.cohort) || '';
-  return c ? L.roster.filter(p => (p.cohort || '').split(',').map(s => s.trim()).indexOf(c) !== -1 || p.cohort === c) : L.roster;
+  const c = ((L.cfg && L.cfg.cohort) || '').toLowerCase();
+  return c ? L.roster.filter(p => (p.cohort || '').toLowerCase().split(',').map(s => s.trim()).indexOf(c) !== -1 || (p.cohort || '').toLowerCase() === c) : L.roster;
 }
 function cohortList() {
-  const set = {};
-  L.roster.forEach(p => (p.cohort || '').split(',').map(s => s.trim()).filter(Boolean).forEach(c => set[c] = 1));
-  return Object.keys(set).sort();
+  const seen = {}; const out = [];
+  function add(c) { const k = c.toLowerCase(); if (!seen[k]) { seen[k] = 1; out.push(c); } }
+  (L.cohortNames || []).forEach(add);
+  L.roster.forEach(p => (p.cohort || '').split(',').map(s => s.trim()).filter(Boolean).forEach(add));
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 // ── EXO renderer (compact copy — SOURCE OF TRUTH is Battle Arena
@@ -377,7 +394,7 @@ function render() {
   const app = document.getElementById('app');
   if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Orbitron;color:#7de9ff;letter-spacing:0.2em">PFLX LITE — LOADING…</div>'; return; }
   const tabs = L.isHost
-    ? [['class', '🏫 CLASS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
+    ? [['class', '🏫 CLASS'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
@@ -386,7 +403,7 @@ function render() {
     (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
     (L.demo ? '<div class="demoBanner">DEMO MODE — open PFLX Lite inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
-    ({ class: rClass, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
+    ({ class: rClass, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
 }
 function go(s) { L.screen = s; clearSel(); render(); }
@@ -433,6 +450,62 @@ function badgeModal() {
     '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
 }
 
+// ── TEAMS view ──
+function rTeams() {
+  const names = (L.cfg.teams && L.cfg.teams.names) || [];
+  if (!names.length) {
+    return '<div class="card" style="text-align:center;padding:40px"><div style="font-size:34px">👥</div>' +
+      '<div style="font-family:Orbitron;font-size:12px;letter-spacing:0.1em;color:#9aa3c8;margin:10px 0">NO TEAMS YET</div>' +
+      '<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px"><span style="font-size:12px;color:#8a93b8">Teams:</span>' +
+      '<input id="teamN" type="number" min="2" max="6" value="2" style="width:70px;text-align:center"/>' +
+      '<button class="bigbtn green" onclick="makeTeams()">DRAFT TEAMS</button></div></div>';
+  }
+  const w = weekStart(0);
+  const cols = names.map(nm => {
+    const members = classRoster().filter(p => L.cfg.teams.assign[p.id] === nm);
+    const weekly = members.reduce((s, p) => s + sumActivity(p.id, w), 0);
+    const col = teamColor(nm);
+    return '<div class="card" style="border-top:3px solid ' + col + ';display:flex;flex-direction:column;gap:8px;min-width:0">' +
+      '<div style="display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border-radius:5px;background:' + col + ';flex-shrink:0"></div>' +
+      '<div style="font-family:Orbitron;font-size:10.5px;font-weight:800;color:#fff;letter-spacing:0.06em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm) + '</div>' +
+      '<div style="font-family:Orbitron;font-size:11px;font-weight:900;color:#ffd166;font-variant-numeric:tabular-nums">' + weekly.toLocaleString() + '</div></div>' +
+      members.map(p => '<div onclick="teamsMovePlayer(\'' + p.id + '\')" title="Tap to move to the next team" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid ' + col + '33">' +
+        '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand) + '</div>' +
+        '<div style="font-family:Orbitron;font-size:8.5px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.brand) + '</div>' +
+        '<div style="margin-left:auto;font-size:10px;color:#5c6488">⇄</div></div>').join('') +
+      (members.length ? '' : '<div style="font-size:11px;color:#5c6488;text-align:center;padding:8px">empty</div>') +
+      '</div>';
+  }).join('');
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">' +
+    '<button class="bigbtn green" onclick="teamsShufflePlayers()">🔀 SHUFFLE PLAYERS</button>' +
+    '<button class="bigbtn" onclick="teamsRerollNames()">🎲 NEW NAMES</button>' +
+    '<button class="bigbtn gold" onclick="projTeams()">📽️ PROJECT</button>' +
+    '<span style="flex:1"></span>' +
+    '<span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + names.length + '" style="width:64px;text-align:center"/>' +
+    '<button class="bigbtn ghost" onclick="makeTeams()">REDRAFT</button>' +
+    '<button class="bigbtn red" onclick="clearTeams()">CLEAR</button></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">' + cols + '</div>' +
+    '<div style="font-size:10px;color:#5c6488;margin-top:12px">Tap a player to move them to the next team. Weekly XC per team feeds the TEAMS leaderboard and team games.</div>';
+}
+function projTeams() {
+  const names = (L.cfg.teams && L.cfg.teams.names) || []; if (!names.length) return;
+  const proj = document.getElementById('proj'); proj.classList.add('on');
+  const cols = names.map(nm => {
+    const members = classRoster().filter(p => L.cfg.teams.assign[p.id] === nm);
+    const col = teamColor(nm);
+    return '<div style="flex:1;min-width:160px;max-width:280px;background:rgba(255,255,255,0.04);border:1px solid ' + col + '55;border-top:5px solid ' + col + ';border-radius:16px;padding:14px;text-align:left">' +
+      '<div style="font-family:Orbitron;font-size:clamp(11px,1.4vw,15px);font-weight:900;color:' + col + ';letter-spacing:0.08em;margin-bottom:10px;text-align:center">' + esc(nm) + '</div>' +
+      members.map(p => '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">' +
+        '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand) + '</div>' +
+        '<div style="font-family:Orbitron;font-size:clamp(9px,1.1vw,12px);font-weight:800;color:#fff">' + esc(p.brand) + '</div></div>').join('') +
+      '</div>';
+  }).join('');
+  proj.innerHTML = '<div class="projTitle">👥 THE TEAMS</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:94vw;max-height:70vh;overflow-y:auto">' + cols + '</div>' +
+    '<div style="position:fixed;bottom:18px;right:20px"><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
+    '<div style="position:fixed;bottom:22px;left:24px;font-family:Orbitron;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
+}
+
 // ── BOARDS ──
 function rBoards() {
   const tabs = [['weekly', 'THIS WEEK'], ['season', 'SEASON'], ['teams', 'TEAMS'], ['improved', 'MOST IMPROVED']];
@@ -464,18 +537,52 @@ function rTools() {
   return '<div class="grid3">' +
     '<div class="card"><div class="cardT">🎡 Randomizer</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Spin the wheel of players — full screen on the projector.</div><button class="bigbtn gold" onclick="wheelOpen()">SPIN THE WHEEL</button></div>' +
     '<div class="card"><div class="cardT">👥 Group Maker</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Instant random teams. Teams feed the team leaderboard and team games.</div>' +
-    '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + Math.max(2, (L.cfg.teams.names || []).length || 2) + '" style="width:70px;text-align:center"/><button class="bigbtn green" onclick="makeTeams()">MAKE</button>' + ((L.cfg.teams.names || []).length ? '<button class="bigbtn ghost" onclick="clearTeams()">CLEAR</button>' : '') + '</div></div>' +
+    '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + Math.max(2, (L.cfg.teams.names || []).length || 2) + '" style="width:70px;text-align:center"/><button class="bigbtn green" onclick="makeTeams()">MAKE</button>' + ((L.cfg.teams.names || []).length ? '<button class="bigbtn ghost" onclick="go(\'teams\')">VIEW TEAMS</button>' : '') + '</div></div>' +
     '<div class="card"><div class="cardT">⏱️ Timer</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
     [1, 3, 5, 10].map(m => '<button class="bigbtn" onclick="timerStart(' + m + ')">' + m + ' MIN</button>').join('') + '</div></div></div>';
 }
+const TEAM_NAME_BANK = [
+  'NOVA SYNDICATE', 'QUANTUM FORGE', 'HELIX DYNAMICS', 'VOLTEDGE LABS', 'CIPHER COLLECTIVE',
+  'ORBITAL WORKS', 'NEON VANGUARD', 'APEX PROTOCOL', 'FLUX CAPITAL', 'IONSTORM INC',
+  'PIXEL FOUNDRY', 'DEEPCORE SYSTEMS', 'HYPERDRIVE CO', 'STARFORGE GUILD', 'CIRCUIT ROYALS',
+  'ECHO INDUSTRIES', 'TITAN GRID', 'NEBULA NINE', 'PRIME AXIOM', 'SHADOWBYTE',
+  'TURBO NEXUS', 'CRYO DYNAMICS', 'VERTEX UNION', 'PULSEWAVE MEDIA', 'OMEGA CIRCUIT',
+  'DRIFTLINE CREW', 'SOLARFLARE CO', 'MAINFRAME MOB', 'ZENITH WORKS', 'GLITCHPROOF INC'
+];
+function drawTeamNames(n) {
+  return TEAM_NAME_BANK.slice().sort(() => Math.random() - 0.5).slice(0, n);
+}
 function makeTeams() {
-  const n = Math.max(2, Math.min(6, parseInt(document.getElementById('teamN').value) || 2));
-  const names = ['NOVA', 'ION', 'VOLT', 'ECHO', 'FLUX', 'ORBIT'].slice(0, n);
+  const inp = document.getElementById('teamN');
+  const n = Math.max(2, Math.min(6, parseInt(inp ? inp.value : L.cfg.teams.names.length) || 2));
+  const names = drawTeamNames(n);
   const R = classRoster().slice().sort(() => Math.random() - 0.5);
   const assign = {};
   R.forEach((p, i) => assign[p.id] = names[i % n]);
   L.cfg.teams = { names: names, assign: assign }; saveCfg();
-  toast('👥 ' + n + ' teams drafted'); go('class');
+  toast('👥 ' + n + ' teams drafted'); go('teams');
+}
+function teamsShufflePlayers() {
+  const names = L.cfg.teams.names || []; if (!names.length) return;
+  const R = classRoster().slice().sort(() => Math.random() - 0.5);
+  const assign = {};
+  R.forEach((p, i) => assign[p.id] = names[i % names.length]);
+  L.cfg.teams.assign = assign; saveCfg(); toast('🔀 Players reshuffled'); render();
+}
+function teamsRerollNames() {
+  const old = L.cfg.teams.names || []; if (!old.length) return;
+  const fresh = drawTeamNames(old.length);
+  const map = {}; old.forEach((o, i) => map[o] = fresh[i]);
+  const assign = {};
+  Object.keys(L.cfg.teams.assign || {}).forEach(pid => { assign[pid] = map[L.cfg.teams.assign[pid]] || fresh[0]; });
+  L.cfg.teams = { names: fresh, assign: assign }; saveCfg(); toast('🎲 New team names drawn'); render();
+}
+function teamsMovePlayer(pid) {
+  const names = L.cfg.teams.names || []; if (names.length < 2) return;
+  const cur = L.cfg.teams.assign[pid];
+  const idx = names.indexOf(cur);
+  L.cfg.teams.assign[pid] = names[(idx + 1) % names.length];
+  saveCfg(); render();
 }
 function clearTeams() { L.cfg.teams = { names: [], assign: {} }; saveCfg(); render(); }
 
@@ -678,7 +785,7 @@ function confirmUpgrade(i) {
 // ── BOOT ──
 adoptFromParams();
 render();
-loadCfg(); loadRoster(); loadExo(); loadActivity();
+loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups();
 setInterval(loadActivity, 60000);
 </script>
 </body>
