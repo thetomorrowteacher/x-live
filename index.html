@@ -18,26 +18,26 @@
      · Cloud keys owned by Lite: pflx_lite_config, pflx_lite_qsets,
        pflx_lite_room_* (Vault Rush rooms). Table: lite_activity.
      ═══════════════════════════════════════════════════════════════════ -->
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Exo+2:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { height:100%; }
   body { background:radial-gradient(ellipse at 50% -20%, #101b3f 0%, #060a18 65%);
-         color:#eaf0ff; font-family:'Rajdhani',sans-serif; user-select:none; overflow-x:hidden; }
+         color:#eaf0ff; font-family:'Exo 2',sans-serif; user-select:none; overflow-x:hidden; }
   button { font-family:inherit; }
   #app { max-width:1180px; margin:0 auto; padding:14px 16px 40px; }
   .hd { display:flex; align-items:center; gap:12px; padding:6px 0 14px; flex-wrap:wrap; }
-  .hd .logo { font-family:'Orbitron'; font-weight:900; font-size:18px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 16px rgba(0,229,255,0.4); }
+  .hd .logo { font-family:'Audiowide'; font-weight:900; font-size:18px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 16px rgba(0,229,255,0.4); }
   .hd .logo b { color:#ffd166; }
   .hd .sub { font-size:12px; color:#8a93b8; }
   .hd .sp { flex:1; }
   .tabbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-  .tab { cursor:pointer; padding:10px 16px; border-radius:12px; font-family:'Orbitron'; font-size:10.5px; font-weight:800;
+  .tab { cursor:pointer; padding:10px 16px; border-radius:12px; font-family:'Audiowide'; font-size:10.5px; font-weight:800;
          letter-spacing:0.08em; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); color:#9aa3c8; }
   .tab.on { border-color:#39c0ff; background:rgba(57,192,255,0.13); color:#7de9ff; }
   .card { background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.09); border-radius:16px; padding:16px; }
-  .cardT { font-family:'Orbitron'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#9aa3c8; margin-bottom:12px; text-transform:uppercase; }
-  .bigbtn { cursor:pointer; border-radius:14px; padding:12px 18px; font-family:'Orbitron'; font-size:11px; font-weight:800; letter-spacing:0.08em;
+  .cardT { font-family:'Audiowide'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#9aa3c8; margin-bottom:12px; text-transform:uppercase; }
+  .bigbtn { cursor:pointer; border-radius:14px; padding:12px 18px; font-family:'Audiowide'; font-size:11px; font-weight:800; letter-spacing:0.08em;
             border:1px solid rgba(57,192,255,0.45); background:rgba(57,192,255,0.12); color:#7de9ff; transition:all .13s; }
   .bigbtn:hover { background:rgba(57,192,255,0.24); }
   .bigbtn.gold { border-color:rgba(255,209,102,0.55); background:rgba(255,209,102,0.12); color:#ffd166; }
@@ -53,11 +53,11 @@
   .ptile .av { width:58px; height:58px; margin:0 auto 6px; }
   .ptile .av svg { width:100%; height:100%; filter:drop-shadow(0 0 8px rgba(120,140,255,0.5)); }
   .ptile .av .ph { width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg,#26335f,#101b3f);
-                   display:flex; align-items:center; justify-content:center; font-family:'Orbitron'; font-weight:800; color:#7de9ff; font-size:16px; }
-  .ptile .nm { font-family:'Orbitron'; font-size:9px; font-weight:800; color:#fff; letter-spacing:0.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                   display:flex; align-items:center; justify-content:center; font-family:'Audiowide'; font-weight:800; color:#7de9ff; font-size:16px; }
+  .ptile .nm { font-family:'Audiowide'; font-size:9px; font-weight:800; color:#fff; letter-spacing:0.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ptile .xc { font-size:11px; color:#ffd166; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; }
-  .ptile .tm { position:absolute; top:6px; left:6px; font-family:'Orbitron'; font-size:7px; padding:2px 6px; border-radius:6px; color:#fff; }
-  .burst { position:absolute; top:4px; right:8px; font-family:'Orbitron'; font-weight:900; font-size:14px; pointer-events:none; opacity:0; }
+  .ptile .tm { position:absolute; top:6px; left:6px; font-family:'Audiowide'; font-size:7px; padding:2px 6px; border-radius:6px; color:#fff; }
+  .burst { position:absolute; top:4px; right:8px; font-family:'Audiowide'; font-weight:900; font-size:14px; pointer-events:none; opacity:0; }
   .burst.show { animation:bPop 1.1s ease forwards; }
   @keyframes bPop { 0%{opacity:0; transform:translateY(6px) scale(.6);} 25%{opacity:1; transform:translateY(-6px) scale(1.2);} 100%{opacity:0; transform:translateY(-24px);} }
   /* action tray */
@@ -65,16 +65,16 @@
           background:rgba(8,12,28,0.97); border:1px solid rgba(255,209,102,0.4); border-radius:16px; padding:10px 14px; max-width:96vw; overflow-x:auto;
           box-shadow:0 8px 40px rgba(0,0,0,0.6); }
   #tray.on { display:flex; }
-  .traybtn { cursor:pointer; white-space:nowrap; border-radius:12px; padding:9px 13px; font-family:'Orbitron'; font-size:9.5px; font-weight:800;
+  .traybtn { cursor:pointer; white-space:nowrap; border-radius:12px; padding:9px 13px; font-family:'Audiowide'; font-size:9.5px; font-weight:800;
              letter-spacing:0.05em; border:1px solid rgba(72,230,150,0.45); background:rgba(72,230,150,0.1); color:#7dffb8; }
   .traybtn.fine { border-color:rgba(255,94,120,0.45); background:rgba(255,94,120,0.09); color:#ff8ba0; }
   .traybtn.misc { border-color:rgba(179,136,255,0.45); background:rgba(179,136,255,0.1); color:#cbb8ff; }
   /* leaderboard */
   .lbrow { display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:12px; background:rgba(255,255,255,0.03); margin-bottom:7px; }
-  .lbrow .pos { font-family:'Orbitron'; font-weight:900; width:34px; text-align:center; font-size:14px; color:#8a93b8; }
+  .lbrow .pos { font-family:'Audiowide'; font-weight:900; width:34px; text-align:center; font-size:14px; color:#8a93b8; }
   .lbrow .av { width:38px; height:38px; } .lbrow .av svg { width:100%; height:100%; }
-  .lbrow .nm { font-family:'Orbitron'; font-size:10.5px; font-weight:800; color:#fff; flex:1; }
-  .lbrow .val { font-family:'Orbitron'; font-size:13px; font-weight:900; color:#ffd166; font-variant-numeric:tabular-nums; }
+  .lbrow .nm { font-family:'Audiowide'; font-size:10.5px; font-weight:800; color:#fff; flex:1; }
+  .lbrow .val { font-family:'Audiowide'; font-size:13px; font-weight:900; color:#ffd166; font-variant-numeric:tabular-nums; }
   .lbrow.top1 { background:linear-gradient(90deg,rgba(255,209,102,0.16),rgba(255,255,255,0.03)); border:1px solid rgba(255,209,102,0.35); }
   .lbrow.top1 .pos { color:#ffd166; }
   /* modal */
@@ -82,23 +82,23 @@
   #modal.on { display:flex; }
   #modalBox { background:#0c1228; border:1px solid rgba(57,192,255,0.35); border-radius:18px; padding:22px; width:100%; max-width:520px; max-height:88vh; overflow-y:auto; }
   input, select, textarea { background:rgba(255,255,255,0.06); border:1px solid rgba(57,192,255,0.3); border-radius:10px; color:#fff;
-          padding:9px 11px; font-family:'Rajdhani'; font-size:14px; width:100%; }
-  label { font-size:11px; color:#8a93b8; letter-spacing:0.06em; display:block; margin:10px 0 4px; text-transform:uppercase; font-family:'Orbitron'; font-weight:700; }
+          padding:9px 11px; font-family:'Exo 2'; font-size:14px; width:100%; }
+  label { font-size:11px; color:#8a93b8; letter-spacing:0.06em; display:block; margin:10px 0 4px; text-transform:uppercase; font-family:'Audiowide'; font-weight:700; }
   /* projector */
   #proj { position:fixed; inset:0; z-index:200; background:radial-gradient(ellipse at 50% -20%, #101b3f 0%, #05070f 70%); display:none;
           flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; }
   #proj.on { display:flex; }
-  .projTitle { font-family:'Orbitron'; font-weight:900; font-size:clamp(22px,3.6vw,40px); letter-spacing:0.14em; color:#7de9ff; margin-bottom:22px; }
+  .projTitle { font-family:'Audiowide'; font-weight:900; font-size:clamp(22px,3.6vw,40px); letter-spacing:0.14em; color:#7de9ff; margin-bottom:22px; }
   /* wheel */
   #wheelWrap { position:relative; width:min(66vh,420px); height:min(66vh,420px); }
   #wheel { width:100%; height:100%; border-radius:50%; border:6px solid rgba(57,192,255,0.4); transition:transform 4.2s cubic-bezier(.12,.7,.1,1); }
   #wheelPin { position:absolute; top:-16px; left:50%; transform:translateX(-50%); font-size:30px; }
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:300; background:rgba(8,14,32,0.97);
-           border:1px solid rgba(57,192,255,0.45); border-radius:12px; padding:11px 20px; font-family:'Orbitron'; font-size:10px;
+           border:1px solid rgba(57,192,255,0.45); border-radius:12px; padding:11px 20px; font-family:'Audiowide'; font-size:10px;
            letter-spacing:0.06em; color:#7de9ff; }
   .goalwrap { height:26px; border-radius:13px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,209,102,0.3); overflow:hidden; position:relative; }
   .goalfill { height:100%; background:linear-gradient(90deg,#39c0ff,#ffd166); transition:width .8s ease; }
-  .goaltxt { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Orbitron'; font-size:10px; font-weight:800; color:#fff; letter-spacing:0.08em; }
+  .goaltxt { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Audiowide'; font-size:10px; font-weight:800; color:#fff; letter-spacing:0.08em; }
   .demoBanner { background:rgba(255,209,102,0.1); border:1px solid rgba(255,209,102,0.4); color:#ffd166; border-radius:12px;
                 padding:9px 14px; font-size:12px; margin-bottom:14px; text-align:center; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -107,7 +107,7 @@
   .feedrow { display:flex; gap:10px; align-items:center; font-size:12.5px; color:#aeb6d8; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,0.05); }
   .feedrow b { color:#fff; } .feedrow .t { margin-left:auto; font-size:10px; color:#5c6488; white-space:nowrap; }
   .upcard { border:1px solid rgba(179,136,255,0.35); background:rgba(179,136,255,0.07); border-radius:14px; padding:14px; text-align:center; }
-  .upcard .ic { font-size:26px; } .upcard .lb { font-family:'Orbitron'; font-size:10px; font-weight:800; color:#fff; margin:6px 0; }
+  .upcard .ic { font-size:26px; } .upcard .lb { font-family:'Audiowide'; font-size:10px; font-weight:800; color:#fff; margin:6px 0; }
 </style>
 </head>
 <body>
@@ -392,7 +392,7 @@ function teamColor(name) { const i = (L.cfg.teams.names || []).indexOf(name); re
 // ═══════════ RENDER ═══════════
 function render() {
   const app = document.getElementById('app');
-  if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Orbitron;color:#7de9ff;letter-spacing:0.2em">PFLX LITE — LOADING…</div>'; return; }
+  if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center;font-family:Audiowide;color:#7de9ff;letter-spacing:0.2em">PFLX LITE — LOADING…</div>'; return; }
   const tabs = L.isHost
     ? [['class', '🏫 CLASS'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
@@ -435,7 +435,7 @@ function renderTray() {
   const sel = selPlayers();
   if (!L.isHost || !sel.length) { tray.classList.remove('on'); return; }
   tray.classList.add('on');
-  tray.innerHTML = '<span style="font-family:Orbitron;font-size:9px;color:#ffd166;white-space:nowrap">' + sel.length + ' SELECTED</span>' +
+  tray.innerHTML = '<span style="font-family:Audiowide;font-size:9px;color:#ffd166;white-space:nowrap">' + sel.length + ' SELECTED</span>' +
     L.cfg.awards.map((a, i) => '<button class="traybtn" onclick="applyAction(selPlayers(), L.cfg.awards[' + i + '], \'award\')">' + a.icon + ' ' + esc(a.label) + ' +' + a.xc + '</button>').join('') +
     L.cfg.fines.map((f, i) => '<button class="traybtn fine" onclick="applyAction(selPlayers(), L.cfg.fines[' + i + '], \'fine\')">' + f.icon + ' ' + esc(f.label) + ' ' + f.xc + '</button>').join('') +
     '<button class="traybtn fine" onclick="applyAction(selPlayers(), L.cfg.tax, \'tax\')">' + L.cfg.tax.icon + ' ' + esc(L.cfg.tax.label) + ' ' + L.cfg.tax.xc + '</button>' +
@@ -455,7 +455,7 @@ function rTeams() {
   const names = (L.cfg.teams && L.cfg.teams.names) || [];
   if (!names.length) {
     return '<div class="card" style="text-align:center;padding:40px"><div style="font-size:34px">👥</div>' +
-      '<div style="font-family:Orbitron;font-size:12px;letter-spacing:0.1em;color:#9aa3c8;margin:10px 0">NO TEAMS YET</div>' +
+      '<div style="font-family:Audiowide;font-size:12px;letter-spacing:0.1em;color:#9aa3c8;margin:10px 0">NO TEAMS YET</div>' +
       '<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px"><span style="font-size:12px;color:#8a93b8">Teams:</span>' +
       '<input id="teamN" type="number" min="2" max="6" value="2" style="width:70px;text-align:center"/>' +
       '<button class="bigbtn green" onclick="makeTeams()">DRAFT TEAMS</button></div></div>';
@@ -467,11 +467,11 @@ function rTeams() {
     const col = teamColor(nm);
     return '<div class="card" style="border-top:3px solid ' + col + ';display:flex;flex-direction:column;gap:8px;min-width:0">' +
       '<div style="display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border-radius:5px;background:' + col + ';flex-shrink:0"></div>' +
-      '<div style="font-family:Orbitron;font-size:10.5px;font-weight:800;color:#fff;letter-spacing:0.06em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm) + '</div>' +
-      '<div style="font-family:Orbitron;font-size:11px;font-weight:900;color:#ffd166;font-variant-numeric:tabular-nums">' + weekly.toLocaleString() + '</div></div>' +
+      '<div style="font-family:Audiowide;font-size:10.5px;font-weight:800;color:#fff;letter-spacing:0.06em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm) + '</div>' +
+      '<div style="font-family:Audiowide;font-size:11px;font-weight:900;color:#ffd166;font-variant-numeric:tabular-nums">' + weekly.toLocaleString() + '</div></div>' +
       members.map(p => '<div onclick="teamsMovePlayer(\'' + p.id + '\')" title="Tap to move to the next team" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid ' + col + '33">' +
         '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand) + '</div>' +
-        '<div style="font-family:Orbitron;font-size:8.5px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.brand) + '</div>' +
+        '<div style="font-family:Audiowide;font-size:8.5px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.brand) + '</div>' +
         '<div style="margin-left:auto;font-size:10px;color:#5c6488">⇄</div></div>').join('') +
       (members.length ? '' : '<div style="font-size:11px;color:#5c6488;text-align:center;padding:8px">empty</div>') +
       '</div>';
@@ -494,16 +494,16 @@ function projTeams() {
     const members = classRoster().filter(p => L.cfg.teams.assign[p.id] === nm);
     const col = teamColor(nm);
     return '<div style="flex:1;min-width:160px;max-width:280px;background:rgba(255,255,255,0.04);border:1px solid ' + col + '55;border-top:5px solid ' + col + ';border-radius:16px;padding:14px;text-align:left">' +
-      '<div style="font-family:Orbitron;font-size:clamp(11px,1.4vw,15px);font-weight:900;color:' + col + ';letter-spacing:0.08em;margin-bottom:10px;text-align:center">' + esc(nm) + '</div>' +
+      '<div style="font-family:Audiowide;font-size:clamp(11px,1.4vw,15px);font-weight:900;color:' + col + ';letter-spacing:0.08em;margin-bottom:10px;text-align:center">' + esc(nm) + '</div>' +
       members.map(p => '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">' +
         '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand) + '</div>' +
-        '<div style="font-family:Orbitron;font-size:clamp(9px,1.1vw,12px);font-weight:800;color:#fff">' + esc(p.brand) + '</div></div>').join('') +
+        '<div style="font-family:Audiowide;font-size:clamp(9px,1.1vw,12px);font-weight:800;color:#fff">' + esc(p.brand) + '</div></div>').join('') +
       '</div>';
   }).join('');
   proj.innerHTML = '<div class="projTitle">👥 THE TEAMS</div>' +
     '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:94vw;max-height:70vh;overflow-y:auto">' + cols + '</div>' +
     '<div style="position:fixed;bottom:18px;right:20px"><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-    '<div style="position:fixed;bottom:22px;left:24px;font-family:Orbitron;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
+    '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
 }
 
 // ── BOARDS ──
@@ -597,7 +597,7 @@ function wheelOpen() {
   const colors = wheelPlayers.map((p, i) => TEAM_COLORS[i % TEAM_COLORS.length] + ' ' + (i * seg) + 'deg ' + ((i + 1) * seg) + 'deg').join(',');
   proj.innerHTML = '<div class="projTitle">WHO\'S NEXT?</div>' +
     '<div id="wheelWrap"><div id="wheelPin">🔻</div><div id="wheel" style="background:conic-gradient(' + colors + ')"></div></div>' +
-    '<div id="wheelName" style="font-family:Orbitron;font-weight:900;font-size:30px;color:#ffd166;margin-top:22px;min-height:40px"></div>' +
+    '<div id="wheelName" style="font-family:Audiowide;font-weight:900;font-size:30px;color:#ffd166;margin-top:22px;min-height:40px"></div>' +
     '<div style="display:flex;gap:10px;margin-top:16px"><button class="bigbtn gold" onclick="wheelSpin()">SPIN</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>';
 }
 function wheelSpin() {
@@ -624,7 +624,7 @@ function timerStart(mins) {
   function draw() {
     const m = Math.floor(left / 60), s = left % 60;
     proj.innerHTML = '<div class="projTitle">⏱️ TIMER</div>' +
-      '<div style="font-family:Orbitron;font-weight:900;font-size:clamp(70px,18vw,180px);color:' + (left <= 30 ? '#ff8ba0' : '#eaf0ff') + ';letter-spacing:0.06em">' + m + ':' + String(s).padStart(2, '0') + '</div>' +
+      '<div style="font-family:Audiowide;font-weight:900;font-size:clamp(70px,18vw,180px);color:' + (left <= 30 ? '#ff8ba0' : '#eaf0ff') + ';letter-spacing:0.06em">' + m + ':' + String(s).padStart(2, '0') + '</div>' +
       '<button class="bigbtn ghost" style="margin-top:20px" onclick="projClose()">CLOSE</button>';
   }
   draw();
@@ -655,7 +655,7 @@ function projOpen() {
         '</div>';
     }
     proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-      '<div style="position:fixed;bottom:22px;left:24px;font-family:Orbitron;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
+      '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LITE</div>';
   }
   window.projDrawNow = draw;
   draw();
@@ -679,7 +679,7 @@ function rPlay() {
     '</div>';
 }
 function joinRoomModal() {
-  modal('<div class="cardT">Join Vault Rush</div><label>Room code</label><input id="roomCode" maxlength="4" style="text-transform:uppercase;font-family:Orbitron;font-size:22px;text-align:center;letter-spacing:0.4em" placeholder="ABCD"/>' +
+  modal('<div class="cardT">Join Vault Rush</div><label>Room code</label><input id="roomCode" maxlength="4" style="text-transform:uppercase;font-family:Audiowide;font-size:22px;text-align:center;letter-spacing:0.4em" placeholder="ABCD"/>' +
     '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="var c=document.getElementById(\'roomCode\').value.trim().toUpperCase(); if(c.length===4) location.href=\'games/vault-rush.html?room=\'+c+\'&pid=\'+encodeURIComponent((L.me&&L.me.id)||(\'guest-\'+Math.random().toString(36).slice(2,7)))+\'&pname=\'+encodeURIComponent((L.me&&L.me.brand)||\'Player\');">JOIN</button>' +
     '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
 }
@@ -724,8 +724,8 @@ function rSetup() {
     '<label>Class goal label</label><input value="' + esc(L.cfg.goal.label) + '" onchange="L.cfg.goal.label=this.value;saveCfg()"/>' +
     '<label>Class goal target (XC / week)</label><input type="number" value="' + L.cfg.goal.target + '" onchange="L.cfg.goal.target=Math.max(100,parseInt(this.value)||10000);saveCfg()"/>' +
     '<label>Leaderboards</label>' +
-    '<div style="display:flex;gap:14px;font-size:13px;color:#ccc;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:Rajdhani;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.showRanks ? 'checked' : '') + ' onchange="L.cfg.boards.showRanks=this.checked;saveCfg()"/> Players can see boards</label>' +
-    '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:Rajdhani;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.top5Only ? 'checked' : '') + ' onchange="L.cfg.boards.top5Only=this.checked;saveCfg()"/> Top 5 only</label></div></div>' +
+    '<div style="display:flex;gap:14px;font-size:13px;color:#ccc;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:'Exo 2';font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.showRanks ? 'checked' : '') + ' onchange="L.cfg.boards.showRanks=this.checked;saveCfg()"/> Players can see boards</label>' +
+    '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:'Exo 2';font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.top5Only ? 'checked' : '') + ' onchange="L.cfg.boards.top5Only=this.checked;saveCfg()"/> Top 5 only</label></div></div>' +
     '<div class="card"><div class="cardT">Quick Buttons</div>' + presetEditor('awards') + presetEditor('fines') +
     '<div class="cardT" style="margin-top:14px">Upgrades Shop</div>' +
     L.cfg.upgrades.map((u, i) => '<div class="feedrow">' + u.icon + ' <b>' + esc(u.label) + '</b> · ' + u.cost + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.upgrades.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
@@ -733,7 +733,7 @@ function rSetup() {
 }
 function presetEditor(kind) {
   const arr = L.cfg[kind];
-  return '<div style="font-size:11px;color:#8a93b8;margin:8px 0 4px;text-transform:uppercase;font-family:Orbitron;font-weight:700">' + (kind === 'awards' ? 'Awards' : 'Fines') + '</div>' +
+  return '<div style="font-size:11px;color:#8a93b8;margin:8px 0 4px;text-transform:uppercase;font-family:Audiowide;font-weight:700">' + (kind === 'awards' ? 'Awards' : 'Fines') + '</div>' +
     arr.map((a, i) => '<div class="feedrow">' + a.icon + ' <b>' + esc(a.label) + '</b> · ' + a.xc + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.' + kind + '.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
     '<div style="display:flex;gap:6px;margin-top:6px"><input id="pe-' + kind + '-l" placeholder="Label" style="flex:2"/><input id="pe-' + kind + '-x" type="number" placeholder="XC" style="flex:1"/>' +
     '<button class="bigbtn green" style="padding:8px 12px" onclick="var l=document.getElementById(\'pe-' + kind + '-l\').value.trim(),x=parseInt(document.getElementById(\'pe-' + kind + '-x\').value)||0; if(l&&x' + (kind === 'fines' ? '<0' : '>0') + '){L.cfg.' + kind + '.push({label:l,icon:\'' + (kind === 'fines' ? '⚠️' : '⭐') + '\',xc:x});saveCfg();render();}">ADD</button></div>';
@@ -751,9 +751,9 @@ function rMe() {
   const team = L.cfg.teams.assign[p.id];
   return '<div class="grid2">' +
     '<div class="card" style="text-align:center"><div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(120,140,255,0.5))">' + exoAvatarHTML(p.id, 150, p.brand) + '</div>' +
-    '<div style="font-family:Orbitron;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex && ex.exo_name ? ex.exo_name : p.brand) + '</div>' +
-    (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Orbitron;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · STAGE ' + (ex.stage || 1) + '</div>' : '<div style="font-size:11px;color:#8a93b8">Visit the EXO Bay in Battle Arena to hatch your EXO!</div>') +
-    '<div style="font-family:Orbitron;font-weight:900;font-size:26px;color:#ffd166;margin-top:12px">' + (p.xc || 0).toLocaleString() + ' XC</div>' +
+    '<div style="font-family:Audiowide;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex && ex.exo_name ? ex.exo_name : p.brand) + '</div>' +
+    (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · STAGE ' + (ex.stage || 1) + '</div>' : '<div style="font-size:11px;color:#8a93b8">Visit the EXO Bay in Battle Arena to hatch your EXO!</div>') +
+    '<div style="font-family:Audiowide;font-weight:900;font-size:26px;color:#ffd166;margin-top:12px">' + (p.xc || 0).toLocaleString() + ' XC</div>' +
     '<div style="font-size:11px;color:#8a93b8">+' + week.toLocaleString() + ' this week' + (L.cfg.boards.showRanks && rank ? ' · #' + rank + ' in class' : '') + (team ? ' · TEAM ' + esc(team) : '') + '</div></div>' +
     '<div class="card"><div class="cardT">🎖️ My Badges</div><div style="font-size:34px">' + '🎖️'.repeat(Math.min(12, p.badges || 0)) + (p.badges > 12 ? ' +' + (p.badges - 12) : '') + (!p.badges ? '<span style="font-size:12px;color:#8a93b8">None yet — earn your first!</span>' : '') + '</div>' +
     '<div class="cardT" style="margin-top:16px">📜 My Recent</div>' +

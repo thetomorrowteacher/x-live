@@ -21,31 +21,31 @@
      players' rows (computed identically by every client) — no row is
      ever written by two parties, so no clobbering (May sync lesson).
      ═══════════════════════════════════════════════════════════════════ -->
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Exo+2:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { height:100%; }
   body { background:radial-gradient(ellipse at 50% -20%, #2b1a06 0%, #0d0803 65%); color:#fff3e0;
-         font-family:'Rajdhani',sans-serif; user-select:none; overflow-x:hidden; }
+         font-family:'Exo 2',sans-serif; user-select:none; overflow-x:hidden; }
   #app { max-width:880px; margin:0 auto; padding:16px; min-height:100%; display:flex; flex-direction:column; }
-  .hd { font-family:'Orbitron'; font-weight:900; letter-spacing:0.14em; color:#ffd166; font-size:16px; text-align:center; padding:8px 0 14px; text-shadow:0 0 18px rgba(255,209,102,0.5); }
+  .hd { font-family:'Audiowide'; font-weight:900; letter-spacing:0.14em; color:#ffd166; font-size:16px; text-align:center; padding:8px 0 14px; text-shadow:0 0 18px rgba(255,209,102,0.5); }
   .card { background:rgba(255,224,178,0.05); border:1px solid rgba(255,209,102,0.22); border-radius:16px; padding:16px; margin-bottom:14px; }
-  .cardT { font-family:'Orbitron'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#c9a36a; margin-bottom:10px; text-transform:uppercase; }
-  .btn { cursor:pointer; border-radius:12px; padding:12px 20px; font-family:'Orbitron'; font-size:11px; font-weight:800; letter-spacing:0.08em;
+  .cardT { font-family:'Audiowide'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#c9a36a; margin-bottom:10px; text-transform:uppercase; }
+  .btn { cursor:pointer; border-radius:12px; padding:12px 20px; font-family:'Audiowide'; font-size:11px; font-weight:800; letter-spacing:0.08em;
          border:1px solid rgba(255,209,102,0.5); background:rgba(255,209,102,0.12); color:#ffd166; transition:all .13s; }
   .btn:hover { background:rgba(255,209,102,0.24); }
   .btn.ghost { border-color:rgba(255,255,255,0.15); background:rgba(255,255,255,0.04); color:#c9b8a0; }
   .btn.red { border-color:rgba(255,94,94,0.5); background:rgba(255,94,94,0.1); color:#ff9c9c; }
   input, select { background:rgba(255,255,255,0.06); border:1px solid rgba(255,209,102,0.35); border-radius:10px; color:#fff;
-          padding:10px 12px; font-family:'Rajdhani'; font-size:15px; width:100%; }
-  .code { font-family:'Orbitron'; font-weight:900; font-size:clamp(44px,12vw,84px); letter-spacing:0.35em; color:#ffd166;
+          padding:10px 12px; font-family:'Exo 2'; font-size:15px; width:100%; }
+  .code { font-family:'Audiowide'; font-weight:900; font-size:clamp(44px,12vw,84px); letter-spacing:0.35em; color:#ffd166;
           text-align:center; text-shadow:0 0 30px rgba(255,209,102,0.6); }
   .lbrow { display:flex; align-items:center; gap:12px; padding:9px 13px; border-radius:12px; background:rgba(255,255,255,0.04); margin-bottom:6px; }
-  .lbrow .pos { font-family:'Orbitron'; font-weight:900; width:32px; text-align:center; color:#c9a36a; }
-  .lbrow .nm { font-family:'Orbitron'; font-size:11px; font-weight:800; color:#fff; flex:1; }
-  .lbrow .val { font-family:'Orbitron'; font-size:14px; font-weight:900; color:#ffd166; font-variant-numeric:tabular-nums; }
+  .lbrow .pos { font-family:'Audiowide'; font-weight:900; width:32px; text-align:center; color:#c9a36a; }
+  .lbrow .nm { font-family:'Audiowide'; font-size:11px; font-weight:800; color:#fff; flex:1; }
+  .lbrow .val { font-family:'Audiowide'; font-size:14px; font-weight:900; color:#ffd166; font-variant-numeric:tabular-nums; }
   .lbrow.me { border:1px solid rgba(255,209,102,0.5); }
-  .qterm { font-family:'Orbitron'; font-size:clamp(15px,4vw,20px); font-weight:800; text-align:center; margin:8px 0 14px; color:#fff; }
+  .qterm { font-family:'Audiowide'; font-size:clamp(15px,4vw,20px); font-weight:800; text-align:center; margin:8px 0 14px; color:#fff; }
   .qgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .qa { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.13); border-radius:12px; padding:14px 12px;
         font-size:15px; font-weight:600; cursor:pointer; color:#ffe9c8; line-height:1.3; transition:all .12s; }
@@ -56,12 +56,12 @@
   .vault { cursor:pointer; text-align:center; padding:22px 10px; border-radius:16px; border:2px solid rgba(255,209,102,0.4);
            background:linear-gradient(180deg,rgba(255,209,102,0.1),rgba(255,209,102,0.03)); font-size:44px; transition:all .15s; }
   .vault:hover { transform:translateY(-4px) scale(1.04); box-shadow:0 8px 30px rgba(255,209,102,0.25); }
-  .gold { font-family:'Orbitron'; font-weight:900; font-size:26px; color:#ffd166; text-align:center; font-variant-numeric:tabular-nums; }
-  .result { text-align:center; padding:20px; font-family:'Orbitron'; font-weight:900; font-size:20px; animation:rIn .5s ease; }
+  .gold { font-family:'Audiowide'; font-weight:900; font-size:26px; color:#ffd166; text-align:center; font-variant-numeric:tabular-nums; }
+  .result { text-align:center; padding:20px; font-family:'Audiowide'; font-weight:900; font-size:20px; animation:rIn .5s ease; }
   @keyframes rIn { from { opacity:0; transform:scale(.7);} to { opacity:1; transform:scale(1);} }
-  .timer { font-family:'Orbitron'; font-weight:900; font-size:18px; color:#ffd166; text-align:center; }
+  .timer { font-family:'Audiowide'; font-weight:900; font-size:18px; color:#ffd166; text-align:center; }
   .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:rgba(30,20,6,0.97); border:1px solid rgba(255,209,102,0.5);
-           border-radius:12px; padding:10px 18px; font-family:'Orbitron'; font-size:10px; color:#ffd166; z-index:200; }
+           border-radius:12px; padding:10px 18px; font-family:'Audiowide'; font-size:10px; color:#ffd166; z-index:200; }
 </style>
 </head>
 <body>
@@ -133,7 +133,7 @@ function drawHostLobby() {
   document.getElementById('app').innerHTML = '<div class="hd">💰 VAULT RUSH — ' + esc(G.set.name) + '</div>' +
     '<div class="card" style="text-align:center"><div class="cardT">Join at PFLX Lite → PLAY → Join with code</div><div class="code">' + G.code + '</div></div>' +
     '<div class="card"><div class="cardT">In the room (' + G.players.length + ')</div>' +
-    (G.players.map(p => '<span style="display:inline-block;margin:4px;padding:7px 13px;border-radius:10px;background:rgba(255,209,102,0.1);border:1px solid rgba(255,209,102,0.3);font-family:Orbitron;font-size:10px">' + esc(p.name) + '</span>').join('') || '<div style="color:#c9a36a;font-size:13px">Waiting for players…</div>') + '</div>' +
+    (G.players.map(p => '<span style="display:inline-block;margin:4px;padding:7px 13px;border-radius:10px;background:rgba(255,209,102,0.1);border:1px solid rgba(255,209,102,0.3);font-family:Audiowide;font-size:10px">' + esc(p.name) + '</span>').join('') || '<div style="color:#c9a36a;font-size:13px">Waiting for players…</div>') + '</div>' +
     '<div style="display:flex;gap:8px"><button class="btn" onclick="hostStart()">▶ START (' + G.durMins + ' MIN)</button><button class="btn red" onclick="hostEnd()">END</button></div>';
 }
 async function hostStart() {
@@ -181,7 +181,7 @@ async function hostAward() {
 // ═══════════ PLAYER ═══════════
 async function playerBoot() {
   await pollRoom();
-  if (!G.room) { document.getElementById('app').innerHTML = '<div class="hd">💰 VAULT RUSH</div><div class="card" style="text-align:center">Room <b style="font-family:Orbitron">' + esc(G.code) + '</b> not found. Check the code on the projector!<div style="margin-top:12px"><button class="btn ghost" onclick="history.back()">← BACK</button></div></div>'; return; }
+  if (!G.room) { document.getElementById('app').innerHTML = '<div class="hd">💰 VAULT RUSH</div><div class="card" style="text-align:center">Room <b style="font-family:Audiowide">' + esc(G.code) + '</b> not found. Check the code on the projector!<div style="margin-top:12px"><button class="btn ghost" onclick="history.back()">← BACK</button></div></div>'; return; }
   G.set = G.room.set; buildQs(); pushMe();
   G.phase = G.room.state;
   clearInterval(G.polls.room);
@@ -201,7 +201,7 @@ function buildQs() {
 }
 function drawWait() {
   document.getElementById('app').innerHTML = '<div class="hd">💰 VAULT RUSH</div>' +
-    '<div class="card" style="text-align:center"><div style="font-size:44px">🏦</div><div style="font-family:Orbitron;font-size:13px;letter-spacing:0.1em;margin-top:8px">YOU\'RE IN, ' + esc(PNAME).toUpperCase() + '!</div>' +
+    '<div class="card" style="text-align:center"><div style="font-size:44px">🏦</div><div style="font-family:Audiowide;font-size:13px;letter-spacing:0.1em;margin-top:8px">YOU\'RE IN, ' + esc(PNAME).toUpperCase() + '!</div>' +
     '<div style="color:#c9a36a;font-size:13px;margin-top:6px">Waiting for your teacher to start… Room ' + esc(G.code) + '</div></div>';
 }
 function hud() {
@@ -210,7 +210,7 @@ function hud() {
   const rank = G.players.findIndex(p => p.pid === PID) + 1;
   return '<div class="card" style="display:flex;align-items:center;gap:14px;justify-content:space-between"><div class="gold">🪙 ' + ((me && me.score) != null ? me.score.toLocaleString() : G.gold.toLocaleString()) + '</div>' +
     '<div class="timer">⏱ ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') + '</div>' +
-    '<div style="font-family:Orbitron;font-size:11px;color:#c9a36a">' + (rank ? '#' + rank + ' / ' + G.players.length : '') + '</div></div>';
+    '<div style="font-family:Audiowide;font-size:11px;color:#c9a36a">' + (rank ? '#' + rank + ' / ' + G.players.length : '') + '</div></div>';
 }
 function drawQ() {
   if (G.phase !== 'play') return;
@@ -272,7 +272,7 @@ function playerEnd() {
     const me = G.players.find(p => p.pid === PID);
     document.getElementById('app').innerHTML = '<div class="hd">🏁 GAME OVER</div>' +
       '<div class="card" style="text-align:center"><div style="font-size:48px">' + (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🏦') + '</div>' +
-      '<div style="font-family:Orbitron;font-weight:900;font-size:20px;margin-top:8px">' + (rank ? '#' + rank : '—') + ' · ' + ((me && me.score) || 0).toLocaleString() + ' 🪙</div>' +
+      '<div style="font-family:Audiowide;font-weight:900;font-size:20px;margin-top:8px">' + (rank ? '#' + rank : '—') + ' · ' + ((me && me.score) || 0).toLocaleString() + ' 🪙</div>' +
       '<div style="color:#c9a36a;font-size:13px;margin-top:8px">Watch the projector — podium may earn real XC!</div></div>' +
       '<div class="card">' + G.players.slice(0, 10).map((p, i) => '<div class="lbrow ' + (p.pid === PID ? 'me' : '') + '"><div class="pos">' + (i + 1) + '</div><div class="nm">' + esc(p.name) + '</div><div class="val">' + p.score.toLocaleString() + '</div></div>').join('') + '</div>' +
       '<button class="btn ghost" onclick="history.back()">← BACK TO LITE</button>';
