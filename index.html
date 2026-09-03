@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PFLX Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PFLX LIVE v0.2 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
-     PATCH LITE v0.2, Aug 30 2026) — internal app key/URL slug/cloud keys
+     PFLX LIVE v0.4 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
+     PATCH LITE v0.4, Sept 3 2026 — roster now reads live Console data
+     instead of a stale static seed; see loadRoster()) — internal app
+     key/URL slug/cloud keys
      stay 'lite' intentionally (pflx-lite repo, pflx_lite_* Supabase keys,
      data-app="lite" contract with the Console) to avoid touching every
      call site across repos for a name-only change; only user-facing text
@@ -233,16 +235,37 @@ const DEMO_ROSTER = [
   ['d7','Vex','studio-innov8',950],['d8','Story','studio-emagination',1330]
 ].map(a => ({ id: a[0], name: a[1], brand: a[1], cohort: 'Demo Class', studioId: a[2], xc: a[3], totalXc: a[3] + 2000, badges: (a[3]/400|0), image: null }));
 
+function mapRosterUser(u) {
+  return {
+    id: u.id, name: u.name, brand: u.brandName || u.brand || u.name, cohort: u.cohort || '',
+    studioId: u.studioId || '', xc: (typeof u.xcoin === 'number' ? u.xcoin : u.xc) || 0,
+    totalXc: u.totalXcoin || 0,
+    badges: (typeof u.digitalBadges === 'number') ? u.digitalBadges : (Array.isArray(u.badges) ? u.badges.length : 0),
+    image: u.image || null
+  };
+}
 async function loadRoster() {
+  // PRIMARY: live Console roster (Supabase `pflx_mc_players`) — the same data
+  // Mission Control/X-Coin/Battle Arena read, kept current by every host action.
+  // Fixed here (Sept 3) because the old XCOIN_SEED_URL-only path served a
+  // stale, point-in-time snapshot: any cohort created/renamed after that seed
+  // was taken (e.g. "Global Digital Intern") showed 0 players by construction.
   try {
-    const r = await fetch(XCOIN_SEED_URL); if (!r.ok) throw 0;
-    const d = await r.json();
-    L.roster = (d.users || []).filter(u => (u.role || 'player') === 'player').map(u => ({
-      id: u.id, name: u.name, brand: u.brandName || u.name, cohort: u.cohort || '',
-      studioId: u.studioId || '', xc: u.xcoin || 0, totalXc: u.totalXcoin || 0,
-      badges: u.digitalBadges || 0, image: u.image || null
-    }));
-  } catch (e) { L.roster = DEMO_ROSTER.slice(); L.demo = L.demo || !L.roster.length; }
+    const live = await kvLoad('pflx_mc_players');
+    const items = (live && Array.isArray(live.items)) ? live.items : null;
+    if (items && items.length) {
+      L.roster = items.filter(u => (u.role || 'player') === 'player').map(mapRosterUser);
+    }
+  } catch (e) {}
+  // FALLBACK: static X-Coin seed snapshot (only reached if the live read
+  // above failed or returned nothing — e.g. offline demo mode).
+  if (!L.roster.length) {
+    try {
+      const r = await fetch(XCOIN_SEED_URL); if (!r.ok) throw 0;
+      const d = await r.json();
+      L.roster = (d.users || []).filter(u => (u.role || 'player') === 'player').map(mapRosterUser);
+    } catch (e) { L.roster = DEMO_ROSTER.slice(); L.demo = L.demo || !L.roster.length; }
+  }
   if (!L.roster.length) L.roster = DEMO_ROSTER.slice();
   L.loaded.roster = true; resolveMyId(); render();
 }
