@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PFLX Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PFLX LIVE v0.4 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
-     PATCH LITE v0.4, Sept 3 2026 — roster now reads live Console data
-     instead of a stale static seed; see loadRoster()) — internal app
+     PFLX LIVE v0.5 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
+     PATCH LITE v0.5, Sept 3 2026 — futuristic HUD redesign: #hudbg
+     animated background layer, card/tab/button HUD styling, PFLX_LOGO_MARK
+     branding; v0.4 wired roster to live Console data) — internal app
      key/URL slug/cloud keys
      stay 'lite' intentionally (pflx-lite repo, pflx_lite_* Supabase keys,
      data-app="lite" contract with the Console) to avoid touching every
@@ -32,22 +33,64 @@
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { height:100%; }
   body { background:radial-gradient(ellipse at 50% -20%, #101b3f 0%, #060a18 65%);
-         color:#eaf0ff; font-family:'Exo 2',sans-serif; user-select:none; overflow-x:hidden; }
+         color:#eaf0ff; font-family:'Exo 2',sans-serif; user-select:none; overflow-x:hidden; position:relative; }
   button { font-family:inherit; }
-  #app { max-width:1180px; margin:0 auto; padding:14px 16px 40px; }
+  #app { position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:14px 16px 40px; }
+
+  /* ═══ HUD background layer — fixed, decorative, behind every screen ═══
+     One #hudbg div lives once in <body> (outside #app) so it stays put
+     across every render() screen swap and the read-only Live Agenda path.
+     Kept low-opacity + pointer-events:none so it never fights legibility
+     or intercepts taps. */
+  #hudbg { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+  .hud-grid { position:absolute; inset:-10%; opacity:0.06;
+    background-image:
+      linear-gradient(rgba(57,192,255,0.9) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(57,192,255,0.9) 1px, transparent 1px);
+    background-size:42px 42px; animation:hudGridDrift 70s linear infinite; }
+  @keyframes hudGridDrift { from{ transform:translate(0,0); } to{ transform:translate(42px,42px); } }
+  .hud-glow { position:absolute; border-radius:50%; filter:blur(70px); opacity:0.28; animation:hudPulse 10s ease-in-out infinite; }
+  .hud-glow.g1 { width:440px; height:440px; top:-140px; left:-110px; background:#39c0ff; }
+  .hud-glow.g2 { width:380px; height:380px; bottom:-150px; right:-90px; background:#a855f7; animation-delay:-3.3s; }
+  .hud-glow.g3 { width:300px; height:300px; top:38%; right:8%; background:#ffd166; opacity:0.14; animation-delay:-6.6s; }
+  @keyframes hudPulse { 0%,100%{ opacity:0.2; transform:scale(1); } 50%{ opacity:0.38; transform:scale(1.12); } }
+  .hud-scan { position:absolute; left:0; right:0; height:160px; top:-160px;
+    background:linear-gradient(180deg, transparent, rgba(57,192,255,0.10), transparent);
+    animation:hudScan 8s linear infinite; }
+  @keyframes hudScan { from{ transform:translateY(0); } to{ transform:translateY(160vh); } }
+  .hud-ring { position:absolute; border:1px solid rgba(57,192,255,0.12); border-radius:50%; }
+  .hud-ring.r1 { width:580px; height:580px; top:-230px; right:-230px; animation:hudRotate 95s linear infinite; }
+  .hud-ring.r1::before { content:''; position:absolute; inset:36px; border:1px dashed rgba(255,209,102,0.10); border-radius:50%; }
+  .hud-ring.r2 { width:380px; height:380px; bottom:-170px; left:-150px; border-color:rgba(168,85,247,0.14); animation:hudRotate 75s linear infinite reverse; }
+  @keyframes hudRotate { from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion:reduce) {
+    .hud-grid, .hud-glow, .hud-scan, .hud-ring, .logo-mark svg { animation:none !important; }
+  }
   .hd { display:flex; align-items:center; gap:12px; padding:6px 0 14px; flex-wrap:wrap; }
-  .hd .logo { font-family:'Audiowide'; font-weight:900; font-size:18px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 16px rgba(0,229,255,0.4); }
+  .hd .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Audiowide'; font-weight:900; font-size:18px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 16px rgba(0,229,255,0.4); }
   .hd .logo b { color:#ffd166; }
+  .logo-mark { display:inline-flex; width:28px; height:28px; filter:drop-shadow(0 0 6px rgba(57,192,255,0.55)); }
+  .logo-mark svg { width:100%; height:100%; animation:hudRotate 16s linear infinite; }
+  .logo-pulse { display:inline-block; width:6px; height:6px; border-radius:50%; background:#7dffb8; box-shadow:0 0 8px rgba(125,255,184,0.9);
+                animation:hudPulseDot 1.8s ease-in-out infinite; margin-left:2px; }
+  @keyframes hudPulseDot { 0%,100%{ opacity:0.35; transform:scale(0.8); } 50%{ opacity:1; transform:scale(1.15); } }
   .hd .sub { font-size:12px; color:#8a93b8; }
   .hd .sp { flex:1; }
   .tabbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-  .tab { cursor:pointer; padding:10px 16px; border-radius:12px; font-family:'Audiowide'; font-size:10.5px; font-weight:800;
-         letter-spacing:0.08em; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); color:#9aa3c8; }
-  .tab.on { border-color:#39c0ff; background:rgba(57,192,255,0.13); color:#7de9ff; }
-  .card { background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.09); border-radius:16px; padding:16px; }
+  .tab { cursor:pointer; padding:10px 16px; font-family:'Audiowide'; font-size:10.5px; font-weight:800;
+         letter-spacing:0.08em; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); color:#9aa3c8;
+         clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px); transition:all .15s; }
+  .tab.on { border-color:#39c0ff; background:rgba(57,192,255,0.13); color:#7de9ff;
+            box-shadow:0 0 16px rgba(57,192,255,0.3), inset 0 0 10px rgba(57,192,255,0.12); }
+  .card { position:relative; background:rgba(255,255,255,0.045); border:1px solid rgba(57,192,255,0.16); border-radius:16px; padding:16px;
+           box-shadow:0 0 0 1px rgba(0,0,0,0.15), 0 10px 30px rgba(0,0,0,0.25); }
+  .card::before, .card::after { content:''; position:absolute; width:13px; height:13px; pointer-events:none; border-color:rgba(57,192,255,0.55); border-style:solid; border-width:0; }
+  .card::before { top:-1px; left:-1px; border-top-width:2px; border-left-width:2px; border-top-left-radius:6px; }
+  .card::after { bottom:-1px; right:-1px; border-bottom-width:2px; border-right-width:2px; border-bottom-right-radius:6px; }
   .cardT { font-family:'Audiowide'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#9aa3c8; margin-bottom:12px; text-transform:uppercase; }
-  .bigbtn { cursor:pointer; border-radius:14px; padding:12px 18px; font-family:'Audiowide'; font-size:11px; font-weight:800; letter-spacing:0.08em;
-            border:1px solid rgba(57,192,255,0.45); background:rgba(57,192,255,0.12); color:#7de9ff; transition:all .13s; }
+  .bigbtn { cursor:pointer; padding:12px 18px; font-family:'Audiowide'; font-size:11px; font-weight:800; letter-spacing:0.08em;
+            border:1px solid rgba(57,192,255,0.45); background:rgba(57,192,255,0.12); color:#7de9ff; transition:all .13s;
+            clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
   .bigbtn:hover { background:rgba(57,192,255,0.24); }
   .bigbtn.gold { border-color:rgba(255,209,102,0.55); background:rgba(255,209,102,0.12); color:#ffd166; }
   .bigbtn.red { border-color:rgba(255,94,120,0.5); background:rgba(255,94,120,0.1); color:#ff8ba0; }
@@ -120,6 +163,15 @@
 </style>
 </head>
 <body>
+<div id="hudbg">
+  <div class="hud-grid"></div>
+  <div class="hud-glow g1"></div>
+  <div class="hud-glow g2"></div>
+  <div class="hud-glow g3"></div>
+  <div class="hud-ring r1"></div>
+  <div class="hud-ring r2"></div>
+  <div class="hud-scan"></div>
+</div>
 <div id="app"></div>
 <div id="tray"></div>
 <div id="modal"><div id="modalBox"></div></div>
@@ -132,6 +184,15 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const XCOIN_SEED_URL = 'https://pflx-xcoin-app.vercel.app/seed-data.json';
 const SB_HEADERS = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// PFLX ring-mark — small standalone vector emblem for the "PFLX LIVE" lockup
+// (header + projector watermark). No external asset: keeps this a single
+// self-contained file, matches the Console's ring-logo motif (segmented
+// outer ring + inner dashed ring + center diamond) in PFLX's own palette.
+const PFLX_LOGO_MARK = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+  '<circle cx="50" cy="50" r="40" fill="none" stroke="#39c0ff" stroke-width="7" stroke-linecap="round" stroke-dasharray="70 20 70 20"/>' +
+  '<circle cx="50" cy="50" r="26" fill="none" stroke="#ffd166" stroke-width="2" stroke-dasharray="4 6" opacity="0.7"/>' +
+  '<path d="M50 32 L60 50 L50 68 L40 50 Z" fill="#a855f7" opacity="0.85"/>' +
+  '<path d="M50 38 L56 50 L50 62 L44 50 Z" fill="#7de9ff"/></svg>';
 const inPlatform = (window.parent !== window);
 
 async function kvLoad(key) {
@@ -584,7 +645,7 @@ function render() {
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
-    '<div class="hd"><div class="logo">PFLX <b>LIVE</b></div><div class="sub">' +
+    '<div class="hd"><div class="logo"><span class="logo-mark">' + PFLX_LOGO_MARK + '</span>PFLX <b>LIVE</b><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
     (L.isHost ? 'Host Dashboard · ' + esc(L.cfg.cohort || 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
     (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
     (L.demo ? '<div class="demoBanner">DEMO MODE — open PFLX Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
@@ -690,7 +751,7 @@ function projTeams() {
   proj.innerHTML = '<div class="projTitle">👥 THE TEAMS</div>' +
     '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:94vw;max-height:70vh;overflow-y:auto">' + cols + '</div>' +
     '<div style="position:fixed;bottom:18px;right:20px"><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-    '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LIVE</div>';
+    '<div style="position:fixed;bottom:20px;left:22px;display:flex;align-items:center;gap:7px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff"><span style="display:inline-flex;width:16px;height:16px;">' + PFLX_LOGO_MARK + '</span>PFLX LIVE</div>';
 }
 
 // ── BOARDS ──
@@ -923,7 +984,7 @@ function projOpen() {
         '</div>';
     }
     proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-      '<div style="position:fixed;bottom:22px;left:24px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff">PFLX LIVE</div>';
+      '<div style="position:fixed;bottom:20px;left:22px;display:flex;align-items:center;gap:7px;font-family:Audiowide;font-size:11px;letter-spacing:0.18em;color:#39c0ff"><span style="display:inline-flex;width:16px;height:16px;">' + PFLX_LOGO_MARK + '</span>PFLX LIVE</div>';
   }
   window.projDrawNow = draw;
   draw();
