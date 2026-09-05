@@ -240,8 +240,10 @@ const L = {
   roster: [],          // {id,name,brand,xc,totalXc,badges,cohort,studioId,image}
   exo: {},             // player_id -> avatar row
   cfg: null, activity: [], selected: {}, timers: {},
+  badges: [],           // flattened Primary+Premium Digital Badges from X-Coin's real catalog (coinCategories)
+  modifiers: [],        // flattened host-triggerable Upgrades/Taxes/Fines from X-Coin's real catalog (modifiers)
   rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
-  loaded: { roster: false, cfg: false, activity: false }
+  loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false }
 };
 
 const DEFAULT_CFG = {
@@ -397,6 +399,46 @@ async function loadCfg() {
   L.loaded.cfg = true; render();
 }
 function saveCfg() { L.cfg.updatedAt = Date.now(); kvSave('pflx_lite_config', L.cfg); }
+async function loadCoinCategories() {
+  // Real Primary + Premium Digital Badges from X-Coin's own catalog (`coinCategories`
+  // in Supabase app_data — the same key X-Coin's admin Coin Management page writes via
+  // saveCoinCategories()). Flattened + tagged so badgeModal() can render the real
+  // artwork (coin.image) and real xc value a host-selected badge actually carries —
+  // Executive/Signature tiers are job/cert-scoped and intentionally excluded here.
+  try {
+    const cats = await kvLoad('coinCategories');
+    if (Array.isArray(cats) && cats.length) {
+      const keep = { 'Primary Badges (Behavior)': 'primary', 'Premium Badges (Achievement)': 'premium' };
+      const list = [];
+      cats.forEach(cat => {
+        const tier = keep[cat.name];
+        if (!tier) return;
+        (cat.coins || []).forEach(c => list.push({
+          id: 'coin-' + tier + '-' + String(c.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          name: c.name, description: c.description || '', xc: c.xc || 0, image: c.image || '', category: tier
+        }));
+      });
+      if (list.length) L.badges = list;
+    }
+  } catch (e) {}
+  L.loaded.badges = true; render();
+}
+async function loadModifiers() {
+  // Real host-triggerable Upgrades/Taxes/Fines from X-Coin's own catalog (`modifiers`
+  // in Supabase app_data — the same key X-Coin's admin Modifier Management page writes).
+  // "Relevant during X-Live" = triggerEvent 'manual' (i.e. NOT autoApply) — the exact
+  // same host-triggered set X-Coin's own admin stats bar counts (16 taxes, 7 auto-apply,
+  // 11 manual taxes + the 3 manual upgrades = 14 host-applicable modifiers here).
+  try {
+    const mods = await kvLoad('modifiers');
+    if (Array.isArray(mods) && mods.length) {
+      const list = mods.filter(m => !m.autoApply && (m.triggerEvent === 'manual' || !m.triggerEvent))
+        .map(m => ({ id: m.id, type: m.type, name: m.name, description: m.description || '', costXcoin: m.costXcoin || 0, icon: m.icon || '', image: m.image || '' }));
+      if (list.length) L.modifiers = list;
+    }
+  } catch (e) {}
+  L.loaded.modifiers = true; render();
+}
 async function loadActivity() {
   try {
     const since = new Date(Date.now() - 15 * 86400000).toISOString();
@@ -486,15 +528,32 @@ function applyAction(players, preset, kind) {
   clearSel(); render();
   toast(preset.icon + ' ' + preset.label + ' → ' + players.length + ' player' + (players.length === 1 ? '' : 's') + (L.demo ? ' (demo — not saved to real balances)' : ''));
 }
-function grantBadge(players, name) {
-  const id = 'b-lite-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+function grantBadge(players, badgeOrName) {
+  const badge = (typeof badgeOrName === 'string')
+    ? { id: 'b-lite-' + badgeOrName.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: badgeOrName, xc: 0, image: '', category: 'primary' }
+    : badgeOrName;
   players.forEach(p => {
-    postAward(p.id, { badge: { id: id, name: name, category: 'primary' }, reason: 'lite.badge' });
+    postAward(p.id, { badge: { id: badge.id, name: badge.name, category: badge.category || 'primary', xc: badge.xc || 0, image: badge.image || '' }, reason: 'xlive-badge:' + badge.id });
     p.badges = (p.badges || 0) + 1;
-    liteLog(p.id, 'badge', name, 0);
-    burst(p.id, '🎖️');
+    if (badge.xc) { p.xc = Math.max(0, (p.xc || 0) + badge.xc); p.totalXc = (p.totalXc || 0) + badge.xc; }
+    liteLog(p.id, 'badge', badge.name, badge.xc || 0);
+    burst(p.id, badge.xc ? ('+' + badge.xc) : '🎖️');
   });
-  clearSel(); render(); toast('🎖️ ' + name + ' granted to ' + players.length);
+  clearSel(); render(); toast('🎖️ ' + badge.name + ' granted to ' + players.length + (L.demo ? ' (demo — not saved to real balances)' : ''));
+}
+function applyModifier(players, modifier) {
+  players.forEach(p => {
+    postAward(p.id, { xc: -modifier.costXcoin, reason: 'xlive-modifier:' + modifier.id, noMultiplier: true });
+    p.xc = Math.max(0, (p.xc || 0) - modifier.costXcoin);
+    liteLog(p.id, modifier.type, modifier.name, -modifier.costXcoin);
+    burst(p.id, '-' + modifier.costXcoin);
+  });
+  clearSel(); render();
+  toast((modifier.icon || (modifier.type === 'upgrade' ? '🎁' : '🏛️')) + ' ' + modifier.name + ' → ' + players.length + ' player' + (players.length === 1 ? '' : 's') + (L.demo ? ' (demo — not saved to real balances)' : ''));
+}
+function applyDefaultUpgrade(players, i) {
+  const u = DEFAULT_CFG.upgrades[i];
+  applyModifier(players, { id: u.id, type: 'upgrade', name: u.label, costXcoin: u.cost, icon: u.icon });
 }
 
 // ── selection + micro UI ──
@@ -733,18 +792,41 @@ function renderTray() {
   if (!L.isHost || !sel.length) { tray.classList.remove('on'); return; }
   tray.classList.add('on');
   tray.innerHTML = '<span style="font-family:Audiowide;font-size:9px;color:#ffd166;white-space:nowrap">' + sel.length + ' SELECTED</span>' +
-    L.cfg.awards.map((a, i) => '<button class="traybtn" onclick="applyAction(selPlayers(), L.cfg.awards[' + i + '], \'award\')">' + a.icon + ' ' + esc(a.label) + ' +' + a.xc + '</button>').join('') +
-    L.cfg.fines.map((f, i) => '<button class="traybtn fine" onclick="applyAction(selPlayers(), L.cfg.fines[' + i + '], \'fine\')">' + f.icon + ' ' + esc(f.label) + ' ' + f.xc + '</button>').join('') +
-    '<button class="traybtn fine" onclick="applyAction(selPlayers(), L.cfg.tax, \'tax\')">' + L.cfg.tax.icon + ' ' + esc(L.cfg.tax.label) + ' ' + L.cfg.tax.xc + '</button>' +
-    '<button class="traybtn misc" onclick="badgeModal()">🎖️ BADGE</button>';
+    '<button class="traybtn misc" onclick="badgeModal()">🎖️ AWARD BADGE</button>' +
+    '<button class="traybtn fine" onclick="modifierModal()">⚡ UPGRADE / TAX / FINE</button>';
 }
 function badgeModal() {
-  modal('<div class="cardT">Quick Badge Grant → ' + selPlayers().length + ' player(s)</div>' +
-    ['Battle Arena Champion', 'Digital Citizen', 'Innovative Creator', 'Resilient Learner'].map(n =>
-      '<button class="bigbtn" style="margin:4px" onclick="grantBadge(selPlayers(),\'' + n + '\');modalClose()">🎖️ ' + n + '</button>').join('') +
-    '<label>Custom badge name</label><input id="bdgName" placeholder="e.g. Kindness Hero"/>' +
-    '<div style="margin-top:12px;display:flex;gap:8px"><button class="bigbtn gold" onclick="var v=document.getElementById(\'bdgName\').value.trim(); if(v){grantBadge(selPlayers(),v);modalClose();}">GRANT</button>' +
+  const withIdx = L.badges.map((b, i) => Object.assign({}, b, { _i: i }));
+  const primary = withIdx.filter(b => b.category === 'primary');
+  const premium = withIdx.filter(b => b.category === 'premium');
+  const btn = b => '<button class="bigbtn" style="margin:4px" onclick="grantBadge(selPlayers(), L.badges[' + b._i + ']);modalClose()">' +
+    (b.image ? '<img src="' + esc(b.image) + '" style="width:20px;height:20px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:5px">' : '🎖️ ') +
+    esc(b.name) + ' <span style="opacity:.7">+' + b.xc + '</span></button>';
+  const body = L.badges.length
+    ? ('<div style="font-size:10px;color:#8a93b8;margin:8px 0 4px">PRIMARY BADGES</div>' + (primary.map(btn).join('') || '<div style="font-size:11px;color:#5c6488">none</div>') +
+       '<div style="font-size:10px;color:#8a93b8;margin:10px 0 4px">PREMIUM BADGES</div>' + (premium.map(btn).join('') || '<div style="font-size:11px;color:#5c6488">none</div>'))
+    : ['Battle Arena Champion', 'Digital Citizen', 'Innovative Creator', 'Resilient Learner'].map(n =>
+        '<button class="bigbtn" style="margin:4px" onclick="grantBadge(selPlayers(),\'' + n + '\');modalClose()">🎖️ ' + n + '</button>').join('');
+  modal('<div class="cardT">Award Digital Badge → ' + selPlayers().length + ' player(s)</div>' + body +
+    '<label style="display:block;margin-top:10px">Custom badge name (no XC)</label><input id="bdgName" placeholder="e.g. Kindness Hero"/>' +
+    '<div style="margin-top:12px;display:flex;gap:8px"><button class="bigbtn gold" onclick="var v=document.getElementById(\'bdgName\').value.trim(); if(v){grantBadge(selPlayers(),v);modalClose();}">GRANT CUSTOM</button>' +
     '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+function modifierModal() {
+  const withIdx = L.modifiers.map((m, i) => Object.assign({}, m, { _i: i }));
+  const upgrades = withIdx.filter(m => m.type === 'upgrade');
+  const taxes = withIdx.filter(m => m.type === 'tax');
+  const btn = m => '<button class="bigbtn' + (m.type === 'tax' ? ' fine' : '') + '" style="margin:4px" onclick="applyModifier(selPlayers(), L.modifiers[' + m._i + ']);modalClose()">' +
+    (m.image ? '<img src="' + esc(m.image) + '" style="width:20px;height:20px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:5px">' : (m.icon || (m.type === 'upgrade' ? '🎁' : '🏛️')) + ' ') +
+    esc(m.name) + ' <span style="opacity:.7">-' + m.costXcoin + '</span></button>';
+  const body = L.modifiers.length
+    ? ('<div style="font-size:10px;color:#8a93b8;margin:8px 0 4px">UPGRADES (host-applied — deducts cost)</div>' + (upgrades.map(btn).join('') || '<div style="font-size:11px;color:#5c6488">none</div>') +
+       '<div style="font-size:10px;color:#8a93b8;margin:10px 0 4px">TAXES &amp; FINES</div>' + (taxes.map(btn).join('') || '<div style="font-size:11px;color:#5c6488">none</div>'))
+    : (DEFAULT_CFG.fines.map((f, i) => '<button class="bigbtn fine" style="margin:4px" onclick="applyAction(selPlayers(), DEFAULT_CFG.fines[' + i + '], \'fine\');modalClose()">' + f.icon + ' ' + esc(f.label) + ' ' + f.xc + '</button>').join('') +
+       '<button class="bigbtn fine" style="margin:4px" onclick="applyAction(selPlayers(), DEFAULT_CFG.tax, \'tax\');modalClose()">' + DEFAULT_CFG.tax.icon + ' ' + esc(DEFAULT_CFG.tax.label) + ' ' + DEFAULT_CFG.tax.xc + '</button>' +
+       DEFAULT_CFG.upgrades.map((u, i) => '<button class="bigbtn" style="margin:4px" onclick="applyDefaultUpgrade(selPlayers(),' + i + ');modalClose()">' + u.icon + ' ' + esc(u.label) + ' -' + u.cost + '</button>').join(''));
+  modal('<div class="cardT">Upgrades / Taxes &amp; Fines → ' + selPlayers().length + ' player(s)</div>' + body +
+    '<div style="margin-top:12px"><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
 }
 
 // ── TEAMS view ──
@@ -1164,7 +1246,7 @@ function confirmUpgrade(i) {
 // ── BOOT ──
 adoptFromParams();
 render();
-loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups();
+loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers();
 setInterval(loadActivity, 60000);
 </script>
 </body>
