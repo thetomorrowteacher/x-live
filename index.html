@@ -833,11 +833,9 @@ function rBoards() {
 function rTools() {
   return '<div class="grid3">' +
     '<div class="card"><div class="cardT">🎡 Randomizer</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Spin the wheel of players — full screen on the projector.</div><button class="bigbtn gold" onclick="wheelOpen()">SPIN THE WHEEL</button></div>' +
-    '<div class="card"><div class="cardT">👥 Group Maker</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Instant random teams. Teams feed the team leaderboard and team games.</div>' +
-    '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + Math.max(2, (L.cfg.teams.names || []).length || 2) + '" style="width:70px;text-align:center"/><button class="bigbtn green" onclick="makeTeams()">MAKE</button>' + ((L.cfg.teams.names || []).length ? '<button class="bigbtn ghost" onclick="go(\'teams\')">VIEW TEAMS</button>' : '') + '</div></div>' +
     '<div class="card"><div class="cardT">⏱️ Timer</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
     [1, 3, 5, 10].map(m => '<button class="bigbtn" onclick="timerStart(' + m + ')">' + m + ' MIN</button>').join('') + '</div></div>' +
-    '<div class="card"><div class="cardT">🔊 Noise Meter</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">ClassDojo-style ambient mic level — green/yellow/red, projector-friendly.</div><button class="bigbtn" id="noiseMeterBtn" onclick="toggleNoiseMeter()">START LISTENING</button></div>' +
+    '<div class="card"><div class="cardT">🔊 Noise Meter</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Live ambient mic level — green/yellow/red, projector-friendly.</div><button class="bigbtn" id="noiseMeterBtn" onclick="toggleNoiseMeter()">START LISTENING</button></div>' +
     '</div>';
 }
 
