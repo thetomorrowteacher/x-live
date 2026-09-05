@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PFLX Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PFLX LIVE v0.8 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
-     PATCH LITE v0.8, Sept 5 2026 — Players roster grid (rClass) no
-     longer shows each player's team-name pill; the projector-screen
-     PFLX Live watermark (projTeams/projOpen) moved from bottom-left to
-     top-left and enlarged 20px -> 34px tall; v0.7 real PFLX X LIVE
-     brand lockup
+     PFLX LIVE v0.9 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
+     PATCH LITE v0.9, Sept 5 2026 — Players roster grid (rClass) is now
+     sorted (default: XC high->low) with a host-facing sort dropdown
+     (XC high->low/low->high, Name A->Z/Z->A) via sortedRoster()/
+     setRosterSort(); v0.8 removed the team-name pill from that same
+     grid, and the projector-screen PFLX Live watermark (projTeams/
+     projOpen) moved from bottom-left to top-left and enlarged 20px ->
+     34px tall; v0.7 real PFLX X LIVE brand lockup
      (Ennis-provided) swapped in for the header, loading splash, and
      floating watermark, replacing PFLX_LOGO_MARK + plain text in those
      3 spots (PFLX_LOGO_MARK itself is untouched/still defined); v0.6
@@ -229,6 +231,7 @@ const L = {
   roster: [],          // {id,name,brand,xc,totalXc,badges,cohort,studioId,image}
   exo: {},             // player_id -> avatar row
   cfg: null, activity: [], selected: {}, timers: {},
+  rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
   loaded: { roster: false, cfg: false, activity: false }
 };
 
@@ -396,6 +399,18 @@ function classRoster() {
   const c = ((L.cfg && L.cfg.cohort) || '').toLowerCase();
   return c ? L.roster.filter(p => (p.cohort || '').toLowerCase().split(',').map(s => s.trim()).indexOf(c) !== -1 || (p.cohort || '').toLowerCase() === c) : L.roster;
 }
+function sortedRoster(list) {
+  const mode = L.rosterSort || 'xc_desc';
+  const arr = list.slice();
+  arr.sort((a, b) => {
+    if (mode === 'xc_asc') return (a.xc || 0) - (b.xc || 0);
+    if (mode === 'name_asc') return (a.brand || '').localeCompare(b.brand || '');
+    if (mode === 'name_desc') return (b.brand || '').localeCompare(a.brand || '');
+    return (b.xc || 0) - (a.xc || 0); // default: xc_desc
+  });
+  return arr;
+}
+function setRosterSort(mode) { L.rosterSort = mode; render(); }
 function cohortList() {
   const seen = {}; const out = [];
   function add(c) { const k = c.toLowerCase(); if (!seen[k]) { seen[k] = 1; out.push(c); } }
@@ -679,15 +694,20 @@ function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState 
 
 // ── CLASS (roster grid) ──
 function rClass() {
-  const R = classRoster();
+  const R = sortedRoster(classRoster());
   const goal = L.cfg.goal || DEFAULT_CFG.goal;
   const w = weekStart(0);
   const earned = R.reduce((s, p) => s + sumActivity(p.id, w), 0);
   const pct = Math.min(100, Math.round(earned / Math.max(1, goal.target) * 100));
   return '<div class="card" style="margin-bottom:14px"><div class="cardT">Class Goal — ' + esc(goal.label) + '</div>' +
     '<div class="goalwrap"><div class="goalfill" style="width:' + pct + '%"></div><div class="goaltxt">' + earned.toLocaleString() + ' / ' + goal.target.toLocaleString() + ' XC THIS WEEK · ' + pct + '%</div></div></div>' +
-    '<div class="card"><div class="cardT" style="display:flex;gap:10px;align-items:center">Players (' + R.length + ')' +
-    '<span style="margin-left:auto"></span>' +
+    '<div class="card"><div class="cardT" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">Players (' + R.length + ')' +
+    '<select onchange="setRosterSort(this.value)" style="margin-left:auto;background:rgba(15,20,40,0.8);color:#e8ecfb;border:1px solid rgba(255,255,255,0.18);border-radius:8px;padding:6px 10px;font-size:9px;font-family:Audiowide;letter-spacing:0.03em">' +
+    '<option value="xc_desc"' + ((L.rosterSort || 'xc_desc') === 'xc_desc' ? ' selected' : '') + '>XC: High → Low</option>' +
+    '<option value="xc_asc"' + (L.rosterSort === 'xc_asc' ? ' selected' : '') + '>XC: Low → High</option>' +
+    '<option value="name_asc"' + (L.rosterSort === 'name_asc' ? ' selected' : '') + '>Name: A → Z</option>' +
+    '<option value="name_desc"' + (L.rosterSort === 'name_desc' ? ' selected' : '') + '>Name: Z → A</option>' +
+    '</select>' +
     '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="selectAll()">SELECT ALL</button>' +
     '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="clearSel();render()">CLEAR</button></div>' +
     '<div id="roster">' + R.map(p => {
