@@ -5,8 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PFLX Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PFLX LIVE v0.7 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
-     PATCH LITE v0.7, Sept 5 2026 — real PFLX X LIVE brand lockup
+     PFLX LIVE v0.8 (rebrand of PFLX Lite v0.1 — EXO spec v1.1 Phase 4,
+     PATCH LITE v0.8, Sept 5 2026 — Players roster grid (rClass) no
+     longer shows each player's team-name pill; the projector-screen
+     PFLX Live watermark (projTeams/projOpen) moved from bottom-left to
+     top-left and enlarged 20px -> 34px tall; v0.7 real PFLX X LIVE
+     brand lockup
      (Ennis-provided) swapped in for the header, loading splash, and
      floating watermark, replacing PFLX_LOGO_MARK + plain text in those
      3 spots (PFLX_LOGO_MARK itself is untouched/still defined); v0.6
@@ -687,9 +691,7 @@ function rClass() {
     '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="selectAll()">SELECT ALL</button>' +
     '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="clearSel();render()">CLEAR</button></div>' +
     '<div id="roster">' + R.map(p => {
-      const team = L.cfg.teams.assign[p.id];
       return '<div class="ptile ' + (L.selected[p.id] ? 'sel' : '') + '" onclick="toggleSel(\'' + p.id + '\')">' +
-        (team ? '<div class="tm" style="background:' + teamColor(team) + '55;border:1px solid ' + teamColor(team) + '">' + esc(team) + '</div>' : '') +
         '<div class="burst" id="burst-' + p.id + '"></div>' +
         '<div class="av">' + exoAvatarHTML(p.id, 58, p.brand, p.image) + '</div>' +
         '<div class="nm">' + esc(p.brand) + '</div><div class="xc">' + (p.xc || 0).toLocaleString() + ' XC</div></div>';
@@ -768,7 +770,7 @@ function projTeams() {
   proj.innerHTML = '<div class="projTitle">👥 THE TEAMS</div>' +
     '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:94vw;max-height:70vh;overflow-y:auto">' + cols + '</div>' +
     '<div style="position:fixed;bottom:18px;right:20px"><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-    '<div style="position:fixed;bottom:20px;left:22px;display:flex;align-items:center"><img src="' + PFLX_LIVE_LOGO_HORIZONTAL + '" alt="PFLX Live" style="height:20px;width:auto;opacity:0.9"/></div>';
+    '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + PFLX_LIVE_LOGO_HORIZONTAL + '" alt="PFLX Live" style="height:34px;width:auto;opacity:0.9"/></div>';
 }
 
 // ── BOARDS ──
@@ -1001,7 +1003,7 @@ function projOpen() {
         '</div>';
     }
     proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-      '<div style="position:fixed;bottom:20px;left:22px;display:flex;align-items:center"><img src="' + PFLX_LIVE_LOGO_HORIZONTAL + '" alt="PFLX Live" style="height:20px;width:auto;opacity:0.9"/></div>';
+      '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + PFLX_LIVE_LOGO_HORIZONTAL + '" alt="PFLX Live" style="height:34px;width:auto;opacity:0.9"/></div>';
   }
   window.projDrawNow = draw;
   draw();
