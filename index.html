@@ -233,6 +233,7 @@ const DEFAULT_CFG = {
   teams: { names: [], assign: {} },
   goal: { label: 'Class Reward Party', target: 10000 },
   boards: { showRanks: true, top5Only: false },
+  avatarMode: 'photo', // 'photo' = real uploaded photo takes priority (EXO/initials fallback); 'exo' = EXO mascot takes priority (photo/initials fallback)
   updatedAt: 0
 };
 
@@ -410,9 +411,13 @@ function exoCoreSVG(exo, size) {
   else motif = '<g fill="' + cw.glow + '"><rect x="34" y="40" width="24" height="5" opacity="0.9"/><rect x="42" y="49" width="24" height="5" opacity="0.65"/><rect x="36" y="58" width="18" height="5" opacity="0.8"/></g>';
   return '<svg viewBox="0 0 100 100" width="' + size + '" height="' + size + '"><defs><radialGradient id="' + gid + '" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="' + cw.a + '"/><stop offset="100%" stop-color="' + cw.b + '"/></radialGradient></defs><circle cx="50" cy="50" r="30" fill="url(#' + gid + ')" stroke="' + cw.glow + '" stroke-width="1.5"/><circle cx="50" cy="50" r="36" fill="none" stroke="' + cw.a + '" stroke-width="1" opacity="0.35"/>' + motif + '</svg>';
 }
-function exoAvatarHTML(pid, size, fallbackName) {
+function exoAvatarHTML(pid, size, fallbackName, image) {
   const ex = L.exo[pid];
-  if (ex && EXO_LINES[ex.line]) return exoCoreSVG(ex, size);
+  const hasExo = !!(ex && EXO_LINES[ex.line]);
+  const mode = (L.cfg && L.cfg.avatarMode) || 'photo';
+  if (mode === 'exo' && hasExo) return exoCoreSVG(ex, size);
+  if (image) return '<img src="' + esc(image) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;display:block">';
+  if (hasExo) return exoCoreSVG(ex, size);
   const initials = (fallbackName || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
   return '<div class="ph" style="width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size / 3.4) + 'px">' + esc(initials) + '</div>';
 }
@@ -674,7 +679,7 @@ function rClass() {
       return '<div class="ptile ' + (L.selected[p.id] ? 'sel' : '') + '" onclick="toggleSel(\'' + p.id + '\')">' +
         (team ? '<div class="tm" style="background:' + teamColor(team) + '55;border:1px solid ' + teamColor(team) + '">' + esc(team) + '</div>' : '') +
         '<div class="burst" id="burst-' + p.id + '"></div>' +
-        '<div class="av">' + exoAvatarHTML(p.id, 58, p.brand) + '</div>' +
+        '<div class="av">' + exoAvatarHTML(p.id, 58, p.brand, p.image) + '</div>' +
         '<div class="nm">' + esc(p.brand) + '</div><div class="xc">' + (p.xc || 0).toLocaleString() + ' XC</div></div>';
     }).join('') + '</div></div>';
 }
@@ -718,7 +723,7 @@ function rTeams() {
       '<div style="font-family:Audiowide;font-size:10.5px;font-weight:800;color:#fff;letter-spacing:0.06em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm) + '</div>' +
       '<div style="font-family:Audiowide;font-size:11px;font-weight:900;color:#ffd166;font-variant-numeric:tabular-nums">' + weekly.toLocaleString() + '</div></div>' +
       members.map(p => '<div onclick="teamsMovePlayer(\'' + p.id + '\')" title="Tap to move to the next team" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid ' + col + '33">' +
-        '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand) + '</div>' +
+        '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand, p.image) + '</div>' +
         '<div style="font-family:Audiowide;font-size:8.5px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.brand) + '</div>' +
         '<div style="margin-left:auto;font-size:10px;color:#5c6488">⇄</div></div>').join('') +
       (members.length ? '' : '<div style="font-size:11px;color:#5c6488;text-align:center;padding:8px">empty</div>') +
@@ -744,7 +749,7 @@ function projTeams() {
     return '<div style="flex:1;min-width:160px;max-width:280px;background:rgba(255,255,255,0.04);border:1px solid ' + col + '55;border-top:5px solid ' + col + ';border-radius:16px;padding:14px;text-align:left">' +
       '<div style="font-family:Audiowide;font-size:clamp(11px,1.4vw,15px);font-weight:900;color:' + col + ';letter-spacing:0.08em;margin-bottom:10px;text-align:center">' + esc(nm) + '</div>' +
       members.map(p => '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">' +
-        '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand) + '</div>' +
+        '<div style="width:30px;height:30px;flex-shrink:0">' + exoAvatarHTML(p.id, 30, p.brand, p.image) + '</div>' +
         '<div style="font-family:Audiowide;font-size:clamp(9px,1.1vw,12px);font-weight:800;color:#fff">' + esc(p.brand) + '</div></div>').join('') +
       '</div>';
   }).join('');
@@ -772,7 +777,7 @@ function rBoards() {
   } else {
     rows = shown.map((r, i) =>
       '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '"><div class="pos">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div>' +
-      '<div class="av">' + exoAvatarHTML(r.p.id, 38, r.p.brand) + '</div>' +
+      '<div class="av">' + exoAvatarHTML(r.p.id, 38, r.p.brand, r.p.image) + '</div>' +
       '<div class="nm">' + esc(r.p.brand) + '</div><div class="val">' + r.v.toLocaleString() + (t === 'season' ? '' : ' XC') + '</div></div>').join('');
   }
   return '<div class="tabbar">' + tabs.map(x => '<div class="tab ' + (t === x[0] ? 'on' : '') + '" onclick="L.boardTab=\'' + x[0] + '\';render()">' + x[1] + '</div>').join('') + '</div>' +
@@ -980,7 +985,7 @@ function projOpen() {
       inner = '<div class="projTitle">' + (v === 'weekly' ? '🏆 THIS WEEK' : '👥 TEAM BATTLE') + '</div><div style="width:min(84vw,700px);text-align:left">' +
         (v === 'teams'
           ? (data.length ? data.map((r, i) => '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '" style="padding:13px 16px"><div class="pos" style="font-size:19px">' + (i === 0 ? '👑' : i + 1) + '</div><div style="width:20px;height:20px;border-radius:6px;background:' + teamColor(r.team) + '"></div><div class="nm" style="font-size:16px">' + esc(r.team) + '</div><div class="val" style="font-size:19px">' + r.v.toLocaleString() + '</div></div>').join('') : '<div style="color:#8a93b8">No teams yet</div>')
-          : data.map((r, i) => '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '" style="padding:12px 16px"><div class="pos" style="font-size:18px">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div><div class="av">' + exoAvatarHTML(r.p.id, 40, r.p.brand) + '</div><div class="nm" style="font-size:15px">' + esc(r.p.brand) + '</div><div class="val" style="font-size:18px">' + r.v.toLocaleString() + '</div></div>').join('')) +
+          : data.map((r, i) => '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '" style="padding:12px 16px"><div class="pos" style="font-size:18px">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div><div class="av">' + exoAvatarHTML(r.p.id, 40, r.p.brand, r.p.image) + '</div><div class="nm" style="font-size:15px">' + esc(r.p.brand) + '</div><div class="val" style="font-size:18px">' + r.v.toLocaleString() + '</div></div>').join('')) +
         '</div>';
     }
     proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
@@ -1054,7 +1059,10 @@ function rSetup() {
     '<label>Class goal target (XC / week)</label><input type="number" value="' + L.cfg.goal.target + '" onchange="L.cfg.goal.target=Math.max(100,parseInt(this.value)||10000);saveCfg()"/>' +
     '<label>Leaderboards</label>' +
     '<div style="display:flex;gap:14px;font-size:13px;color:#ccc;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.showRanks ? 'checked' : '') + ' onchange="L.cfg.boards.showRanks=this.checked;saveCfg()"/> Players can see boards</label>' +
-    '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.top5Only ? 'checked' : '') + ' onchange="L.cfg.boards.top5Only=this.checked;saveCfg()"/> Top 5 only</label></div></div>' +
+    '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.top5Only ? 'checked' : '') + ' onchange="L.cfg.boards.top5Only=this.checked;saveCfg()"/> Top 5 only</label></div>' +
+    '<label style="margin-top:10px">Avatar style</label>' +
+    '<select onchange="L.cfg.avatarMode=this.value;saveCfg();render()"><option value="photo"' + ((L.cfg.avatarMode || 'photo') === 'photo' ? ' selected' : '') + '>Real photos (EXO/initials if none)</option><option value="exo"' + (L.cfg.avatarMode === 'exo' ? ' selected' : '') + '>EXO mascots (photo/initials if none built)</option></select>' +
+    '</div>' +
     '<div class="card"><div class="cardT">Quick Buttons</div>' + presetEditor('awards') + presetEditor('fines') +
     '<div class="cardT" style="margin-top:14px">Upgrades Shop</div>' +
     L.cfg.upgrades.map((u, i) => '<div class="feedrow">' + u.icon + ' <b>' + esc(u.label) + '</b> · ' + u.cost + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.upgrades.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
@@ -1079,7 +1087,7 @@ function rMe() {
   const rank = board.findIndex(r => r.p.id === p.id) + 1;
   const team = L.cfg.teams.assign[p.id];
   return '<div class="grid2">' +
-    '<div class="card" style="text-align:center"><div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(120,140,255,0.5))">' + exoAvatarHTML(p.id, 150, p.brand) + '</div>' +
+    '<div class="card" style="text-align:center"><div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(120,140,255,0.5))">' + exoAvatarHTML(p.id, 150, p.brand, p.image) + '</div>' +
     '<div style="font-family:Audiowide;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex && ex.exo_name ? ex.exo_name : p.brand) + '</div>' +
     (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · STAGE ' + (ex.stage || 1) + '</div>' : '<div style="font-size:11px;color:#8a93b8">Visit the EXO Bay in Battle Arena to hatch your EXO!</div>') +
     '<div style="font-family:Audiowide;font-weight:900;font-size:26px;color:#ffd166;margin-top:12px">' + (p.xc || 0).toLocaleString() + ' XC</div>' +
