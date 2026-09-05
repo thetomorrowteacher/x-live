@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.14, Sept 5 2026 — PATCH X-LIVE v0.14 (Phase 1b of the Native
+     Live Sessions plan): native host session-building UI. New 🔴 LIVE host
+     tab (rLive/rLiveList/rLiveBuilder); a slide builder for 10 v1 slide
+     types (text, media, poll, multiple choice, quiz, open response,
+     discussion, timer, challenge, push task) via renderSlideModal(),
+     each with type-conditional options/correct-answer marking/timer/
+     per-slide reward XC + a real badge picker (badgeSelectHtml, reusing
+     v0.12's L.badges); session-level cohort scoping (reuses cohortList())
+     and attendance/completion rewards. All writes go through v0.13's
+     merge-safe saveSession(); DELETE soft-deletes (status:'archived')
+     rather than splicing, so mergeSession()'s terminal-status guard
+     protects it as a tombstone. Authoring only — no GO LIVE/run controls/
+     player-side rendering yet, that's Phase 2. See
+     pflx-pathway-portal/docs/HANDOFF.md for the full writeup.
      X-LIVE v0.13, Sept 5 2026 — PATCH X-LIVE v0.13 (Phase 1a of the Native
      Live Sessions plan): merge-safe session data layer. New L.sessions
      state + loadSessions()/saveSession(sess), reusing the SAME Supabase
@@ -262,6 +276,8 @@ const L = {
   badges: [],           // flattened Primary+Premium Digital Badges from X-Coin's real catalog (coinCategories)
   modifiers: [],        // flattened host-triggerable Upgrades/Taxes/Fines from X-Coin's real catalog (modifiers)
   sessions: [],          // native X-Live Live Sessions (host-authored + live-run) — merge-safe, see mergeSession()
+  liveEditingSession: null, // session object currently being authored, or null = showing the session list
+  liveEditingSlide: null,   // {idx, slide} being edited in the slide modal, or null
   rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
   loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false }
 };
@@ -873,7 +889,7 @@ function render() {
     return;
   }
   const tabs = L.isHost
-    ? [['class', '🏫 CLASS'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
+    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
@@ -883,7 +899,7 @@ function render() {
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     liveSessionBanner() +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
-    ({ class: rClass, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
+    ({ class: rClass, live: rLive, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
 }
 function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
@@ -954,6 +970,224 @@ function modifierModal() {
        DEFAULT_CFG.upgrades.map((u, i) => '<button class="bigbtn" style="margin:4px" onclick="applyDefaultUpgrade(selPlayers(),' + i + ');modalClose()">' + u.icon + ' ' + esc(u.label) + ' -' + u.cost + '</button>').join(''));
   modal('<div class="cardT">Upgrades / Taxes &amp; Fines → ' + selPlayers().length + ' player(s)</div>' + body +
     '<div style="margin-top:12px"><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+
+// ── LIVE SESSIONS (host authoring, Phase 1b of the Native Live Sessions
+//    plan) ──────────────────────────────────────────────────────────────
+// v1 slide type set: 10 of the 12 types from Mission Control's original
+// authoring form. Deferred to backlog: whiteboard (needs the doodle-canvas
+// widget ported from preview.html) and embed (needs a CSP/security pass
+// first) — documented in the Handoff, not silently dropped. Grouping and
+// partnership are covered by this phase's session-level cohort/roster
+// scoping + the Randomizer/Teams tabs already in X-Live, so they are not
+// separate slide types here either.
+const SLIDE_TYPES = [
+  { key: 'text', label: 'Text / Announcement', icon: '📝', hasOptions: false, hasTimer: false, timerOnly: false },
+  { key: 'media', label: 'Media', icon: '🖼️', hasOptions: false, hasTimer: false, timerOnly: false },
+  { key: 'poll', label: 'Poll', icon: '📊', hasOptions: true, hasTimer: true, timerOnly: false },
+  { key: 'mc', label: 'Multiple Choice', icon: '🔘', hasOptions: true, hasTimer: true, timerOnly: false, graded: true },
+  { key: 'quiz', label: 'Quiz Question', icon: '❓', hasOptions: true, hasTimer: true, timerOnly: false, graded: true },
+  { key: 'open_response', label: 'Open Response', icon: '✍️', hasOptions: false, hasTimer: true, timerOnly: false },
+  { key: 'discussion', label: 'Discussion Prompt', icon: '💬', hasOptions: false, hasTimer: false, timerOnly: false },
+  { key: 'timer', label: 'Timer', icon: '⏱️', hasOptions: false, hasTimer: true, timerOnly: true },
+  { key: 'challenge', label: 'Challenge', icon: '🏆', hasOptions: false, hasTimer: true, timerOnly: false },
+  { key: 'push_task', label: 'Push Task', icon: '📤', hasOptions: false, hasTimer: false, timerOnly: false }
+];
+function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.key === key; }) || SLIDE_TYPES[0]; }
+
+function newLiveSession() {
+  return {
+    id: 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    title: '', cohorts: [], allCohorts: true, slides: [],
+    rewards: { attendanceXc: 0, attendanceBadgeId: '', completionXc: 0, completionBadgeId: '' },
+    status: 'scheduled', liveParticipants: [], awardedTo: [],
+    createdAt: Date.now(), updatedAt: Date.now()
+  };
+}
+function liveNewSession() { L.liveEditingSession = newLiveSession(); render(); }
+function liveEditSession(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; });
+  if (!s) return;
+  L.liveEditingSession = JSON.parse(JSON.stringify(s)); // edit a working copy; only Save commits it
+  render();
+}
+function liveCancelEdit() { L.liveEditingSession = null; render(); }
+async function liveSaveSessionForm() {
+  const s = L.liveEditingSession;
+  if (!s) return;
+  if (!s.title || !s.title.trim()) { toast('Give this session a title first'); return; }
+  await saveSession(s);
+  L.liveEditingSession = null;
+  render();
+  toast('💾 Session saved' + (L.demo ? ' (demo — not saved to the cloud)' : ''));
+}
+function liveDeleteSessionPrompt(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; });
+  if (!s) return;
+  modal('<div class="cardT">Delete "' + esc(s.title || 'Untitled Session') + '"?</div>' +
+    '<div style="font-size:12px;color:#aeb6d8">This removes it from your Live Sessions list. This can\'t be undone.</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px">' +
+    '<button class="bigbtn red" onclick="liveDeleteSessionConfirm(\'' + esc(s.id) + '\')">DELETE</button>' +
+    '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+async function liveDeleteSessionConfirm(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; });
+  if (!s) { modalClose(); return; }
+  s.status = 'archived';
+  await saveSession(s);
+  modalClose(); render();
+  toast('🗑️ Session removed');
+}
+function liveToggleCohort(c, checked) {
+  const s = L.liveEditingSession; if (!s) return;
+  s.cohorts = s.cohorts || [];
+  const i = s.cohorts.indexOf(c);
+  if (checked && i === -1) s.cohorts.push(c);
+  if (!checked && i !== -1) s.cohorts.splice(i, 1);
+}
+function badgeSelectHtml(selectedId, path) {
+  return '<select onchange="' + path + '=this.value">' +
+    '<option value="">None</option>' +
+    L.badges.map(function (b) { return '<option value="' + esc(b.id) + '"' + (selectedId === b.id ? ' selected' : '') + '>' + esc(b.name) + ' (+' + (b.xc || 0) + ')</option>'; }).join('') +
+    '</select>';
+}
+function liveAddSlide() { L.liveEditingSlide = { idx: -1, slide: liveNewSlide('text') }; renderSlideModal(); }
+function liveNewSlide(type) {
+  return {
+    id: 'sl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    type: type || 'text', title: '', prompt: '', options: [], correctIndex: 0,
+    seconds: 30, rewardXc: 0, rewardBadgeId: '', responses: {}
+  };
+}
+function liveEditSlide(idx) {
+  const s = L.liveEditingSession; if (!s || !s.slides[idx]) return;
+  L.liveEditingSlide = { idx: idx, slide: JSON.parse(JSON.stringify(s.slides[idx])) };
+  renderSlideModal();
+}
+function liveSlideTypeChange(type) {
+  if (!L.liveEditingSlide) return;
+  L.liveEditingSlide.slide.type = type;
+  if (!L.liveEditingSlide.slide.options) L.liveEditingSlide.slide.options = [];
+  renderSlideModal();
+}
+function liveSlideOptionAdd() { L.liveEditingSlide.slide.options.push(''); renderSlideModal(); }
+function liveSlideOptionRemove(i) {
+  L.liveEditingSlide.slide.options.splice(i, 1);
+  if (L.liveEditingSlide.slide.correctIndex >= L.liveEditingSlide.slide.options.length) L.liveEditingSlide.slide.correctIndex = 0;
+  renderSlideModal();
+}
+function liveSlideSetCorrect(i) { L.liveEditingSlide.slide.correctIndex = i; renderSlideModal(); }
+function liveSaveSlideForm() {
+  const ed = L.liveEditingSlide; if (!ed) return;
+  const sl = ed.slide;
+  if (!sl.title || !sl.title.trim()) { toast('Give this slide a title first'); return; }
+  const s = L.liveEditingSession; if (!s) { modalClose(); return; }
+  if (ed.idx === -1) s.slides.push(sl); else s.slides[ed.idx] = sl;
+  L.liveEditingSlide = null;
+  modalClose(); render();
+}
+function liveDeleteSlide(idx) {
+  const s = L.liveEditingSession; if (!s) return;
+  s.slides.splice(idx, 1);
+  render();
+}
+function liveMoveSlide(idx, dir) {
+  const s = L.liveEditingSession; if (!s) return;
+  const j = idx + dir;
+  if (j < 0 || j >= s.slides.length) return;
+  const tmp = s.slides[idx]; s.slides[idx] = s.slides[j]; s.slides[j] = tmp;
+  render();
+}
+function renderSlideModal() {
+  const ed = L.liveEditingSlide; if (!ed) return;
+  const sl = ed.slide;
+  const meta = slideTypeMeta(sl.type);
+  const typeOptions = SLIDE_TYPES.map(function (t) { return '<option value="' + t.key + '"' + (sl.type === t.key ? ' selected' : '') + '>' + t.icon + ' ' + esc(t.label) + '</option>'; }).join('');
+  const optionsHtml = meta.hasOptions ? (
+    '<label style="margin-top:10px">Options' + (meta.graded ? ' (tap ⭐ to mark the correct answer)' : '') + '</label>' +
+    (sl.options || []).map(function (o, i) {
+      return '<div style="display:flex;gap:6px;align-items:center;margin-top:4px">' +
+        (meta.graded ? '<button class="bigbtn' + (sl.correctIndex === i ? ' gold' : ' ghost') + '" style="padding:6px 9px;font-size:11px" onclick="liveSlideSetCorrect(' + i + ')">' + (sl.correctIndex === i ? '⭐' : '☆') + '</button>' : '') +
+        '<input value="' + esc(o) + '" style="flex:1" onchange="L.liveEditingSlide.slide.options[' + i + ']=this.value" placeholder="Option ' + (i + 1) + '"/>' +
+        '<button class="bigbtn red" style="padding:6px 9px;font-size:9px" onclick="liveSlideOptionRemove(' + i + ')">✕</button></div>';
+    }).join('') +
+    '<button class="bigbtn ghost" style="margin-top:6px;padding:6px 12px;font-size:9px" onclick="liveSlideOptionAdd()">+ ADD OPTION</button>'
+  ) : '';
+  const timerHtml = meta.hasTimer ? ('<label style="margin-top:10px">Time Limit (seconds, 0 = no limit)</label><input type="number" value="' + (sl.seconds || 0) + '" onchange="L.liveEditingSlide.slide.seconds=parseInt(this.value)||0"/>') : '';
+  const rewardHtml = !meta.timerOnly ? (
+    '<label style="margin-top:10px">Reward XC' + (meta.graded ? ' (correct answer only, granted on Reveal)' : ' (granted on Reveal)') + '</label><input type="number" value="' + (sl.rewardXc || 0) + '" onchange="L.liveEditingSlide.slide.rewardXc=parseInt(this.value)||0"/>' +
+    '<label style="margin-top:8px">Reward Badge</label>' + badgeSelectHtml(sl.rewardBadgeId, 'L.liveEditingSlide.slide.rewardBadgeId')
+  ) : '';
+  modal(
+    '<div class="cardT">' + (ed.idx === -1 ? 'Add Slide' : 'Edit Slide') + '</div>' +
+    '<label>Type</label><select onchange="liveSlideTypeChange(this.value)">' + typeOptions + '</select>' +
+    '<label style="margin-top:10px">Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
+    (meta.timerOnly ? '' : ('<label style="margin-top:10px">' + (meta.hasOptions ? 'Prompt' : 'Content') + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value">' + esc(sl.prompt) + '</textarea>')) +
+    optionsHtml + timerHtml + rewardHtml +
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSlideForm()">SAVE SLIDE</button><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
+  );
+}
+function slideRowHtml(sl, i) {
+  const meta = slideTypeMeta(sl.type);
+  return '<div class="feedrow" style="align-items:center">' +
+    '<div style="flex:1;min-width:0;cursor:pointer" onclick="liveEditSlide(' + i + ')">' + meta.icon + ' <b>' + esc(sl.title || '(untitled)') + '</b>' +
+    '<div style="font-size:10px;color:#8a93b8">' + esc(meta.label) + (sl.rewardXc ? ' · +' + sl.rewardXc + ' XC' : '') + '</div></div>' +
+    '<span class="t" style="display:flex;gap:4px">' +
+    '<button class="bigbtn ghost" style="padding:5px 8px;font-size:9px" onclick="liveMoveSlide(' + i + ',-1)">↑</button>' +
+    '<button class="bigbtn ghost" style="padding:5px 8px;font-size:9px" onclick="liveMoveSlide(' + i + ',1)">↓</button>' +
+    '<button class="bigbtn ghost" style="padding:5px 8px;font-size:9px" onclick="liveEditSlide(' + i + ')">EDIT</button>' +
+    '<button class="bigbtn red" style="padding:5px 8px;font-size:9px" onclick="liveDeleteSlide(' + i + ')">✕</button>' +
+    '</span></div>';
+}
+function rLive() { return L.liveEditingSession ? rLiveBuilder() : rLiveList(); }
+function rLiveList() {
+  const active = (L.sessions || []).filter(function (s) { return s.status !== 'archived'; });
+  const groups = { scheduled: [], active: [], ended: [] };
+  active.forEach(function (s) { (groups[s.status] || groups.scheduled).push(s); });
+  function sessionRow(s) {
+    const slideCount = (s.slides || []).length;
+    const scope = s.allCohorts ? 'All players' : ((s.cohorts || []).join(', ') || 'No cohort set');
+    return '<div class="feedrow" style="align-items:center">' +
+      '<div style="flex:1;min-width:0"><b>' + esc(s.title || 'Untitled Session') + '</b>' +
+      '<div style="font-size:10px;color:#8a93b8">' + slideCount + ' slide' + (slideCount === 1 ? '' : 's') + ' · ' + esc(scope) + '</div></div>' +
+      '<span class="t" style="display:flex;gap:6px">' +
+      '<button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="liveEditSession(\'' + esc(s.id) + '\')">EDIT</button>' +
+      '<button class="bigbtn red" style="padding:6px 10px;font-size:9px" onclick="liveDeleteSessionPrompt(\'' + esc(s.id) + '\')">DELETE</button>' +
+      '</span></div>';
+  }
+  return '<div class="card"><div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 Live Sessions' +
+    '<button class="bigbtn green" style="margin-left:auto;padding:8px 14px;font-size:10px" onclick="liveNewSession()">+ NEW SESSION</button></div>' +
+    (groups.active.length ? ('<div style="font-size:10px;color:#7dffb8;margin:10px 0 4px;text-transform:uppercase;font-family:Audiowide">🟢 Active</div>' + groups.active.map(sessionRow).join('')) : '') +
+    '<div style="font-size:10px;color:#8a93b8;margin:14px 0 4px;text-transform:uppercase;font-family:Audiowide">Scheduled</div>' +
+    (groups.scheduled.length ? groups.scheduled.map(sessionRow).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No sessions yet — build your first one.</div>') +
+    (groups.ended.length ? ('<div style="font-size:10px;color:#8a93b8;margin:14px 0 4px;text-transform:uppercase;font-family:Audiowide">Ended</div>' + groups.ended.map(sessionRow).join('')) : '') +
+    '</div>';
+}
+function rLiveBuilder() {
+  const s = L.liveEditingSession;
+  const cs = cohortList();
+  return '<div class="card">' +
+    '<div class="cardT" style="display:flex;align-items:center;gap:10px">' + (s.updatedAt && s.createdAt !== s.updatedAt ? 'Edit Session' : 'New Session') +
+    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveCancelEdit()">← BACK</button></div>' +
+    '<label>Session Title</label><input value="' + esc(s.title) + '" onchange="L.liveEditingSession.title=this.value" placeholder="e.g. Friday Quiz Bowl"/>' +
+    '<label style="margin-top:10px">Who is this for?</label>' +
+    '<div style="display:flex;gap:14px;align-items:center;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (s.allCohorts ? 'checked' : '') + ' onchange="L.liveEditingSession.allCohorts=this.checked;render()"/> All players</label></div>' +
+    (!s.allCohorts ? ('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + cs.map(function (c) {
+      return '<label style="display:flex;gap:5px;align-items:center;font-size:12px;text-transform:none;font-family:inherit"><input type="checkbox" style="width:auto" ' + ((s.cohorts || []).indexOf(c) !== -1 ? 'checked' : '') + ' onchange="liveToggleCohort(' + JSON.stringify(c) + ',this.checked)"/>' + esc(c) + '</label>';
+    }).join('') + '</div>') : '') +
+    '</div>' +
+    '<div class="card" style="margin-top:14px"><div class="cardT">🎁 Session Rewards</div>' +
+    '<label>Attendance XC (granted on join)</label><input type="number" value="' + (s.rewards.attendanceXc || 0) + '" onchange="L.liveEditingSession.rewards.attendanceXc=parseInt(this.value)||0"/>' +
+    '<label style="margin-top:8px">Attendance Badge</label>' + badgeSelectHtml(s.rewards.attendanceBadgeId, 'L.liveEditingSession.rewards.attendanceBadgeId') +
+    '<label style="margin-top:8px">Completion XC (granted on End)</label><input type="number" value="' + (s.rewards.completionXc || 0) + '" onchange="L.liveEditingSession.rewards.completionXc=parseInt(this.value)||0"/>' +
+    '<label style="margin-top:8px">Completion Badge</label>' + badgeSelectHtml(s.rewards.completionBadgeId, 'L.liveEditingSession.rewards.completionBadgeId') +
+    '</div>' +
+    '<div class="card" style="margin-top:14px"><div class="cardT" style="display:flex;align-items:center;gap:10px">Slides (' + s.slides.length + ')' +
+    '<button class="bigbtn green" style="margin-left:auto;padding:7px 12px;font-size:9px" onclick="liveAddSlide()">+ ADD SLIDE</button></div>' +
+    (s.slides.length ? s.slides.map(function (sl, i) { return slideRowHtml(sl, i); }).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No slides yet.</div>') +
+    '</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSessionForm()">💾 SAVE SESSION</button>' +
+    '<button class="bigbtn ghost" onclick="liveCancelEdit()">CANCEL</button></div>';
 }
 
 // ── TEAMS view ──
