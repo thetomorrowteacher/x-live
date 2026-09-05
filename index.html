@@ -5,6 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.13, Sept 5 2026 — PATCH X-LIVE v0.13 (Phase 1a of the Native
+     Live Sessions plan): merge-safe session data layer. New L.sessions
+     state + loadSessions()/saveSession(sess), reusing the SAME Supabase
+     app_data key ('sessions') Mission Control's mcSessions already writes,
+     but read-merge-write instead of a wholesale-array sync — mergeSession()
+     unions liveParticipants by player id, unions each slide's responses by
+     player id (two students answering at once never clobber each other),
+     never lets a stale poll resurrect a session another client already
+     ended (terminal status always wins), and never shrinks the awardedTo
+     dedupe list. No UI yet — this phase is the data layer only; Phase 1b
+     adds the native host session-building UI, Phase 2 adds GO LIVE/run
+     controls/player experience/real reward wiring, Phase 3 retires Mission
+     Control's old Live Session systems and ships the link+QR broadcast
+     tool. See pflx-pathway-portal/docs/HANDOFF.md for the full writeup.
+     v0.12, Sept 5 2026 — real Primary/Premium Digital Badges + relevant
+     Upgrades/Taxes/Fines from X-Coin (loadCoinCategories/loadModifiers,
+     grantBadge/applyModifier, badgeModal/modifierModal); v0.11 removed the
+     duplicate Group Maker card from Tools (TEAMS tab already covers it)
+     and dropped the ClassDojo mention from the Noise Meter description;
      X-LIVE v0.10 (renamed from PFLX Live, Sept 5 2026 — PATCH X-LIVE
      v0.10: full external rebrand. GitHub repo + Pages URL renamed
      pflx-lite -> x-live (https://thetomorrowteacher.github.io/x-live);
@@ -242,8 +261,9 @@ const L = {
   cfg: null, activity: [], selected: {}, timers: {},
   badges: [],           // flattened Primary+Premium Digital Badges from X-Coin's real catalog (coinCategories)
   modifiers: [],        // flattened host-triggerable Upgrades/Taxes/Fines from X-Coin's real catalog (modifiers)
+  sessions: [],          // native X-Live Live Sessions (host-authored + live-run) — merge-safe, see mergeSession()
   rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
-  loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false }
+  loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false }
 };
 
 const DEFAULT_CFG = {
@@ -438,6 +458,113 @@ async function loadModifiers() {
     }
   } catch (e) {}
   L.loaded.modifiers = true; render();
+}
+// ─── Native Live Sessions: merge-safe data layer (Patch C1) ────────────────
+// Reuses the SAME Supabase app_data key ('sessions') Mission Control's
+// mcSessions already writes, but read-merge-writes it instead of the
+// wholesale-array sync MC uses today — per the persistence-guardrail
+// discipline, a synced collection must never be blindly overwritten.
+function mergeSession(local, incoming) {
+  // Merges ONE session (matched by id) — never a wholesale overwrite. The
+  // side with the newer updatedAt wins on plain fields (title, mode,
+  // currentSlideIndex, hostControls, rewards, ...), but liveParticipants,
+  // each slide's responses, the awardedTo dedupe list, and a terminal
+  // (ended/archived) status are explicitly unioned/protected below so a
+  // stale poll can never drop a concurrent join/response or resurrect an
+  // ended session.
+  if (!local) return incoming;
+  if (!incoming) return local;
+  const localNewer = (local.updatedAt || 0) >= (incoming.updatedAt || 0);
+  const merged = localNewer ? Object.assign({}, incoming, local) : Object.assign({}, local, incoming);
+
+  // liveParticipants — union by player id, keep the later joinedAt per id
+  const partById = {};
+  (incoming.liveParticipants || []).forEach(function (p) { partById[p.id] = p; });
+  (local.liveParticipants || []).forEach(function (p) {
+    const existing = partById[p.id];
+    if (!existing || (p.joinedAt || 0) >= (existing.joinedAt || 0)) partById[p.id] = p;
+  });
+  merged.liveParticipants = Object.keys(partById).map(function (k) { return partById[k]; });
+
+  // slides — index-aligned (the slide list itself is authored, not
+  // concurrently reordered live); each slide's responses union by player id
+  // so two students answering at once never clobber each other.
+  const localSlides = local.slides || [];
+  const incomingSlides = incoming.slides || [];
+  const maxLen = Math.max(localSlides.length, incomingSlides.length);
+  const mergedSlides = [];
+  for (let i = 0; i < maxLen; i++) {
+    const ls = localSlides[i], is = incomingSlides[i];
+    if (!ls) { mergedSlides.push(is); continue; }
+    if (!is) { mergedSlides.push(ls); continue; }
+    const slideMerged = localNewer ? Object.assign({}, is, ls) : Object.assign({}, ls, is);
+    slideMerged.responses = Object.assign({}, is.responses || {}, ls.responses || {});
+    mergedSlides.push(slideMerged);
+  }
+  merged.slides = mergedSlides;
+
+  // one-off picks — last-write-wins on their own timestamp, independent of
+  // the session's overall updatedAt (a PICK can happen between saves)
+  if ((incoming.lastRandomPickAt || 0) > (local.lastRandomPickAt || 0)) {
+    merged.lastRandomPickId = incoming.lastRandomPickId; merged.lastRandomPickAt = incoming.lastRandomPickAt;
+  } else {
+    merged.lastRandomPickId = local.lastRandomPickId; merged.lastRandomPickAt = local.lastRandomPickAt;
+  }
+  if ((incoming.lastGroupPickAt || 0) > (local.lastGroupPickAt || 0)) {
+    merged.lastGroupPick = incoming.lastGroupPick; merged.lastGroupPickAt = incoming.lastGroupPickAt;
+  } else {
+    merged.lastGroupPick = local.lastGroupPick; merged.lastGroupPickAt = local.lastGroupPickAt;
+  }
+
+  // awardedTo — union, never shrinks (a player must never be able to
+  // re-collect an attendance/completion award because a stale poll dropped
+  // their id from this list)
+  const awardSet = {};
+  (incoming.awardedTo || []).forEach(function (id) { awardSet[id] = true; });
+  (local.awardedTo || []).forEach(function (id) { awardSet[id] = true; });
+  merged.awardedTo = Object.keys(awardSet);
+
+  // status — a terminal (ended/archived) status always wins over a
+  // non-terminal one, from EITHER side, so a stale poll can never
+  // resurrect a session another client already ended.
+  const TERMINAL = { ended: 1, archived: 1 };
+  if (TERMINAL[incoming.status] && !TERMINAL[local.status]) merged.status = incoming.status;
+  else if (TERMINAL[local.status] && !TERMINAL[incoming.status]) merged.status = local.status;
+  else merged.status = localNewer ? local.status : incoming.status;
+
+  return merged;
+}
+function mergeSessionList(localList, incomingList) {
+  // Union two session arrays by id, merging any session present in both.
+  const byId = {};
+  (incomingList || []).forEach(function (s) { byId[s.id] = s; });
+  (localList || []).forEach(function (s) { byId[s.id] = mergeSession(s, byId[s.id]); });
+  return Object.keys(byId).map(function (k) { return byId[k]; });
+}
+async function loadSessions() {
+  try {
+    const cloud = await kvLoad('sessions');
+    if (Array.isArray(cloud)) L.sessions = mergeSessionList(L.sessions, cloud);
+  } catch (e) {}
+  L.loaded.sessions = true;
+  render();
+}
+async function saveSession(sess) {
+  // Read-merge-write: fetch the CURRENT cloud sessions array, merge this
+  // one session's local mutation into it (never overwrite the whole array
+  // with our possibly-stale local copy), then write the merged array back.
+  sess.updatedAt = Date.now();
+  let cloud = [];
+  try {
+    const c = await kvLoad('sessions');
+    if (Array.isArray(c)) cloud = c;
+  } catch (e) {}
+  const idx = cloud.findIndex(function (s) { return s.id === sess.id; });
+  const savedSess = idx === -1 ? sess : mergeSession(sess, cloud[idx]);
+  if (idx === -1) cloud.push(savedSess); else cloud[idx] = savedSess;
+  L.sessions = mergeSessionList(L.sessions, cloud);
+  await kvSave('sessions', cloud);
+  return savedSess;
 }
 async function loadActivity() {
   try {
@@ -1246,8 +1373,9 @@ function confirmUpgrade(i) {
 // ── BOOT ──
 adoptFromParams();
 render();
-loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers();
+loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers(); loadSessions();
 setInterval(loadActivity, 60000);
+setInterval(loadSessions, 60000); // C1: data-layer poll only (no live-running UI yet); C3 drops this to 5s while a session is actually live
 </script>
 </body>
 </html>
