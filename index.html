@@ -32,7 +32,7 @@
      futuristic HUD redesign: #hudbg animated background layer,
      card/tab/button HUD styling, PFLX_LOGO_MARK branding; v0.4 wired
      roster to live Console data.
-     ONE standalone classroom app — ClassDojo speed, Classcraft game
+     ONE standalone classroom app — fast live-class energy, RPG-style game
      layer, powered by the PFLX economy that already exists. Now also
      reflects the Console's own Live Sessions (join code / roster /
      status) when a host starts one — see the LIVE banner + L.liveSession.
@@ -817,7 +817,7 @@ function rBoards() {
       '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '"><div class="pos">' + (i === 0 ? '👑' : i + 1) + '</div>' +
       '<div style="width:16px;height:16px;border-radius:5px;background:' + teamColor(r.team) + '"></div>' +
       '<div class="nm">' + esc(r.team) + '</div><div class="val">' + r.v.toLocaleString() + ' XC</div></div>').join('')
-      : '<div style="color:#8a93b8;font-size:12px;padding:16px">No teams yet — make some in TOOLS → Group Maker.</div>';
+      : '<div style="color:#8a93b8;font-size:12px;padding:16px">No teams yet — make some in the TEAMS tab.</div>';
   } else {
     rows = shown.map((r, i) =>
       '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '"><div class="pos">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div>' +
