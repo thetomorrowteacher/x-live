@@ -5,6 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.15, Sept 5 2026 — PATCH X-LIVE v0.15 (Phase 2 of the Native
+     Live Sessions plan): GO LIVE, host run controls, the player-side
+     live experience, and real reward wiring. Host GO LIVE (from a
+     scheduled session) seeds currentSlideIndex/hostControls and opens a
+     run panel (rLiveRun) with NEXT/PREV/REVEAL, PAUSE, LOCK RESPONSES,
+     and FREEZE; PICK links to the existing Randomizer (wheelOpen(), as-
+     is) and MAKE GROUPS links to the Teams tab, per the plan's own "no
+     new code needed" call. Players see a JOIN banner
+     (nativeLiveSessionBanner) on their own screens for any active
+     session matching their cohort scope; a native live screen
+     (rLiveNative) renders the current slide per type and submits
+     responses through v0.13's merge-safe saveSession(). Rewards are now
+     wired for real (fixing v0.13/v0.14's stated no-op): attendance XC/
+     badge on JOIN, completion XC/badge on END, and per-slide correct-
+     answer XC/badge on REVEAL — every grant is deduped through the
+     session's shared awardedTo[] list so a stale re-poll or a repeated
+     host action can never double-grant. Sessions now poll every 5s
+     while actually live/relevant to this client (scheduleSessionsPoll),
+     falling back to v0.13's 60s cadence otherwise. See
+     pflx-pathway-portal/docs/HANDOFF.md for the full writeup.
      X-LIVE v0.14, Sept 5 2026 — PATCH X-LIVE v0.14 (Phase 1b of the Native
      Live Sessions plan): native host session-building UI. New 🔴 LIVE host
      tab (rLive/rLiveList/rLiveBuilder); a slide builder for 10 v1 slide
@@ -278,6 +298,7 @@ const L = {
   sessions: [],          // native X-Live Live Sessions (host-authored + live-run) — merge-safe, see mergeSession()
   liveEditingSession: null, // session object currently being authored, or null = showing the session list
   liveEditingSlide: null,   // {idx, slide} being edited in the slide modal, or null
+  liveRunningSessionId: null, // host: id of the session whose RUN PANEL is open (Phase 2 GO LIVE/NEXT/PREV/REVEAL/PAUSE/LOCK/FREEZE/END)
   rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
   loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false }
 };
@@ -888,6 +909,10 @@ function render() {
     app.innerHTML = rLiveAgenda();
     return;
   }
+  if (L.screen === 'livenative') {
+    app.innerHTML = rLiveNative();
+    return;
+  }
   const tabs = L.isHost
     ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
     : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
@@ -897,7 +922,7 @@ function render() {
     (L.isHost ? 'Host Dashboard · ' + esc(L.cfg.cohort || 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
     (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
-    liveSessionBanner() +
+    liveSessionBanner() + nativeLiveSessionBanner() +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
     ({ class: rClass, live: rLive, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
@@ -1139,7 +1164,14 @@ function slideRowHtml(sl, i) {
     '<button class="bigbtn red" style="padding:5px 8px;font-size:9px" onclick="liveDeleteSlide(' + i + ')">✕</button>' +
     '</span></div>';
 }
-function rLive() { return L.liveEditingSession ? rLiveBuilder() : rLiveList(); }
+function rLive() {
+  if (L.liveRunningSessionId) {
+    const running = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; });
+    if (running && running.status === 'active') return rLiveRun(running);
+    L.liveRunningSessionId = null;
+  }
+  return L.liveEditingSession ? rLiveBuilder() : rLiveList();
+}
 function rLiveList() {
   const active = (L.sessions || []).filter(function (s) { return s.status !== 'archived'; });
   const groups = { scheduled: [], active: [], ended: [] };
@@ -1147,10 +1179,13 @@ function rLiveList() {
   function sessionRow(s) {
     const slideCount = (s.slides || []).length;
     const scope = s.allCohorts ? 'All players' : ((s.cohorts || []).join(', ') || 'No cohort set');
+    const partCount = (s.liveParticipants || []).length;
     return '<div class="feedrow" style="align-items:center">' +
       '<div style="flex:1;min-width:0"><b>' + esc(s.title || 'Untitled Session') + '</b>' +
-      '<div style="font-size:10px;color:#8a93b8">' + slideCount + ' slide' + (slideCount === 1 ? '' : 's') + ' · ' + esc(scope) + '</div></div>' +
-      '<span class="t" style="display:flex;gap:6px">' +
+      '<div style="font-size:10px;color:#8a93b8">' + slideCount + ' slide' + (slideCount === 1 ? '' : 's') + ' · ' + esc(scope) + (s.status === 'active' ? ' · ' + partCount + ' joined' : '') + '</div></div>' +
+      '<span class="t" style="display:flex;gap:6px;flex-wrap:wrap">' +
+      (s.status === 'scheduled' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveGoLiveSession(\'' + esc(s.id) + '\')">🔴 GO LIVE</button>' : '') +
+      (s.status === 'active' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveManageSession(\'' + esc(s.id) + '\')">▶ MANAGE</button>' : '') +
       '<button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="liveEditSession(\'' + esc(s.id) + '\')">EDIT</button>' +
       '<button class="bigbtn red" style="padding:6px 10px;font-size:9px" onclick="liveDeleteSessionPrompt(\'' + esc(s.id) + '\')">DELETE</button>' +
       '</span></div>';
@@ -1188,6 +1223,227 @@ function rLiveBuilder() {
     '</div>' +
     '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSessionForm()">💾 SAVE SESSION</button>' +
     '<button class="bigbtn ghost" onclick="liveCancelEdit()">CANCEL</button></div>';
+}
+
+// ── LIVE SESSIONS — GO LIVE / RUN CONTROLS / PLAYER EXPERIENCE (Phase 2 of
+//    the Native Live Sessions plan) -----------------------------------
+// Every write here goes through Phase 1a's merge-safe saveSession() — no
+// new persistence path. Reward dedupe reuses the SAME session-level
+// awardedTo[] list Phase 1b already carried (composite keys
+// 'attend:'/'complete:'/'slide:<id>:' + playerId), so a stale re-poll can
+// never double-grant — same discipline the pflx-persistence-guardrail
+// skill requires.
+function grantSessionReward(pid, xc, badgeId, reason) {
+  if (xc) { postAward(pid, { xc: xc, reason: reason }); liteLog(pid, 'session-reward', reason, xc); }
+  if (badgeId) {
+    const b = L.badges.find(function (x) { return x.id === badgeId; });
+    if (b) {
+      postAward(pid, { badge: { id: b.id, name: b.name, category: b.category || 'primary', xc: b.xc || 0, image: b.image || '' }, reason: reason + ':badge' });
+      liteLog(pid, 'session-badge', b.name, b.xc || 0);
+    }
+  }
+}
+async function liveGoLiveSession(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; }); if (!s) return;
+  if (!s.slides || !s.slides.length) { toast('Add at least one slide before going live'); return; }
+  s.status = 'active';
+  s.currentSlideIndex = 0;
+  s.hostControls = { paused: false, responsesLocked: false, slideFrozen: false };
+  await saveSession(s);
+  L.liveRunningSessionId = s.id;
+  L.liveEditingSession = null;
+  render();
+  toast('🔴 Session is LIVE' + (L.demo ? ' (demo)' : ''));
+}
+function liveManageSession(id) { L.liveRunningSessionId = id; render(); }
+function liveExitRun() { L.liveRunningSessionId = null; render(); }
+function liveMoveCurrentSlide(dir) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  const j = (s.currentSlideIndex || 0) + dir;
+  if (j < 0 || j >= s.slides.length) return;
+  s.currentSlideIndex = j;
+  saveSession(s); render();
+}
+function liveToggleControl(key) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.hostControls = s.hostControls || { paused: false, responsesLocked: false, slideFrozen: false };
+  s.hostControls[key] = !s.hostControls[key];
+  saveSession(s); render();
+}
+function liveRevealSlide() {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  const sl = s.slides[s.currentSlideIndex || 0]; if (!sl) return;
+  const meta = slideTypeMeta(sl.type);
+  sl.revealed = true;
+  if (meta.graded && sl.rewardXc) {
+    s.awardedTo = s.awardedTo || [];
+    Object.keys(sl.responses || {}).forEach(function (pid) {
+      const r = sl.responses[pid];
+      if (r && r.value === sl.correctIndex) {
+        const key = 'slide:' + sl.id + ':' + pid;
+        if (s.awardedTo.indexOf(key) === -1) {
+          s.awardedTo.push(key);
+          grantSessionReward(pid, sl.rewardXc, sl.rewardBadgeId, 'xlive-session:' + s.id + ':slide:' + sl.id);
+        }
+      }
+    });
+  }
+  saveSession(s); render();
+}
+function liveEndSessionPrompt() {
+  modal('<div class="cardT">End this Live Session?</div>' +
+    '<div style="font-size:12px;color:#aeb6d8">This grants completion rewards to everyone who joined, then marks the session Ended.</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px">' +
+    '<button class="bigbtn red" onclick="modalClose();liveEndSession()">END SESSION</button>' +
+    '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+async function liveEndSession() {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.status = 'ended';
+  s.awardedTo = s.awardedTo || [];
+  (s.liveParticipants || []).forEach(function (p) {
+    const key = 'complete:' + s.id + ':' + p.id;
+    if (s.awardedTo.indexOf(key) === -1 && (s.rewards.completionXc || s.rewards.completionBadgeId)) {
+      s.awardedTo.push(key);
+      grantSessionReward(p.id, s.rewards.completionXc, s.rewards.completionBadgeId, 'xlive-session:' + s.id + ':complete');
+    }
+  });
+  await saveSession(s);
+  L.liveRunningSessionId = null;
+  render();
+  toast('🏁 Session ended' + (L.demo ? ' (demo)' : ''));
+}
+function rLiveRun(s) {
+  const idx = s.currentSlideIndex || 0;
+  const sl = s.slides[idx];
+  const meta = sl ? slideTypeMeta(sl.type) : null;
+  const hc = s.hostControls || {};
+  const respCount = sl ? Object.keys(sl.responses || {}).length : 0;
+  return '<div class="card">' +
+    '<div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 ' + esc(s.title || 'Live Session') +
+    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveExitRun()">← BACK</button></div>' +
+    '<div style="font-size:11px;color:#8a93b8;margin-bottom:10px">' + (s.liveParticipants || []).length + ' joined · slide ' + (idx + 1) + ' of ' + s.slides.length + '</div>' +
+    (sl ? (
+      '<div class="card" style="background:rgba(255,255,255,0.03)">' +
+      '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '(untitled)') + '</div>' +
+      (sl.prompt ? '<div style="font-size:13px;color:#c9cfe8;margin:6px 0">' + esc(sl.prompt) + '</div>' : '') +
+      (meta.hasOptions ? '<div style="font-size:11px;color:#8a93b8;margin-top:6px">' + (sl.options || []).map(function (o, i) { return (meta.graded && i === sl.correctIndex ? '⭐ ' : '') + esc(o); }).join(' · ') + '</div>' : '') +
+      '<div style="font-size:11px;color:#7dffb8;margin-top:8px">' + respCount + ' response' + (respCount === 1 ? '' : 's') + (sl.revealed ? ' · revealed' : '') + '</div>' +
+      '</div>'
+    ) : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No slides in this session.</div>') +
+    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
+    '<button class="bigbtn ghost" style="' + (idx <= 0 ? 'opacity:0.35' : '') + '" ' + (idx <= 0 ? 'disabled' : '') + ' onclick="liveMoveCurrentSlide(-1)">⬅ PREV</button>' +
+    '<button class="bigbtn ghost" style="' + (!sl || idx >= s.slides.length - 1 ? 'opacity:0.35' : '') + '" ' + (!sl || idx >= s.slides.length - 1 ? 'disabled' : '') + ' onclick="liveMoveCurrentSlide(1)">NEXT ➡</button>' +
+    (sl && meta && meta.graded && !sl.revealed ? '<button class="bigbtn gold" onclick="liveRevealSlide()">✨ REVEAL</button>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+    '<button class="bigbtn ' + (hc.paused ? 'red' : 'ghost') + '" onclick="liveToggleControl(\'paused\')">' + (hc.paused ? '▶ RESUME' : '⏸ PAUSE') + '</button>' +
+    '<button class="bigbtn ' + (hc.responsesLocked ? 'red' : 'ghost') + '" onclick="liveToggleControl(\'responsesLocked\')">' + (hc.responsesLocked ? '🔓 UNLOCK RESPONSES' : '🔒 LOCK RESPONSES') + '</button>' +
+    '<button class="bigbtn ' + (hc.slideFrozen ? 'red' : 'ghost') + '" onclick="liveToggleControl(\'slideFrozen\')">' + (hc.slideFrozen ? '🔥 UNFREEZE' : '❄️ FREEZE') + '</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+    '<button class="bigbtn ghost" onclick="wheelOpen()">🎯 PICK A PLAYER</button>' +
+    '<button class="bigbtn ghost" onclick="go(\'teams\');toast(\'Use the Teams tab to draft/shuffle groups for this session.\')">👥 MAKE GROUPS</button>' +
+    '</div>' +
+    '<div style="margin-top:14px"><button class="bigbtn red" onclick="liveEndSessionPrompt()">🏁 END SESSION</button></div>' +
+    '</div>';
+}
+// Player side: which active session (if any) currently applies to me, by
+// cohort scope — same matching logic as the old sessionAppliesToMe(), just
+// against L.sessions instead of the Mission-Control-driven L.liveSession.
+function nativeSessionAppliesToMe() {
+  const myId = (L.me && L.me.id) || '';
+  return (L.sessions || []).find(function (s) {
+    if (s.status !== 'active') return false;
+    if (s.allCohorts || !s.cohorts || !s.cohorts.length) return true;
+    const mine = (L.roster.find(function (r) { return r.id === myId; }) || {}).cohort || '';
+    return s.cohorts.indexOf(mine) !== -1;
+  }) || null;
+}
+function nativeLiveSessionBanner() {
+  if (L.isHost) return '';
+  const s = nativeSessionAppliesToMe(); if (!s) return '';
+  const myId = (L.me && L.me.id) || '';
+  const joined = (s.liveParticipants || []).some(function (p) { return p.id === myId; });
+  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.35);border-radius:12px;padding:10px 14px;margin-bottom:12px;">' +
+    '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">🔴 LIVE</span>' +
+    '<span style="font-size:13px;font-weight:700;color:#f0f0ff;">' + esc(s.title || 'Session') + '</span>' +
+    '<span style="flex:1"></span>' +
+    '<button class="bigbtn gold" style="padding:7px 14px;font-size:10px" onclick="liveJoinSession(\'' + esc(s.id) + '\')">' + (joined ? 'REJOIN' : 'JOIN') + '</button>' +
+    '</div>';
+}
+async function liveJoinSession(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; }); if (!s) return;
+  const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  s.liveParticipants = s.liveParticipants || [];
+  if (!s.liveParticipants.some(function (p) { return p.id === myId; })) s.liveParticipants.push({ id: myId, joinedAt: Date.now() });
+  s.awardedTo = s.awardedTo || [];
+  const key = 'attend:' + s.id + ':' + myId;
+  if (s.awardedTo.indexOf(key) === -1 && (s.rewards.attendanceXc || s.rewards.attendanceBadgeId)) {
+    s.awardedTo.push(key);
+    grantSessionReward(myId, s.rewards.attendanceXc, s.rewards.attendanceBadgeId, 'xlive-session:' + s.id + ':attend');
+  }
+  await saveSession(s);
+  go('livenative');
+}
+async function liveSubmitChoice(choiceIdx) {
+  const s = nativeSessionAppliesToMe(); if (!s) return;
+  const hc = s.hostControls || {}; if (hc.responsesLocked) return;
+  const sl = s.slides[s.currentSlideIndex || 0]; if (!sl) return;
+  const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  sl.responses = sl.responses || {};
+  if (sl.responses[myId]) return;
+  sl.responses[myId] = { value: choiceIdx, at: Date.now() };
+  await saveSession(s);
+  render();
+}
+async function liveSubmitText() {
+  const s = nativeSessionAppliesToMe(); if (!s) return;
+  const hc = s.hostControls || {}; if (hc.responsesLocked) return;
+  const sl = s.slides[s.currentSlideIndex || 0]; if (!sl) return;
+  const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  const ta = document.getElementById('liveOpenResp'); const val = ta ? ta.value.trim() : '';
+  if (!val) return;
+  sl.responses = sl.responses || {};
+  if (sl.responses[myId]) return;
+  sl.responses[myId] = { value: val, at: Date.now() };
+  await saveSession(s);
+  render();
+}
+function rLiveNative() {
+  const s = nativeSessionAppliesToMe();
+  if (!s) return '<div class="card"><div class="cardT">Session ended</div><div style="font-size:12px;color:#8a93b8">This live session is no longer active.</div><button class="bigbtn ghost" style="margin-top:10px" onclick="go(\'me\')">← BACK</button></div>';
+  const hc = s.hostControls || {};
+  if (hc.slideFrozen) return '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
+  if (hc.paused) return '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
+  const idx = s.currentSlideIndex || 0;
+  const sl = s.slides[idx];
+  if (!sl) return '<div class="card"><div class="cardT">' + esc(s.title || 'Session') + '</div><div style="font-size:12px;color:#8a93b8">Waiting for the host to add slides…</div></div>';
+  const meta = slideTypeMeta(sl.type);
+  const myId = (L.me && L.me.id) || '';
+  const myResp = sl.responses ? sl.responses[myId] : null;
+  let body = '';
+  if (meta.hasOptions) {
+    body = (sl.options || []).map(function (o, i) {
+      const picked = myResp && myResp.value === i;
+      const showCorrect = sl.revealed && meta.graded && i === sl.correctIndex;
+      return '<button class="bigbtn ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (hc.responsesLocked || myResp ? ';opacity:0.6' : '') + '" ' +
+        (hc.responsesLocked || myResp ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')">' + esc(o) + (showCorrect ? ' ⭐' : '') + '</button>';
+    }).join('');
+  } else if (sl.type === 'open_response') {
+    body = '<textarea id="liveOpenResp" rows="3" placeholder="Type your response…" ' + (hc.responsesLocked || myResp ? 'disabled' : '') + '>' + (myResp ? esc(myResp.value) : '') + '</textarea>' +
+      (!myResp && !hc.responsesLocked ? '<button class="bigbtn gold" style="margin-top:8px" onclick="liveSubmitText()">SUBMIT</button>' : '');
+  } else if (sl.type === 'challenge' || sl.type === 'push_task') {
+    body = myResp ? '<div style="font-size:13px;color:#7dffb8;margin-top:8px">✅ Marked done</div>' : ('<button class="bigbtn gold" style="margin-top:8px" ' + (hc.responsesLocked ? 'disabled' : '') + ' onclick="liveSubmitChoice(1)">MARK DONE</button>');
+  } else if (sl.type === 'timer') {
+    body = '<div style="font-family:Audiowide;font-size:34px;color:#ffd166;text-align:center;margin-top:10px">' + (sl.seconds || 0) + 's</div>';
+  }
+  return '<div class="card">' +
+    '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
+    (sl.prompt ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
+    body +
+    (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
+    '</div>';
 }
 
 // ── TEAMS view ──
@@ -1609,7 +1865,11 @@ adoptFromParams();
 render();
 loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers(); loadSessions();
 setInterval(loadActivity, 60000);
-setInterval(loadSessions, 60000); // C1: data-layer poll only (no live-running UI yet); C3 drops this to 5s while a session is actually live
+function scheduleSessionsPoll() {
+  const hot = (L.isHost && L.liveRunningSessionId) || (!L.isHost && nativeSessionAppliesToMe());
+  setTimeout(async function () { await loadSessions(); scheduleSessionsPoll(); }, hot ? 5000 : 60000);
+}
+scheduleSessionsPoll(); // C3: 5s while a session is actually live/relevant to this client, else the same 60s cadence as C1
 </script>
 </body>
 </html>
