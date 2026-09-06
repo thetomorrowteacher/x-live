@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.17, Sept 6 2026 — PATCH X-LIVE v0.17: consumes the
+     xliveOnly=true flag the Platform's new /xlive restricted login
+     door (PATCH PLATFORM v1.138) carries on its SSO handoff URL.
+     adoptFromParams() now sets L.xliveOnly, and rPlay() hides the
+     Battle Arena "OPEN IN PLATFORM" dead-end card when it's set --
+     a player who logged in through /xlive only ever sees the
+     bundled Vault Rush mini-game, per Ennis's confirmed Battle
+     Arena scope answer. Closes out the X-Live Mode Login feature
+     (PATCH PLATFORM v1.136-v1.139 + this). See
+     pflx-pathway-portal/docs/HANDOFF.md for the full writeup.
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.16, Sept 6 2026 — PATCH X-LIVE v0.16 (Phase 3b of the
      Native Live Sessions plan, additive/no-risk -- ships independently
      of the Phase 3a Mission Control cutover): new Post a Link + QR
@@ -314,7 +327,8 @@ const L = {
   liveEditingSlide: null,   // {idx, slide} being edited in the slide modal, or null
   liveRunningSessionId: null, // host: id of the session whose RUN PANEL is open (Phase 2 GO LIVE/NEXT/PREV/REVEAL/PAUSE/LOCK/FREEZE/END)
   rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
-  loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false }
+  loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false },
+  xliveOnly: false // v0.17 -- true when this session arrived via the Platform's /xlive restricted door
 };
 
 const DEFAULT_CFG = {
@@ -346,6 +360,11 @@ function adoptFromParams() {
     L.me = { id: p.get('id') || '', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
     L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || p.get('host') === '1';
     L.demo = false;
+    // v0.17 -- carried by the Platform's /xlive restricted login door
+    // (pflxXLiveBuildRedirectURL in preview.html). Restricts this session
+    // to the bundled Vault Rush mini-game only, per Ennis's confirmed
+    // scope answer -- the full Battle Arena app stays out of scope.
+    L.xliveOnly = p.get('xliveOnly') === 'true';
     return true;
   } catch (e) { return false; }
 }
@@ -1910,8 +1929,9 @@ function rPlay() {
     '<div class="card"><div class="cardT">💰 Vault Rush</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Blooket-style class game: answer questions, crack vaults, steal gold. Everyone joins with the room code on the projector.</div>' +
     (L.isHost ? '<button class="bigbtn gold" onclick="location.href=\'games/vault-rush.html?host=1' + (L.demo ? '' : '&sso=pflx&id=' + encodeURIComponent(L.me.id) + '&brand=' + encodeURIComponent(L.me.brand) + '&host=1') + '\'">HOST A GAME</button>'
       : '<button class="bigbtn gold" onclick="joinRoomModal()">JOIN WITH CODE</button>') + '</div>' +
+    (L.xliveOnly ? '' :
     '<div class="card"><div class="cardT">🤖 Battle Arena</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">The full arena — EXO Clash and 18 more game modes — lives in the PFLX Platform.</div>' +
-    '<button class="bigbtn" onclick="toast(\'Open Battle Arena from the PFLX Platform menu\')">OPEN IN PLATFORM</button></div>' +
+    '<button class="bigbtn" onclick="toast(\'Open Battle Arena from the PFLX Platform menu\')">OPEN IN PLATFORM</button></div>') +
     (L.isHost ? '<div class="card"><div class="cardT">📚 Question Sets</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Create sets or import CSV (question,answer per line). Sets power Vault Rush.</div><button class="bigbtn" onclick="qsetsModal()">MANAGE SETS</button></div>' : '') +
     '</div>';
 }
