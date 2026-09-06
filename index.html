@@ -368,6 +368,25 @@ function adoptFromParams() {
     return true;
   } catch (e) { return false; }
 }
+// PATCH X-LIVE v0.20 -- handles the Console's 'open_session' handoff
+// (PATCH PLATFORM v1.141, redirecting its own native Live Session entry
+// points here). Looks up the session by CODE against the already-loaded
+// L.sessions (same Supabase app_data key as the Console's mcSessions --
+// no separate fetch needed) and lands the user on the right screen:
+// liveManageSession for a host (resume managing a session already live
+// elsewhere -- deliberately not liveGoLiveSession, which would re-run
+// go-live setup and refuse a session with no slides yet), liveJoinSession
+// for a player.
+function pflxTryOpenPendingSession() {
+  const code = L.pendingOpenSessionCode; if (!code) return;
+  if (!L.loaded.sessions || !L.me) return;
+  const s = L.sessions.find(function (x) { return x.code === code; });
+  if (!s) return;
+  L.pendingOpenSessionCode = null;
+  if (L.isHost) { liveManageSession(s.id); } else { liveJoinSession(s.id); }
+}
+window.pflxTryOpenPendingSession = pflxTryOpenPendingSession;
+
 window.addEventListener('message', function (e) {
   let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (er) { return; } }
   if (!m || !m.type) return;
@@ -375,6 +394,7 @@ window.addEventListener('message', function (e) {
     L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student' };
     L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || m.user.isHost === true;
     L.demo = false; resolveMyId(); render();
+    pflxTryOpenPendingSession();
   }
   if (m.type === 'pflx_player_changed' && m.player) {
     const p = L.roster.find(r => r.id === m.player.id);
@@ -397,6 +417,10 @@ window.addEventListener('message', function (e) {
     });
     if (L.screen === 'liveagenda' && L.liveSession.currentAgendaIndex !== prevIdx) startAgendaTimer();
     render();
+  }
+  if (m.type === 'pflx_mc_pflx_open_session' && m.data && m.data.code) {
+    L.pendingOpenSessionCode = m.data.code;
+    pflxTryOpenPendingSession();
   }
   if (m.type === 'pflx_mc_pflx_session_ended') {
     if (!L.liveSession || !m.data || L.liveSession.sessionId === m.data.sessionId) {
