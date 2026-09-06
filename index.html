@@ -1346,6 +1346,45 @@ async function liveEndSession() {
   render();
   toast('🏁 Session ended' + (L.demo ? ' (demo)' : ''));
 }
+
+// PATCH X-LIVE v0.19 -- Phase 1d: YouTube/OBS embed, an independent
+// broadcast mode alongside the LiveKit video room (Phase 1a-1c). No
+// server, no SDK -- the host runs OBS themselves and pastes the
+// resulting YouTube Live URL/ID here; every player's rLiveNative()
+// screen embeds it as a plain iframe. Kept as its own function (not an
+// inline regex) so it's independently testable, same convention as
+// pflxXLivePinMatches.
+function pflxYouTubeExtractId(input) {
+  if (!input) return null;
+  var s = String(input).trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  var m;
+  m = s.match(/[?&]v=([A-Za-z0-9_-]{11})/); if (m) return m[1];
+  m = s.match(/youtu\.be\/([A-Za-z0-9_-]{11})/); if (m) return m[1];
+  m = s.match(/youtube\.com\/live\/([A-Za-z0-9_-]{11})/); if (m) return m[1];
+  m = s.match(/youtube\.com\/embed\/([A-Za-z0-9_-]{11})/); if (m) return m[1];
+  return null;
+}
+window.pflxYouTubeExtractId = pflxYouTubeExtractId;
+
+async function liveSetYouTubeEmbedFromInput() {
+  const el = document.getElementById('liveYtInput');
+  const id = pflxYouTubeExtractId(el ? el.value : '');
+  if (!id) { toast('Could not find a YouTube video ID in that — paste the full Live URL or just the ID.'); return; }
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.youtubeEmbedId = id;
+  await saveSession(s);
+  render();
+  toast('📺 YouTube stream set for this session');
+}
+
+async function liveClearYouTubeEmbed() {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  delete s.youtubeEmbedId;
+  await saveSession(s);
+  render();
+}
+
 function rLiveRun(s) {
   const idx = s.currentSlideIndex || 0;
   const sl = s.slides[idx];
@@ -1356,6 +1395,17 @@ function rLiveRun(s) {
     '<div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 ' + esc(s.title || 'Live Session') +
     '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveExitRun()">← BACK</button></div>' +
     '<div style="font-size:11px;color:#8a93b8;margin-bottom:10px">' + (s.liveParticipants || []).length + ' joined · slide ' + (idx + 1) + ' of ' + s.slides.length + '</div>' +
+    '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
+      '<div class="cardT" style="font-size:12px">📺 YouTube/OBS Stream (optional)</div>' +
+      (s.youtubeEmbedId ?
+        ('<div style="font-size:11px;color:#7dffb8;margin:6px 0">Streaming: <code>' + esc(s.youtubeEmbedId) + '</code></div>' +
+         '<button class="bigbtn ghost" style="font-size:10px;padding:6px 12px" onclick="liveClearYouTubeEmbed()">STOP YOUTUBE STREAM</button>')
+      :
+        ('<div style="font-size:11px;color:#8a93b8;margin:6px 0">Start streaming in OBS to an unlisted YouTube Live broadcast, then paste the URL here.</div>' +
+         '<input type="text" id="liveYtInput" placeholder="YouTube Live URL or video ID" style="width:100%;margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff">' +
+         '<button class="bigbtn gold" style="font-size:10px;padding:6px 12px" onclick="liveSetYouTubeEmbedFromInput()">SET STREAM</button>')
+      ) +
+    '</div>' +
     (sl ? (
       '<div class="card" style="background:rgba(255,255,255,0.03)">' +
       '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '(untitled)') + '</div>' +
@@ -1447,11 +1497,12 @@ function rLiveNative() {
   const s = nativeSessionAppliesToMe();
   if (!s) return '<div class="card"><div class="cardT">Session ended</div><div style="font-size:12px;color:#8a93b8">This live session is no longer active.</div><button class="bigbtn ghost" style="margin-top:10px" onclick="go(\'me\')">← BACK</button></div>';
   const hc = s.hostControls || {};
-  if (hc.slideFrozen) return '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
-  if (hc.paused) return '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
+  const ytEmbed = s.youtubeEmbedId ? ('<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(sleubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>') : '';
+  if (hc.slideFrozen) return ytEmbed + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
+  if (hc.paused) return ytEmbed + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
   const idx = s.currentSlideIndex || 0;
   const sl = s.slides[idx];
-  if (!sl) return '<div class="card"><div class="cardT">' + esc(s.title || 'Session') + '</div><div style="font-size:12px;color:#8a93b8">Waiting for the host to add slides…</div></div>';
+  if (!sl) return ytEmbed + '<div class="card"><div class="cardT">' + esc(s.title || 'Session') + '</div><div style="font-size:12px;color:#8a93b8">Waiting for the host to add slides…</div></div>';
   const meta = slideTypeMeta(sl.type);
   const myId = (L.me && L.me.id) || '';
   const myResp = sl.responses ? sl.responses[myId] : null;
@@ -1471,7 +1522,7 @@ function rLiveNative() {
   } else if (sl.type === 'timer') {
     body = '<div style="font-family:Audiowide;font-size:34px;color:#ffd166;text-align:center;margin-top:10px">' + (sl.seconds || 0) + 's</div>';
   }
-  return '<div class="card">' +
+  return ytEmbed + '<div class="card">' +
     '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
     (sl.prompt ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
     body +
