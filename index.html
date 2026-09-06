@@ -1057,12 +1057,17 @@ function modifierModal() {
 // ── LIVE SESSIONS (host authoring, Phase 1b of the Native Live Sessions
 //    plan) ──────────────────────────────────────────────────────────────
 // v1 slide type set: 10 of the 12 types from Mission Control's original
-// authoring form. Deferred to backlog: whiteboard (needs the doodle-canvas
-// widget ported from preview.html) and embed (needs a CSP/security pass
-// first) — documented in the Handoff, not silently dropped. Grouping and
-// partnership are covered by this phase's session-level cohort/roster
-// scoping + the Randomizer/Teams tabs already in X-Live, so they are not
-// separate slide types here either.
+// authoring form, plus 3 iframe-based embed types added in PATCH X-LIVE
+// v0.21 (google_slides, google_doc, html_embed -- see meta.isEmbed).
+// Deferred to backlog: whiteboard (needs the doodle-canvas widget ported
+// from preview.html), a Canva embed slide (needs its own URL-format
+// check), a screen-share slide (depends on Phase 1b, blocked on the host's
+// LiveKit VPS), and a Play-tab embed (Vault Rush -- needs a design
+// decision on how its own room-code/scoring system relates to this
+// session model) — all documented in the Handoff, not silently dropped.
+// Grouping and partnership are covered by this phase's session-level
+// cohort/roster scoping + the Randomizer/Teams tabs already in X-Live, so
+// they are not separate slide types here either.
 const SLIDE_TYPES = [
   { key: 'text', label: 'Text / Announcement', icon: '📝', hasOptions: false, hasTimer: false, timerOnly: false },
   { key: 'media', label: 'Media', icon: '🖼️', hasOptions: false, hasTimer: false, timerOnly: false },
@@ -1073,9 +1078,81 @@ const SLIDE_TYPES = [
   { key: 'discussion', label: 'Discussion Prompt', icon: '💬', hasOptions: false, hasTimer: false, timerOnly: false },
   { key: 'timer', label: 'Timer', icon: '⏱️', hasOptions: false, hasTimer: true, timerOnly: true },
   { key: 'challenge', label: 'Challenge', icon: '🏆', hasOptions: false, hasTimer: true, timerOnly: false },
-  { key: 'push_task', label: 'Push Task', icon: '📤', hasOptions: false, hasTimer: false, timerOnly: false }
+  { key: 'push_task', label: 'Push Task', icon: '📤', hasOptions: false, hasTimer: false, timerOnly: false },
+  { key: 'google_slides', label: 'Google Slides Embed', icon: '📽️', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
+  { key: 'google_doc', label: 'Google Doc Embed', icon: '📄', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
+  { key: 'html_embed', label: 'HTML / Embed Code', icon: '🧩', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true }
 ];
 function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.key === key; }) || SLIDE_TYPES[0]; }
+
+// PATCH X-LIVE v0.21 -- embed slide types (google_slides, google_doc,
+// html_embed). All three reuse sl.prompt to hold whatever the host pasted
+// in (a share link, an embed link, a full <iframe> snippet, or a bare
+// URL) -- no slide-schema change needed, same pattern as the youtubeEmbedId
+// field on the session object.
+function liveSlideContentLabel(type) {
+  if (type === 'google_slides') return 'Google Slides link or embed code';
+  if (type === 'google_doc') return 'Google Doc link or embed code';
+  if (type === 'html_embed') return 'Embed URL or <iframe> code';
+  return null;
+}
+function liveSlideContentPlaceholder(type) {
+  if (type === 'google_slides') return 'Paste the Slides share link, or File > Share > Publish to web embed code';
+  if (type === 'google_doc') return 'Paste the Doc share link, or File > Share > Publish to web embed code';
+  if (type === 'html_embed') return 'Paste a URL, or a full <iframe> embed snippet';
+  return '';
+}
+// Rewrites a pasted Google Slides/Doc share link to its canonical
+// embeddable form. Re-running this on an already-embed link is a no-op in
+// effect (same id, same normalized query params) -- it's idempotent, not
+// a special case. Anything that isn't a recognized docs.google.com URL
+// passes through unchanged, so a host who pasted an <iframe> or some
+// other link isn't second-guessed.
+function pflxGoogleEmbedUrl(kind, input) {
+  if (!input) return null;
+  var s = String(input).trim();
+  var iframeMatch = s.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+  if (iframeMatch) s = iframeMatch[1];
+  if (!/^https?:\/\//i.test(s)) return null;
+  if (kind === 'google_slides') {
+    var m1 = s.match(/docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/);
+    if (m1) return 'https://docs.google.com/presentation/d/' + m1[1] + '/embed?start=false&loop=false&delayms=3000';
+    return s;
+  }
+  if (kind === 'google_doc') {
+    var m2 = s.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
+    if (m2) return 'https://docs.google.com/document/d/' + m2[1] + '/preview';
+    return s;
+  }
+  return s;
+}
+// Builds the iframe HTML for an embed-type slide. For google_slides/
+// google_doc, always renders via pflxGoogleEmbedUrl (a normal, unrestricted
+// iframe -- Google's own embeds need permissions a sandbox can't predict).
+// For html_embed, extracts a src from a pasted <iframe> or accepts a bare
+// URL the same unrestricted way; but if the host pasted something else
+// entirely (arbitrary markup, e.g. a raw <script> snippet), it's rendered
+// via a sandboxed srcdoc iframe with NO allow-same-origin -- its scripts
+// still run, but in an opaque origin that can't read this page's DOM or
+// session storage. Returns '' when there's nothing to embed yet.
+function pflxSlideEmbedHtml(sl) {
+  if (!sl || !sl.prompt) return '';
+  var src = null;
+  if (sl.type === 'google_slides' || sl.type === 'google_doc') {
+    src = pflxGoogleEmbedUrl(sl.type, sl.prompt);
+  } else if (sl.type === 'html_embed') {
+    var m = String(sl.prompt).match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+    if (m) src = m[1];
+    else if (/^https?:\/\//i.test(String(sl.prompt).trim())) src = String(sl.prompt).trim();
+  }
+  if (src) {
+    return '<div class="pflx-embed-wrap" style="position:relative;padding-top:66%;margin:8px 0 4px;border-radius:10px;overflow:hidden;background:#000"><iframe src="' + esc(src) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe></div>';
+  }
+  if (sl.type === 'html_embed') {
+    return '<div class="pflx-embed-wrap" style="position:relative;padding-top:66%;margin:8px 0 4px;border-radius:10px;overflow:hidden;background:#000"><iframe srcdoc="' + esc(sl.prompt) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" sandbox="allow-scripts allow-popups allow-forms allow-presentation" allowfullscreen></iframe></div>';
+  }
+  return '';
+}
 
 function newLiveSession() {
   return {
@@ -1204,7 +1281,7 @@ function renderSlideModal() {
     '<div class="cardT">' + (ed.idx === -1 ? 'Add Slide' : 'Edit Slide') + '</div>' +
     '<label>Type</label><select onchange="liveSlideTypeChange(this.value)">' + typeOptions + '</select>' +
     '<label style="margin-top:10px">Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
-    (meta.timerOnly ? '' : ('<label style="margin-top:10px">' + (meta.hasOptions ? 'Prompt' : 'Content') + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value">' + esc(sl.prompt) + '</textarea>')) +
+    (meta.timerOnly ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
     optionsHtml + timerHtml + rewardHtml +
     '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSlideForm()">SAVE SLIDE</button><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
   );
@@ -1433,7 +1510,8 @@ function rLiveRun(s) {
     (sl ? (
       '<div class="card" style="background:rgba(255,255,255,0.03)">' +
       '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '(untitled)') + '</div>' +
-      (sl.prompt ? '<div style="font-size:13px;color:#c9cfe8;margin:6px 0">' + esc(sl.prompt) + '</div>' : '') +
+      (sl.prompt && !meta.isEmbed ? '<div style="font-size:13px;color:#c9cfe8;margin:6px 0">' + esc(sl.prompt) + '</div>' : '') +
+      (meta.isEmbed ? pflxSlideEmbedHtml(sl) : '') +
       (meta.hasOptions ? '<div style="font-size:11px;color:#8a93b8;margin-top:6px">' + (sl.options || []).map(function (o, i) { return (meta.graded && i === sl.correctIndex ? '⭐ ' : '') + esc(o); }).join(' · ') + '</div>' : '') +
       '<div style="font-size:11px;color:#7dffb8;margin-top:8px">' + respCount + ' response' + (respCount === 1 ? '' : 's') + (sl.revealed ? ' · revealed' : '') + '</div>' +
       '</div>'
@@ -1521,7 +1599,7 @@ function rLiveNative() {
   const s = nativeSessionAppliesToMe();
   if (!s) return '<div class="card"><div class="cardT">Session ended</div><div style="font-size:12px;color:#8a93b8">This live session is no longer active.</div><button class="bigbtn ghost" style="margin-top:10px" onclick="go(\'me\')">← BACK</button></div>';
   const hc = s.hostControls || {};
-  const ytEmbed = s.youtubeEmbedId ? ('<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(sleubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>') : '';
+  const ytEmbed = s.youtubeEmbedId ? ('<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(s.youtubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>') : '';
   if (hc.slideFrozen) return ytEmbed + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
   if (hc.paused) return ytEmbed + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
   const idx = s.currentSlideIndex || 0;
@@ -1545,10 +1623,12 @@ function rLiveNative() {
     body = myResp ? '<div style="font-size:13px;color:#7dffb8;margin-top:8px">✅ Marked done</div>' : ('<button class="bigbtn gold" style="margin-top:8px" ' + (hc.responsesLocked ? 'disabled' : '') + ' onclick="liveSubmitChoice(1)">MARK DONE</button>');
   } else if (sl.type === 'timer') {
     body = '<div style="font-family:Audiowide;font-size:34px;color:#ffd166;text-align:center;margin-top:10px">' + (sl.seconds || 0) + 's</div>';
+  } else if (meta.isEmbed) {
+    body = pflxSlideEmbedHtml(sl);
   }
   return ytEmbed + '<div class="card">' +
     '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
-    (sl.prompt ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
+    (sl.prompt && !meta.isEmbed ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
     body +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
     '</div>';
