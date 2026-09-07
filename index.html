@@ -1556,7 +1556,11 @@ function rLiveBuilder() {
   const cs = cohortList();
   return '<div class="card">' +
     '<div class="cardT" style="display:flex;align-items:center;gap:10px">' + (s.updatedAt && s.createdAt !== s.updatedAt ? 'Edit Session' : 'New Session') +
-    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveCancelEdit()">← BACK</button></div>' +
+    // PATCH X-LIVE v0.27 -- this button discards unsaved changes
+    // (liveCancelEdit(), same as the CANCEL button below) -- it is NOT
+    // harmless navigation like every other "<- BACK" in this file, so
+    // it must not be labeled like one. Matches its already-honest twin.
+    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveCancelEdit()">✕ CANCEL</button></div>' +
     '<label>Session Title</label><input value="' + esc(s.title) + '" onchange="L.liveEditingSession.title=this.value" placeholder="e.g. Friday Quiz Bowl"/>' +
     '<label style="margin-top:10px">Who is this for?</label>' +
     '<div style="display:flex;gap:14px;align-items:center;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (s.allCohorts ? 'checked' : '') + ' onchange="L.liveEditingSession.allCohorts=this.checked;render()"/> All players</label></div>' +
