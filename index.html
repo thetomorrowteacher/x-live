@@ -233,6 +233,18 @@
   #modal { position:fixed; inset:0; z-index:120; background:rgba(3,5,14,0.8); display:none; align-items:center; justify-content:center; padding:18px; }
   #modal.on { display:flex; }
   #modalBox { background:#0c1228; border:1px solid rgba(57,192,255,0.35); border-radius:18px; padding:22px; width:100%; max-width:520px; max-height:88vh; overflow-y:auto; }
+  /* PATCH X-LIVE v0.24 -- categorized visual Add Slide type picker,
+     replacing the flat <select> with a card grid (Nearpod/Peardeck-
+     style: icon + label, current selection highlighted gold). */
+  .pflx-slidetype-catlabel { font-family:'Audiowide'; font-size:9.5px; letter-spacing:0.12em; color:#7dd8ff; margin-top:14px; margin-bottom:6px; text-transform:uppercase; }
+  .pflx-slidetype-catlabel:first-child { margin-top:4px; }
+  .pflx-slidetype-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .pflx-slidetype-card { position:relative; display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; border:1px solid rgba(57,192,255,0.18); background:rgba(255,255,255,0.03); cursor:pointer; transition:background .12s,border-color .12s,transform .12s; }
+  .pflx-slidetype-card:hover { background:rgba(57,192,255,0.08); transform:translateY(-1px); }
+  .pflx-slidetype-card.on { border-color:#ffd166; background:rgba(255,209,102,0.10); box-shadow:0 0 14px rgba(255,209,102,0.15); }
+  .pflx-slidetype-icon { font-size:20px; flex-shrink:0; }
+  .pflx-slidetype-label { font-size:11px; font-weight:700; color:#e6ecff; line-height:1.2; }
+  .pflx-slidetype-check { position:absolute; top:6px; right:8px; font-size:11px; color:#ffd166; }
   input, select, textarea { background:rgba(255,255,255,0.06); border:1px solid rgba(57,192,255,0.3); border-radius:10px; color:#fff;
           padding:9px 11px; font-family:'Exo 2'; font-size:14px; width:100%; }
   label { font-size:11px; color:#8a93b8; letter-spacing:0.06em; display:block; margin:10px 0 4px; text-transform:uppercase; font-family:'Audiowide'; font-weight:700; }
@@ -1089,6 +1101,32 @@ const SLIDE_TYPES = [
   { key: 'exit', label: 'Exit Ticket', icon: '🎫', hasOptions: false, hasTimer: true, timerOnly: false, hasExitType: true }
 ];
 function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.key === key; }) || SLIDE_TYPES[0]; }
+// PATCH X-LIVE v0.24 -- groups the 17 slide types into the same kind
+// of categorized picker Nearpod/Peardeck use (see the reference
+// screenshots), instead of one flat alphabetical-by-insertion list.
+// External map (not a field on SLIDE_TYPES) so every existing reader
+// of SLIDE_TYPES/slideTypeMeta is untouched.
+var PFLX_SLIDE_CATEGORIES = [
+  { label: 'Content', keys: ['text', 'media', 'google_slides', 'google_doc', 'html_embed'] },
+  { label: 'Questions & Polls', keys: ['poll', 'mc', 'quiz', 'open_response', 'discussion'] },
+  { label: 'Timed Activities', keys: ['timer', 'challenge', 'mindful', 'social', 'project'] },
+  { label: 'Tasks & Wrap-Up', keys: ['push_task', 'exit'] }
+];
+function pflxSlideTypePickerHtml(selectedKey) {
+  return PFLX_SLIDE_CATEGORIES.map(function (cat) {
+    var cards = cat.keys.map(function (key) {
+      var t = slideTypeMeta(key);
+      var on = t.key === selectedKey;
+      return '<div class="pflx-slidetype-card' + (on ? ' on' : '') + '" onclick="liveSlideTypeChange(\'' + t.key + '\')">' +
+        '<div class="pflx-slidetype-icon">' + t.icon + '</div>' +
+        '<div class="pflx-slidetype-label">' + esc(t.label) + '</div>' +
+        (on ? '<div class="pflx-slidetype-check">\u2713</div>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="pflx-slidetype-catlabel">' + esc(cat.label) + '</div>' +
+      '<div class="pflx-slidetype-grid">' + cards + '</div>';
+  }).join('');
+}
 
 // PATCH X-LIVE v0.22 -- Exit Ticket sub-types (mirrors DLG's exitType
 // enum) and Social Sprint grouping options. Both are optional slide
@@ -1336,7 +1374,7 @@ function renderSlideModal() {
   ) : '';
   modal(
     '<div class="cardT">' + (ed.idx === -1 ? 'Add Slide' : 'Edit Slide') + '</div>' +
-    '<label>Type</label><select onchange="liveSlideTypeChange(this.value)">' + typeOptions + '</select>' +
+    '<label>Type</label><div class="pflx-slidetype-picker">' + pflxSlideTypePickerHtml(sl.type) + '</div>' +
     '<label style="margin-top:10px">Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
     (meta.timerOnly ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
     groupSizeHtml + exitTypeHtml + optionsHtml + timerHtml + rewardHtml +
