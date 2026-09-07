@@ -245,6 +245,18 @@
   .pflx-slidetype-icon { font-size:20px; flex-shrink:0; }
   .pflx-slidetype-label { font-size:11px; font-weight:700; color:#e6ecff; line-height:1.2; }
   .pflx-slidetype-check { position:absolute; top:6px; right:8px; font-size:11px; color:#ffd166; }
+  /* PATCH X-LIVE v0.25 -- universal results-reveal visualization:
+     a percentage bar chart per choice, shown on REVEAL. */
+  .pflx-results-block { margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08); }
+  .pflx-results-title { font-family:'Audiowide'; font-size:10px; letter-spacing:0.1em; color:#7dd8ff; margin-bottom:8px; text-transform:uppercase; }
+  .pflx-results-row { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .pflx-results-row-label { flex:0 0 auto; max-width:38%; font-size:12px; font-weight:700; color:#e6ecff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pflx-results-bar-track { flex:1; height:14px; border-radius:7px; background:rgba(255,255,255,0.06); overflow:hidden; }
+  .pflx-results-bar-fill { height:100%; border-radius:7px; background:linear-gradient(90deg,#39c0ff,#7dd8ff); transition:width .4s ease; }
+  .pflx-results-bar-fill.correct { background:linear-gradient(90deg,#2fd66b,#7dffb8); box-shadow:0 0 10px rgba(125,255,184,0.4); }
+  .pflx-results-row-pct { flex:0 0 auto; width:64px; text-align:right; font-family:'Audiowide'; font-size:11px; color:#ffd166; }
+  .pflx-results-row-count { color:#5c6488; font-family:'Exo 2'; font-size:10px; }
+  .pflx-results-summary { font-size:12px; color:#7dffb8; margin-top:6px; font-weight:700; }
   input, select, textarea { background:rgba(255,255,255,0.06); border:1px solid rgba(57,192,255,0.3); border-radius:10px; color:#fff;
           padding:9px 11px; font-family:'Exo 2'; font-size:14px; width:100%; }
   label { font-size:11px; color:#8a93b8; letter-spacing:0.06em; display:block; margin:10px 0 4px; text-transform:uppercase; font-family:'Audiowide'; font-weight:700; }
@@ -1146,6 +1158,90 @@ function pflxExitTypeLabel(key) {
   return f ? f.label : 'Quick Write';
 }
 var PFLX_GROUP_SIZES = ['Pairs', 'Small Groups', 'Whole Class', 'Trios'];
+// PATCH X-LIVE v0.25 -- which slide types have a results chart at all
+// (options-bearing types, plus Exit Ticket's Poll/Rating/Yes-No
+// sub-types). Text/media/timer/discussion/etc. have nothing to chart.
+function pflxSlideHasResults(sl, meta) {
+  if (!sl || !meta) return false;
+  if (meta.hasOptions) return true;
+  if (sl.type === 'exit') {
+    var et = sl.exitType || 'quickwrite';
+    return et === 'poll' || et === 'rating' || et === 'yesno';
+  }
+  return false;
+}
+function pflxResultsBarRow(label, count, pct, highlight) {
+  return '<div class="pflx-results-row">' +
+    '<div class="pflx-results-row-label">' + esc(String(label)) + '</div>' +
+    '<div class="pflx-results-bar-track"><div class="pflx-results-bar-fill' + (highlight ? ' correct' : '') + '" style="width:' + pct + '%"></div></div>' +
+    '<div class="pflx-results-row-pct">' + pct + '% <span class="pflx-results-row-count">(' + count + ')</span></div>' +
+    '</div>';
+}
+// The universal results-reveal visualization itself. Reads
+// sl.responses fresh on every call -- no snapshot is ever taken at
+// reveal time -- so it always recomputes live from every response
+// ever recorded on this slide (live now; live+self-directed combined
+// once self-directed sessions exist), per Ennis's 'always live,
+// recomputes forever' answer. Returns '' when the slide isn't
+// revealed yet or has no chartable options.
+function pflxSlideResultsHtml(sl) {
+  var meta = slideTypeMeta(sl.type);
+  if (!sl.revealed || !pflxSlideHasResults(sl, meta)) return '';
+  var responses = sl.responses || {};
+  var ids = Object.keys(responses);
+  var total = ids.length;
+  var et = sl.type === 'exit' ? (sl.exitType || 'quickwrite') : null;
+  var rows = [];
+  var summary = '';
+  if (meta.hasOptions || et === 'poll') {
+    var opts = sl.options || [];
+    var counts = opts.map(function () { return 0; });
+    ids.forEach(function (pid) {
+      var v = responses[pid] && responses[pid].value;
+      if (typeof v === 'number' && counts[v] !== undefined) counts[v]++;
+    });
+    rows = opts.map(function (o, i) {
+      var pct = total ? Math.round(counts[i] / total * 100) : 0;
+      var isCorrect = meta.graded && i === sl.correctIndex;
+      return pflxResultsBarRow(o + (isCorrect ? ' \u2b50' : ''), counts[i], pct, isCorrect);
+    });
+    if (meta.graded) {
+      var correctCount = counts[sl.correctIndex] || 0;
+      var correctPct = total ? Math.round(correctCount / total * 100) : 0;
+      summary = '<div class="pflx-results-summary">\u2705 ' + correctPct + '% answered correctly (' + correctCount + ' of ' + total + ')</div>';
+    }
+  } else if (et === 'rating') {
+    var rc = [0, 0, 0, 0, 0];
+    var sum = 0;
+    ids.forEach(function (pid) {
+      var v = responses[pid] && responses[pid].value;
+      if (v >= 1 && v <= 5) { rc[v - 1]++; sum += v; }
+    });
+    rows = [5, 4, 3, 2, 1].map(function (n) {
+      var c = rc[n - 1];
+      var pct = total ? Math.round(c / total * 100) : 0;
+      return pflxResultsBarRow(n + '\u2b50', c, pct, false);
+    });
+    var avg = total ? (sum / total).toFixed(1) : '0.0';
+    summary = '<div class="pflx-results-summary">Average: ' + avg + ' / 5 (' + total + ' response' + (total === 1 ? '' : 's') + ')</div>';
+  } else if (et === 'yesno') {
+    var yes = 0, no = 0;
+    ids.forEach(function (pid) {
+      var v = responses[pid] && responses[pid].value;
+      if (v === 1) yes++; else if (v === 0) no++;
+    });
+    rows = [
+      pflxResultsBarRow('YES', yes, total ? Math.round(yes / total * 100) : 0, false),
+      pflxResultsBarRow('NO', no, total ? Math.round(no / total * 100) : 0, false)
+    ];
+  }
+  return '<div class="pflx-results-block">' +
+    '<div class="pflx-results-title">\ud83d\udcca Results \u00b7 ' + total + ' response' + (total === 1 ? '' : 's') + '</div>' +
+    rows.join('') + summary +
+    '</div>';
+}
+window.pflxSlideResultsHtml = pflxSlideResultsHtml;
+window.pflxSlideHasResults = pflxSlideHasResults;
 
 // PATCH X-LIVE v0.21 -- embed slide types (google_slides, google_doc,
 // html_embed). All three reuse sl.prompt to hold whatever the host pasted
@@ -1633,12 +1729,13 @@ function rLiveRun(s) {
       (sl.type === 'exit' ? '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Exit type: ' + esc(pflxExitTypeLabel(sl.exitType || 'quickwrite')) + '</div>' : '') +
       ((meta.hasOptions || (sl.type === 'exit' && (sl.exitType || 'quickwrite') === 'poll')) ? '<div style="font-size:11px;color:#8a93b8;margin-top:6px">' + (sl.options || []).map(function (o, i) { return (meta.graded && i === sl.correctIndex ? '⭐ ' : '') + esc(o); }).join(' · ') + '</div>' : '') +
       '<div style="font-size:11px;color:#7dffb8;margin-top:8px">' + respCount + ' response' + (respCount === 1 ? '' : 's') + (sl.revealed ? ' · revealed' : '') + '</div>' +
+      pflxSlideResultsHtml(sl) +
       '</div>'
     ) : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No slides in this session.</div>') +
     '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
     '<button class="bigbtn ghost" style="' + (idx <= 0 ? 'opacity:0.35' : '') + '" ' + (idx <= 0 ? 'disabled' : '') + ' onclick="liveMoveCurrentSlide(-1)">⬅ PREV</button>' +
     '<button class="bigbtn ghost" style="' + (!sl || idx >= s.slides.length - 1 ? 'opacity:0.35' : '') + '" ' + (!sl || idx >= s.slides.length - 1 ? 'disabled' : '') + ' onclick="liveMoveCurrentSlide(1)">NEXT ➡</button>' +
-    (sl && meta && meta.graded && !sl.revealed ? '<button class="bigbtn gold" onclick="liveRevealSlide()">✨ REVEAL</button>' : '') +
+    (sl && meta && pflxSlideHasResults(sl, meta) && !sl.revealed ? '<button class="bigbtn gold" onclick="liveRevealSlide()">✨ REVEAL</button>' : '') +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
     '<button class="bigbtn ' + (hc.paused ? 'red' : 'ghost') + '" onclick="liveToggleControl(\'paused\')">' + (hc.paused ? '▶ RESUME' : '⏸ PAUSE') + '</button>' +
@@ -1775,6 +1872,7 @@ function rLiveNative() {
     (sl.prompt && !meta.isEmbed ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
     body +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
+    pflxSlideResultsHtml(sl) +
     '</div>';
 }
 
