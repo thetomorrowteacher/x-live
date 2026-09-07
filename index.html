@@ -356,7 +356,9 @@ const L = {
 };
 
 const DEFAULT_CFG = {
-  cohort: '', // '' = whole roster
+  cohort: '', // legacy single-cohort field -- kept only as a migration
+             // source for cohorts[] in loadCfg(), no longer written to.
+  cohorts: [], // PATCH X-LIVE v0.26 -- multi-select cohorts; [] = whole roster
   awards: [
     { label: 'Positive Participant', icon: '🙋', xc: 100 }, { label: 'Peer Supporter', icon: '🤝', xc: 100 },
     { label: 'Time Manager', icon: '⏰', xc: 100 }, { label: 'Growth Mindset', icon: '🌱', xc: 100 },
@@ -534,6 +536,10 @@ async function loadCfg() {
   L.cfg = Object.assign({}, DEFAULT_CFG, d || {});
   L.cfg.teams = Object.assign({ names: [], assign: {} }, L.cfg.teams || {});
   L.cfg.boards = Object.assign({}, DEFAULT_CFG.boards, L.cfg.boards || {});
+  // PATCH X-LIVE v0.26 -- migrate the legacy single cohort string to
+  // cohorts[] once, so an existing selection isn't silently lost.
+  L.cfg.cohorts = Array.isArray(L.cfg.cohorts) ? L.cfg.cohorts : [];
+  if (!L.cfg.cohorts.length && L.cfg.cohort) L.cfg.cohorts = [L.cfg.cohort];
   L.loaded.cfg = true; render();
 }
 function saveCfg() { L.cfg.updatedAt = Date.now(); kvSave('pflx_lite_config', L.cfg); }
@@ -692,9 +698,13 @@ async function loadActivity() {
   } catch (e) {}
   L.loaded.activity = true; render();
 }
+// PATCH X-LIVE v0.26 -- a class can now span multiple cohorts. cs is the
+// host's selected cohort list (lowercased); a player matches if ANY of
+// their (possibly comma-separated) cohorts intersects it.
 function classRoster() {
-  const c = ((L.cfg && L.cfg.cohort) || '').toLowerCase();
-  return c ? L.roster.filter(p => (p.cohort || '').toLowerCase().split(',').map(s => s.trim()).indexOf(c) !== -1 || (p.cohort || '').toLowerCase() === c) : L.roster;
+  const cs = ((L.cfg && Array.isArray(L.cfg.cohorts) && L.cfg.cohorts.length) ? L.cfg.cohorts : ((L.cfg && L.cfg.cohort) ? [L.cfg.cohort] : [])).map(c => c.toLowerCase());
+  if (!cs.length) return L.roster;
+  return L.roster.filter(p => (p.cohort || '').toLowerCase().split(',').map(s => s.trim()).some(function (pc) { return cs.indexOf(pc) !== -1; }));
 }
 function sortedRoster(list) {
   const mode = L.rosterSort || 'xc_desc';
@@ -714,6 +724,24 @@ function cohortList() {
   (L.cohortNames || []).forEach(add);
   L.roster.forEach(p => (p.cohort || '').split(',').map(s => s.trim()).filter(Boolean).forEach(add));
   return out.sort((a, b) => a.localeCompare(b));
+}
+// PATCH X-LIVE v0.26 -- toggles cohort i (by its index in cohortList(),
+// a stable sorted list) in/out of L.cfg.cohorts. Indexed rather than
+// passed by name so a cohort name containing a quote can never break
+// the onclick attribute it's rendered into.
+function pflxToggleCohort(i) {
+  const name = cohortList()[i]; if (name == null) return;
+  L.cfg.cohorts = Array.isArray(L.cfg.cohorts) ? L.cfg.cohorts : [];
+  const j = L.cfg.cohorts.indexOf(name);
+  if (j === -1) L.cfg.cohorts.push(name); else L.cfg.cohorts.splice(j, 1);
+  saveCfg(); render();
+}
+window.pflxToggleCohort = pflxToggleCohort;
+// Comma-joined string of the host's selected cohorts, for the
+// lite_activity audit row's single 'cohort' column -- unrelated to the
+// cohorts[] UI/matching above, just that column's existing shape.
+function pflxCohortsTag() {
+  return (L.cfg && Array.isArray(L.cfg.cohorts) && L.cfg.cohorts.length) ? L.cfg.cohorts.join(',') : '';
 }
 
 // ── EXO renderer (compact copy — SOURCE OF TRUTH is Battle Arena
@@ -758,9 +786,9 @@ async function liteLog(playerId, kind, label, xc) {
   try {
     await fetch(SUPABASE_URL + '/rest/v1/lite_activity', { method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json' }, SB_HEADERS),
-      body: JSON.stringify({ cohort: (L.cfg && L.cfg.cohort) || '', player_id: playerId, host_id: (L.me && L.me.id) || '', kind: kind, label: label, xc: xc }) });
+      body: JSON.stringify({ cohort: pflxCohortsTag(), player_id: playerId, host_id: (L.me && L.me.id) || '', kind: kind, label: label, xc: xc }) });
   } catch (e) {}
-  L.activity.unshift({ cohort: (L.cfg && L.cfg.cohort) || '', player_id: playerId, host_id: (L.me && L.me.id) || '', kind: kind, label: label, xc: xc, ts: new Date().toISOString() });
+  L.activity.unshift({ cohort: pflxCohortsTag(), player_id: playerId, host_id: (L.me && L.me.id) || '', kind: kind, label: label, xc: xc, ts: new Date().toISOString() });
 }
 function applyAction(players, preset, kind) {
   players.forEach(p => {
@@ -1000,7 +1028,7 @@ function render() {
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
     '<div class="hd"><div class="logo"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" class="logo-img"/><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
-    (L.isHost ? 'Host Dashboard · ' + esc(L.cfg.cohort || 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
+    (L.isHost ? 'Host Dashboard · ' + esc((L.cfg.cohorts && L.cfg.cohorts.length) ? L.cfg.cohorts.join(', ') : 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
     (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     liveSessionBanner() + nativeLiveSessionBanner() +
@@ -2373,8 +2401,15 @@ function rFeed() {
 function rSetup() {
   const cs = cohortList();
   return '<div class="grid2">' +
-    '<div class="card"><div class="cardT">My Class</div><label>Cohort (which players are this class)</label>' +
-    '<select onchange="L.cfg.cohort=this.value;saveCfg();render()"><option value="">All players</option>' + cs.map(c => '<option ' + (L.cfg.cohort === c ? 'selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
+    '<div class="card"><div class="cardT">My Class</div><label>Cohort (which players are this class) — select any number</label>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 2px">' +
+    (!cs.length ? '<div style="font-size:11px;color:#5c6488">No cohorts found in the roster yet.</div>' : cs.map(function (c, i) {
+      var on = (L.cfg.cohorts || []).indexOf(c) !== -1;
+      return '<div onclick="pflxToggleCohort(' + i + ')" style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;border:1px solid ' + (on ? 'rgba(255,209,102,0.6)' : 'rgba(255,255,255,0.14)') + ';background:' + (on ? 'rgba(255,209,102,0.14)' : 'rgba(255,255,255,0.04)') + ';font-size:12px;font-weight:700;color:' + (on ? '#ffd166' : '#aeb6d8') + '">' +
+        (on ? '\u2611' : '\u2610') + ' ' + esc(c) + '</div>';
+    }).join('')) +
+    '</div>' +
+    '<div style="font-size:10.5px;color:#5c6488;margin:2px 0 4px">' + ((L.cfg.cohorts || []).length ? ((L.cfg.cohorts || []).length + ' selected') : 'None selected — showing all players') + '</div>' +
     '<label>Class goal label</label><input value="' + esc(L.cfg.goal.label) + '" onchange="L.cfg.goal.label=this.value;saveCfg()"/>' +
     '<label>Class goal target (XC / week)</label><input type="number" value="' + L.cfg.goal.target + '" onchange="L.cfg.goal.target=Math.max(100,parseInt(this.value)||10000);saveCfg()"/>' +
     '<label>Leaderboards</label>' +
