@@ -166,18 +166,18 @@
     .hud-grid, .hud-glow, .hud-scan, .hud-ring, .logo-mark svg { animation:none !important; }
   }
   .hd { display:flex; align-items:center; gap:12px; padding:6px 0 14px; flex-wrap:wrap; }
-  .hd .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Audiowide'; font-weight:900; font-size:18px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 16px rgba(0,229,255,0.4); }
+  .hd .logo { display:inline-flex; align-items:center; gap:10px; font-family:'Audiowide'; font-weight:900; font-size:23px; letter-spacing:0.12em; color:#7de9ff; text-shadow:0 0 20px rgba(0,229,255,0.45); }
   .hd .logo b { color:#ffd166; }
   .logo-mark { display:inline-flex; width:28px; height:28px; filter:drop-shadow(0 0 6px rgba(57,192,255,0.55)); }
-  .logo-img { height:30px; width:auto; display:block; filter:drop-shadow(0 0 6px rgba(57,192,255,0.35)); }
+  .logo-img { height:46px; width:auto; display:block; filter:drop-shadow(0 0 8px rgba(57,192,255,0.4)); }
   .logo-mark svg { width:100%; height:100%; animation:hudRotate 16s linear infinite; }
-  .logo-pulse { display:inline-block; width:6px; height:6px; border-radius:50%; background:#7dffb8; box-shadow:0 0 8px rgba(125,255,184,0.9);
-                animation:hudPulseDot 1.8s ease-in-out infinite; margin-left:2px; }
+  .logo-pulse { display:inline-block; width:8px; height:8px; border-radius:50%; background:#7dffb8; box-shadow:0 0 10px rgba(125,255,184,0.9);
+                animation:hudPulseDot 1.8s ease-in-out infinite; margin-left:4px; }
   @keyframes hudPulseDot { 0%,100%{ opacity:0.35; transform:scale(0.8); } 50%{ opacity:1; transform:scale(1.15); } }
   .hd .sub { font-size:12px; color:#8a93b8; }
   .hd .sp { flex:1; }
   .tabbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-  .tab { cursor:pointer; padding:10px 16px; font-family:'Audiowide'; font-size:10.5px; font-weight:800;
+  .tab { cursor:pointer; padding:13px 20px; font-family:'Audiowide'; font-size:12.5px; font-weight:800;
          letter-spacing:0.08em; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); color:#9aa3c8;
          clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px); transition:all .15s; }
   .tab.on { border-color:#39c0ff; background:rgba(57,192,255,0.13); color:#7de9ff;
@@ -187,8 +187,8 @@
   .card::before, .card::after { content:''; position:absolute; width:13px; height:13px; pointer-events:none; border-color:rgba(57,192,255,0.55); border-style:solid; border-width:0; }
   .card::before { top:-1px; left:-1px; border-top-width:2px; border-left-width:2px; border-top-left-radius:6px; }
   .card::after { bottom:-1px; right:-1px; border-bottom-width:2px; border-right-width:2px; border-bottom-right-radius:6px; }
-  .cardT { font-family:'Audiowide'; font-size:10px; font-weight:800; letter-spacing:0.14em; color:#9aa3c8; margin-bottom:12px; text-transform:uppercase; }
-  .bigbtn { cursor:pointer; padding:12px 18px; font-family:'Audiowide'; font-size:11px; font-weight:800; letter-spacing:0.08em;
+  .cardT { font-family:'Audiowide'; font-size:11.5px; font-weight:800; letter-spacing:0.14em; color:#9aa3c8; margin-bottom:14px; text-transform:uppercase; }
+  .bigbtn { cursor:pointer; padding:14px 22px; font-family:'Audiowide'; font-size:12.5px; font-weight:800; letter-spacing:0.08em;
             border:1px solid rgba(57,192,255,0.45); background:rgba(57,192,255,0.12); color:#7de9ff; transition:all .13s;
             clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
   .bigbtn:hover { background:rgba(57,192,255,0.24); }
@@ -1455,6 +1455,14 @@ function liveMoveCurrentSlide(dir) {
   s.currentSlideIndex = j;
   saveSession(s); render();
 }
+// PATCH X-LIVE v0.23 -- absolute-jump sibling of liveMoveCurrentSlide,
+// backing the new agenda-rail's click-to-jump on the RUN view.
+function liveJumpToSlide(i) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  if (i < 0 || i >= s.slides.length) return;
+  s.currentSlideIndex = i;
+  saveSession(s); render();
+}
 function liveToggleControl(key) {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
   s.hostControls = s.hostControls || { paused: false, responsesLocked: false, slideFrozen: false };
@@ -1549,10 +1557,24 @@ function rLiveRun(s) {
   const meta = sl ? slideTypeMeta(sl.type) : null;
   const hc = s.hostControls || {};
   const respCount = sl ? Object.keys(sl.responses || {}).length : 0;
-  return '<div class="card">' +
-    '<div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 ' + esc(s.title || 'Live Session') +
-    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveExitRun()">← BACK</button></div>' +
-    '<div style="font-size:11px;color:#8a93b8;margin-bottom:10px">' + (s.liveParticipants || []).length + ' joined · slide ' + (idx + 1) + ' of ' + s.slides.length + '</div>' +
+  // PATCH X-LIVE v0.23 -- agenda rail (left) + stage (right), inspired by
+  // the Daily Lesson Guide reference app's rail/stage layout. Rail rows
+  // jump straight to a slide via liveJumpToSlide(i); everything below the
+  // rail is unchanged from pre-v0.23, just moved into the `stage` half.
+  const rail = '<div style="width:196px;flex:0 0 auto;max-height:min(560px,70vh);overflow-y:auto;padding-right:2px">' +
+    (s.slides || []).map(function (rs, i) {
+      const rm = slideTypeMeta(rs.type);
+      const on = i === idx;
+      const rc = Object.keys(rs.responses || {}).length;
+      return '<div onclick="liveJumpToSlide(' + i + ')" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:11px;margin-bottom:7px;border:1px solid ' + (on ? 'rgba(255,209,102,0.6)' : 'rgba(255,255,255,0.08)') + ';background:' + (on ? 'rgba(255,209,102,0.14)' : 'rgba(255,255,255,0.03)') + ';box-shadow:' + (on ? '0 0 14px rgba(255,209,102,0.2)' : 'none') + '">' +
+        '<span style="font-family:Audiowide;font-size:9.5px;color:' + (on ? '#ffd166' : '#5c6488') + ';width:16px;text-align:center;flex:0 0 auto">' + (i + 1) + '</span>' +
+        '<span style="font-size:16px;flex:0 0 auto">' + rm.icon + '</span>' +
+        '<span style="flex:1;min-width:0;font-size:11.5px;font-weight:' + (on ? '800' : '600') + ';color:' + (on ? '#fff' : '#aeb6d8') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(rs.title || rm.label) + '</span>' +
+        (rc ? '<span style="font-size:9px;color:#7dffb8;font-family:Audiowide;flex:0 0 auto">' + rc + '</span>' : '') +
+        '</div>';
+    }).join('') +
+    '</div>';
+  const stage =
     '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
       '<div class="cardT" style="font-size:12px">📺 YouTube/OBS Stream (optional)</div>' +
       (s.youtubeEmbedId ?
@@ -1589,7 +1611,12 @@ function rLiveRun(s) {
     '<button class="bigbtn ghost" onclick="wheelOpen()">🎯 PICK A PLAYER</button>' +
     '<button class="bigbtn ghost" onclick="go(\'teams\');toast(\'Use the Teams tab to draft/shuffle groups for this session.\')">👥 MAKE GROUPS</button>' +
     '</div>' +
-    '<div style="margin-top:14px"><button class="bigbtn red" onclick="liveEndSessionPrompt()">🏁 END SESSION</button></div>' +
+    '<div style="margin-top:14px"><button class="bigbtn red" onclick="liveEndSessionPrompt()">🏁 END SESSION</button></div>';
+  return '<div class="card">' +
+    '<div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 ' + esc(s.title || 'Live Session') +
+    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveExitRun()">← BACK</button></div>' +
+    '<div style="font-size:11px;color:#8a93b8;margin-bottom:10px">' + (s.liveParticipants || []).length + ' joined · slide ' + (idx + 1) + ' of ' + s.slides.length + '</div>' +
+    '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">' + rail + '<div style="flex:1;min-width:260px">' + stage + '</div></div>' +
     '</div>';
 }
 // Player side: which active session (if any) currently applies to me, by
