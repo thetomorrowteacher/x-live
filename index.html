@@ -1185,6 +1185,12 @@ const SLIDE_TYPES = [
   { key: 'google_slides', label: 'Google Slides Embed', icon: '📽️', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
   { key: 'google_doc', label: 'Google Doc Embed', icon: '📄', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
   { key: 'html_embed', label: 'HTML / Embed Code', icon: '🧩', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
+  // First slice of the Host Interactive View epic (plan Phase 3) --
+  // embeds a whole PFLX sub-app (Core Pathways / Battle Arena /
+  // DarkCampus) as a session's focal point, same iframe technique as
+  // the embeds above. Picks the app from PFLX_SUBAPPS (sl.subApp), not
+  // a pasted URL/prompt.
+  { key: 'sub_app', label: 'PFLX Sub-App', icon: '🧭', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
   // PATCH X-LIVE v0.22 -- inspired by the Daily Lesson Guide reference app.
   { key: 'mindful', label: 'Mindful Moment', icon: '🧘', hasOptions: false, hasTimer: true, timerOnly: false },
   { key: 'social', label: 'Social Sprint', icon: '🤝', hasOptions: false, hasTimer: true, timerOnly: false, hasGroupSize: true },
@@ -1198,7 +1204,7 @@ function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.ke
 // External map (not a field on SLIDE_TYPES) so every existing reader
 // of SLIDE_TYPES/slideTypeMeta is untouched.
 var PFLX_SLIDE_CATEGORIES = [
-  { label: 'Content', keys: ['text', 'media', 'google_slides', 'google_doc', 'html_embed'] },
+  { label: 'Content', keys: ['text', 'media', 'google_slides', 'google_doc', 'html_embed', 'sub_app'] },
   { label: 'Questions & Polls', keys: ['poll', 'mc', 'quiz', 'quiz_race', 'open_response', 'discussion'] },
   { label: 'Timed Activities', keys: ['timer', 'challenge', 'mindful', 'social', 'project'] },
   { label: 'Tasks & Wrap-Up', keys: ['push_task', 'exit'] }
@@ -1890,8 +1896,27 @@ function pflxGoogleEmbedUrl(kind, input) {
 // via a sandboxed srcdoc iframe with NO allow-same-origin -- its scripts
 // still run, but in an opaque origin that can't read this page's DOM or
 // session storage. Returns '' when there's nothing to embed yet.
+// The three PFLX sub-apps that are real, separately-deployed, already-
+// iframable apps (same URLs preview.html's own APP_BASE_URLS map uses).
+// Mission Control is NOT here -- it has no separate deployed URL, it's
+// native to preview.html itself, a different repo; embedding it needs a
+// dedicated chrome-free embed mode there, not this technique. See the
+// Handoff entry for this patch.
+var PFLX_SUBAPPS = {
+  pathways:   { label: 'Core Pathways', url: 'https://pflx-pathway-portal.vercel.app' },
+  arena:      { label: 'Battle Arena',   url: 'https://pflx-battle-arena.vercel.app' },
+  darkcampus: { label: 'DarkCampus',     url: 'https://pflx-darkcampus.vercel.app' }
+};
+window.PFLX_SUBAPPS = PFLX_SUBAPPS;
+
 function pflxSlideEmbedHtml(sl) {
-  if (!sl || !sl.prompt) return '';
+  if (!sl) return '';
+  if (sl.type === 'sub_app') {
+    var app = PFLX_SUBAPPS[sl.subApp];
+    if (!app) return '';
+    return '<div class="pflx-embed-wrap" style="position:relative;padding-top:66%;margin:8px 0 4px;border-radius:10px;overflow:hidden;background:#000"><iframe src="' + esc(app.url) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe></div>';
+  }
+  if (!sl.prompt) return '';
   var src = null;
   if (sl.type === 'google_slides' || sl.type === 'google_doc') {
     src = pflxGoogleEmbedUrl(sl.type, sl.prompt);
@@ -2110,6 +2135,12 @@ function renderSlideModal() {
     PFLX_EXIT_TYPES.map(function (e) { return '<option value="' + e.key + '"' + ((sl.exitType || 'quickwrite') === e.key ? ' selected' : '') + '>' + esc(e.label) + '</option>'; }).join('') +
     '</select>'
   ) : '';
+  const subAppHtml = (sl.type === 'sub_app') ? (
+    '<label style="margin-top:10px">Which PFLX app?</label><select onchange="L.liveEditingSlide.slide.subApp=this.value"><option value="">Choose one…</option>' +
+    Object.keys(PFLX_SUBAPPS).map(function (k) { return '<option value="' + k + '"' + (sl.subApp === k ? ' selected' : '') + '>' + esc(PFLX_SUBAPPS[k].label) + '</option>'; }).join('') +
+    '</select>' +
+    '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Embeds the app itself as this activity\'s focal point. Popup mini-activities and live badge-awarding tied to it are not built yet.</div>'
+  ) : '';
   const rewardHtml = !meta.timerOnly ? (
     '<label style="margin-top:10px">Reward XC' + (meta.graded ? ' (correct answer only, granted on Reveal)' : ' (granted on Reveal)') + '</label><input type="number" value="' + (sl.rewardXc || 0) + '" onchange="L.liveEditingSlide.slide.rewardXc=parseInt(this.value)||0"/>' +
     '<label style="margin-top:8px">Reward Badge</label>' + badgeSelectHtml(sl.rewardBadgeId, 'L.liveEditingSlide.slide.rewardBadgeId')
@@ -2118,8 +2149,8 @@ function renderSlideModal() {
     '<div class="cardT" style="display:flex;align-items:center;gap:8px">' + meta.icon + ' ' + (ed.idx === -1 ? 'Add Activity' : 'Edit Activity') +
     '<button class="bigbtn ghost" style="margin-left:auto;padding:5px 10px;font-size:9px" onclick="liveSlideChangeType()">' + meta.icon + ' ' + esc(meta.label) + ' · CHANGE</button></div>' +
     '<label>Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
-    (meta.timerOnly ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
-    groupSizeHtml + exitTypeHtml + optionsHtml + timerHtml + rewardHtml +
+    (meta.timerOnly || sl.type === 'sub_app' ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
+    subAppHtml + groupSizeHtml + exitTypeHtml + optionsHtml + timerHtml + rewardHtml +
     '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSlideForm()">SAVE ACTIVITY</button><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
   );
 }
