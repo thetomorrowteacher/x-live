@@ -1563,7 +1563,15 @@ function liveOpenDeckPicker() {
 }
 window.liveOpenDeckPicker = liveOpenDeckPicker;
 
-function liveCloseDeckPicker() { L.liveDeckPicker = null; modalClose(); }
+function liveCloseDeckPicker() {
+  L.liveDeckPicker = null;
+  if (L.liveEditingSlide && L.liveEditingSlide.slide.type === 'quiz_race' && L.liveEditingSlide.step === 'race-choice') {
+    renderRaceChoiceModal();
+    return;
+  }
+  L.liveEditingSlide = null;
+  modalClose();
+}
 window.liveCloseDeckPicker = liveCloseDeckPicker;
 
 function liveBuildFromDeck() {
@@ -1574,6 +1582,7 @@ function liveBuildFromDeck() {
   if (!slides.length) { toast('That deck has no usable cards'); return; }
   L.liveEditingSession.slides = (L.liveEditingSession.slides || []).concat(slides);
   L.liveDeckPicker = null;
+  L.liveEditingSlide = null;
   modalClose();
   toast('🏁 ' + slides.length + ' X-Rush question' + (slides.length === 1 ? '' : 's') + ' added from "' + deck.name + '"');
   render();
@@ -1735,7 +1744,7 @@ function badgeSelectHtml(selectedId, path) {
     L.badges.map(function (b) { return '<option value="' + esc(b.id) + '"' + (selectedId === b.id ? ' selected' : '') + '>' + esc(b.name) + ' (+' + (b.xc || 0) + ')</option>'; }).join('') +
     '</select>';
 }
-function liveAddSlide() { L.liveEditingSlide = { idx: -1, slide: liveNewSlide('text') }; renderSlideModal(); }
+function liveAddSlide() { L.liveEditingSlide = { idx: -1, slide: liveNewSlide('text'), step: 'type' }; renderSlideTypeModal(); }
 function liveNewSlide(type) {
   return {
     id: 'sl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
@@ -1746,14 +1755,71 @@ function liveNewSlide(type) {
 }
 function liveEditSlide(idx) {
   const s = L.liveEditingSession; if (!s || !s.slides[idx]) return;
-  L.liveEditingSlide = { idx: idx, slide: JSON.parse(JSON.stringify(s.slides[idx])) };
+  L.liveEditingSlide = { idx: idx, slide: JSON.parse(JSON.stringify(s.slides[idx])), step: 'fields' };
   renderSlideModal();
 }
 function liveSlideTypeChange(type) {
   if (!L.liveEditingSlide) return;
   L.liveEditingSlide.slide.type = type;
   if (!L.liveEditingSlide.slide.options) L.liveEditingSlide.slide.options = [];
+  // Sept 8, Ennis: "The Build X-Rush from deck option should happen
+  // when I select X-Rush from Add Slide." X-Rush gets an extra choice
+  // screen (deck vs. manual); every other type goes straight to its
+  // own focused settings popup -- no type ever shows every field for
+  // every type stacked together any more.
+  if (type === 'quiz_race') {
+    L.liveEditingSlide.step = 'race-choice';
+    renderRaceChoiceModal();
+    return;
+  }
+  L.liveEditingSlide.step = 'fields';
   renderSlideModal();
+}
+// Back-navigation from the fields popup (or the X-Rush choice screen)
+// to the type grid -- lets a host change their mind about the type
+// without cancelling the whole Add Activity flow.
+function liveSlideChangeType() {
+  if (!L.liveEditingSlide) return;
+  L.liveEditingSlide.step = 'type';
+  renderSlideTypeModal();
+}
+// The two choices offered when X-Rush is picked as the activity type.
+function renderRaceChoiceModal() {
+  const ed = L.liveEditingSlide; if (!ed) return;
+  modal(
+    '<div class="cardT">🏁 X-Rush</div>' +
+    '<div style="font-size:12px;color:#aeb6d8;margin-bottom:12px">Build a whole set of X-Rush questions at once from a shared deck, or create a single question by hand.</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px">' +
+    '<button class="bigbtn gold" onclick="liveOpenDeckPicker()">📚 Build from a Deck</button>' +
+    '<button class="bigbtn ghost" onclick="liveSlideRaceManual()">✍️ Create a Single Question</button>' +
+    '</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px">' +
+    '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="liveSlideChangeType()">← CHANGE TYPE</button>' +
+    '<button class="bigbtn ghost" style="padding:7px 12px;font-size:9px" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button>' +
+    '</div>'
+  );
+}
+// "Create a Single Question" from the X-Rush choice screen -- same
+// focused fields popup every other type gets (quiz_race already has
+// hasOptions/hasTimer/graded like a normal Quiz Question, so nothing
+// type-specific is needed in renderSlideModal beyond what already
+// exists there).
+function liveSlideRaceManual() {
+  if (!L.liveEditingSlide) return;
+  L.liveEditingSlide.step = 'fields';
+  renderSlideModal();
+}
+// Step 1 of Add/Edit Activity: JUST the categorized type grid, no
+// fields below it -- picking a card advances to that type's own
+// focused popup (renderSlideModal, or the X-Rush choice screen).
+function renderSlideTypeModal() {
+  const ed = L.liveEditingSlide; if (!ed) return;
+  modal(
+    '<div class="cardT">' + (ed.idx === -1 ? 'Add Activity' : 'Change Activity Type') + '</div>' +
+    '<div style="font-size:11px;color:#8a93b8;margin:-4px 0 10px">Pick what kind of activity this is — you’ll get a focused setup screen next.</div>' +
+    '<div class="pflx-slidetype-picker">' + pflxSlideTypePickerHtml(ed.slide.type) + '</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
+  );
 }
 // PATCH X-LIVE v0.22
 function liveSlideExitTypeChange(v) {
@@ -1794,7 +1860,6 @@ function renderSlideModal() {
   const ed = L.liveEditingSlide; if (!ed) return;
   const sl = ed.slide;
   const meta = slideTypeMeta(sl.type);
-  const typeOptions = SLIDE_TYPES.map(function (t) { return '<option value="' + t.key + '"' + (sl.type === t.key ? ' selected' : '') + '>' + t.icon + ' ' + esc(t.label) + '</option>'; }).join('');
   // PATCH X-LIVE v0.22 -- an Exit Ticket set to the Poll sub-type gets
   // the same Options editor as a native poll/mc/quiz slide, even though
   // 'exit' itself is hasOptions:false at the type level (its sub-type
@@ -1829,12 +1894,12 @@ function renderSlideModal() {
     '<label style="margin-top:8px">Reward Badge</label>' + badgeSelectHtml(sl.rewardBadgeId, 'L.liveEditingSlide.slide.rewardBadgeId')
   ) : '';
   modal(
-    '<div class="cardT">' + (ed.idx === -1 ? 'Add Slide' : 'Edit Slide') + '</div>' +
-    '<label>Type</label><div class="pflx-slidetype-picker">' + pflxSlideTypePickerHtml(sl.type) + '</div>' +
-    '<label style="margin-top:10px">Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
+    '<div class="cardT" style="display:flex;align-items:center;gap:8px">' + meta.icon + ' ' + (ed.idx === -1 ? 'Add Activity' : 'Edit Activity') +
+    '<button class="bigbtn ghost" style="margin-left:auto;padding:5px 10px;font-size:9px" onclick="liveSlideChangeType()">' + meta.icon + ' ' + esc(meta.label) + ' · CHANGE</button></div>' +
+    '<label>Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
     (meta.timerOnly ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
     groupSizeHtml + exitTypeHtml + optionsHtml + timerHtml + rewardHtml +
-    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSlideForm()">SAVE SLIDE</button><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSlideForm()">SAVE ACTIVITY</button><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
   );
 }
 function slideRowHtml(sl, i) {
@@ -1906,10 +1971,9 @@ function rLiveBuilder() {
     '<label style="margin-top:8px">Completion XC (granted on End)</label><input type="number" value="' + (s.rewards.completionXc || 0) + '" onchange="L.liveEditingSession.rewards.completionXc=parseInt(this.value)||0"/>' +
     '<label style="margin-top:8px">Completion Badge</label>' + badgeSelectHtml(s.rewards.completionBadgeId, 'L.liveEditingSession.rewards.completionBadgeId') +
     '</div>' +
-    '<div class="card" style="margin-top:14px"><div class="cardT" style="display:flex;align-items:center;gap:10px">Slides (' + s.slides.length + ')' +
-    '<button class="bigbtn gold" style="margin-left:auto;padding:7px 12px;font-size:9px" onclick="liveOpenDeckPicker()">🏁 FROM DECK</button>' +
-    '<button class="bigbtn green" style="padding:7px 12px;font-size:9px" onclick="liveAddSlide()">+ ADD SLIDE</button></div>' +
-    (s.slides.length ? s.slides.map(function (sl, i) { return slideRowHtml(sl, i); }).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No slides yet.</div>') +
+    '<div class="card" style="margin-top:14px"><div class="cardT" style="display:flex;align-items:center;gap:10px">Activities (' + s.slides.length + ')' +
+    '<button class="bigbtn green" style="margin-left:auto;padding:7px 12px;font-size:9px" onclick="liveAddSlide()">+ ADD ACTIVITY</button></div>' +
+    (s.slides.length ? s.slides.map(function (sl, i) { return slideRowHtml(sl, i); }).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No activities yet.</div>') +
     '</div>' +
     '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSessionForm()">💾 SAVE SESSION</button>' +
     '<button class="bigbtn ghost" onclick="liveCancelEdit()">CANCEL</button></div>';
