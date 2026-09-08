@@ -648,6 +648,15 @@ function mergeSession(local, incoming) {
   (local.awardedTo || []).forEach(function (id) { awardSet[id] = true; });
   merged.awardedTo = Object.keys(awardSet);
 
+  // PATCH X-LIVE v0.31 -- raceEvents (X-Rush powerup/sabotage purchases)
+  // is append-only, unioned by event id -- same discipline as awardedTo
+  // above -- so a stale poll can never drop a purchase another client
+  // already made.
+  const raceEventById = {};
+  (incoming.raceEvents || []).forEach(function (e) { raceEventById[e.id] = e; });
+  (local.raceEvents || []).forEach(function (e) { raceEventById[e.id] = e; });
+  merged.raceEvents = Object.keys(raceEventById).map(function (k) { return raceEventById[k]; });
+
   // status — a terminal (ended/archived) status always wins over a
   // non-terminal one, from EITHER side, so a stale poll can never
   // resurrect a session another client already ended.
@@ -1318,6 +1327,21 @@ function pflxRaceLeaderboard(s) {
       totals[pid] = (totals[pid] || 0) + pflxRaceScore(sl, responses[pid]);
     });
   });
+  // PATCH X-LIVE v0.31 -- fold in X-Rush powerup bonuses (Speed Boost
+  // jumps, Steal transfers, Double Points) so the leaderboard/track
+  // reflect them. Backward compatible: with no raceEvents on the session
+  // pflxRacePowerupBonus() returns 0 for everyone, so this is a no-op --
+  // verified by a unit test asserting byte-identical output to pre-v0.31
+  // behavior on a fixture with no raceEvents.
+  var pidsWithEvents = {};
+  ((s && s.raceEvents) || []).forEach(function (ev) {
+    if (ev.pid) pidsWithEvents[ev.pid] = 1;
+    if (ev.targetPid) pidsWithEvents[ev.targetPid] = 1;
+  });
+  Object.keys(Object.assign({}, totals, pidsWithEvents)).forEach(function (pid) {
+    var bonus = pflxRacePowerupBonus(s, pid);
+    if (bonus) totals[pid] = (totals[pid] || 0) + bonus;
+  });
   return Object.keys(totals)
     .map(function (pid) { return { id: pid, score: totals[pid] }; })
     .sort(function (a, b) { return b.score - a.score; });
@@ -1422,6 +1446,165 @@ function pflxRaceTrackHtml(s) {
   return '<div class="pflx-results-block"><div class="pflx-results-title">🏁 X-Rush Track</div>' + rows + '</div>';
 }
 window.pflxRaceTrackHtml = pflxRaceTrackHtml;
+
+// PATCH X-LIVE v0.31 -- X-Rush Powerups & Sabotage. Session-scoped "Nitro"
+// currency, earned per correct X-Rush answer (reuses pflxRaceScore's own
+// speed-weighted curve directly -- not forked). Six powerups as small pure
+// functions, each independently unit-tested: Speed Boost / Shield / Double
+// Points (self-targeted boosts) and Freeze / Fog / Steal (sabotage, needs a
+// target). Everything here is DERIVED from s.slides (already merge-safe)
+// plus the new append-only s.raceEvents list (unioned by id in
+// mergeSession(), see above) -- there is no separately-mutated "balance" or
+// "shield active" field anywhere, so none of this can be clobbered by a
+// stale poll, per the pflx-persistence-guardrail discipline.
+var PFLX_POWERUPS = {
+  speed_boost:   { key: 'speed_boost',   label: 'Speed Boost',   icon: '\ud83d\ude80', cost: 30, kind: 'boost',    needsTarget: false, jumpAmount: 15 },
+  shield:        { key: 'shield',        label: 'Shield',        icon: '\ud83d\udee1\ufe0f', cost: 20, kind: 'boost',    needsTarget: false },
+  double_points: { key: 'double_points', label: 'Double Points', icon: '\u2b50', cost: 40, kind: 'boost',    needsTarget: false },
+  freeze:        { key: 'freeze',        label: 'Freeze',        icon: '\u2744\ufe0f', cost: 25, kind: 'sabotage', needsTarget: true,  durationMs: 8000 },
+  fog:           { key: 'fog',           label: 'Fog',           icon: '\ud83c\udf2b\ufe0f', cost: 20, kind: 'sabotage', needsTarget: true,  durationMs: 10000 },
+  steal:         { key: 'steal',         label: 'Steal',         icon: '\ud83e\ude99', cost: 35, kind: 'sabotage', needsTarget: true,  stealAmount: 15 }
+};
+window.PFLX_POWERUPS = PFLX_POWERUPS;
+
+// Nitro earned -- identical curve to XC (pflxRaceScore), summed over this
+// player's correct, revealed X-Rush answers. Nitro is a SEPARATE,
+// session-scoped currency from XC/track progress -- spending it doesn't
+// touch the leaderboard.
+function pflxRaceNitroEarned(s, pid) {
+  var total = 0;
+  ((s && s.slides) || []).forEach(function (sl) {
+    if (sl.type !== 'quiz_race' || !sl.revealed) return;
+    var resp = (sl.responses || {})[pid];
+    if (resp) total += pflxRaceScore(sl, resp);
+  });
+  return total;
+}
+window.pflxRaceNitroEarned = pflxRaceNitroEarned;
+
+function pflxRaceNitroSpent(s, pid) {
+  var total = 0;
+  ((s && s.raceEvents) || []).forEach(function (ev) {
+    if (ev.pid !== pid) return;
+    var def = PFLX_POWERUPS[ev.key];
+    if (def) total += def.cost;
+  });
+  return total;
+}
+window.pflxRaceNitroSpent = pflxRaceNitroSpent;
+
+// Current spendable balance: earned - spent, plus/minus any Steal transfers
+// (an un-blocked steal moves Nitro directly between two players' balances).
+// Floored at 0 for display/spend-gating even in a rare concurrent-write
+// race that could otherwise dip a raw total negative.
+function pflxRaceNitroBalance(s, pid) {
+  var earned = pflxRaceNitroEarned(s, pid);
+  var spent = pflxRaceNitroSpent(s, pid);
+  var stolenBy = 0, stolenFrom = 0;
+  ((s && s.raceEvents) || []).forEach(function (ev) {
+    if (ev.key !== 'steal' || ev.blocked) return;
+    if (ev.pid === pid) stolenBy += (ev.stolenAmount || 0);
+    if (ev.targetPid === pid) stolenFrom += (ev.stolenAmount || 0);
+  });
+  return Math.max(0, earned - spent + stolenBy - stolenFrom);
+}
+window.pflxRaceNitroBalance = pflxRaceNitroBalance;
+
+// Replays raceEvents in chronological order to derive (a) whether `pid`
+// currently holds an active, unconsumed Shield, and (b) which time-limited
+// sabotage effects (Freeze/Fog) are currently active against them. Pure --
+// there is no separately-stored "shield active" flag, so this can never
+// drift from the event log itself.
+function pflxRaceActiveEffects(s, pid, now) {
+  now = now || Date.now();
+  var events = ((s && s.raceEvents) || []).slice().sort(function (a, b) { return a.at - b.at; });
+  var shieldActive = false;
+  var lastByKey = {};
+  events.forEach(function (ev) {
+    var def = PFLX_POWERUPS[ev.key];
+    if (!def) return;
+    if (ev.pid === pid && ev.key === 'shield') { shieldActive = true; return; }
+    if (ev.targetPid === pid && def.kind === 'sabotage') {
+      if (ev.blocked) { shieldActive = false; return; } // shield consumed at trigger time
+      if (def.durationMs) lastByKey[ev.key] = ev.at + def.durationMs;
+    }
+  });
+  var effects = {};
+  Object.keys(lastByKey).forEach(function (k) { if (lastByKey[k] > now) effects[k] = lastByKey[k]; });
+  return { shieldActive: shieldActive, effects: effects };
+}
+window.pflxRaceActiveEffects = pflxRaceActiveEffects;
+
+// Track/leaderboard bonus from powerups -- Speed Boost's flat jump, Steal's
+// transfer, and Double Points' one-time doubling of whichever slide was
+// active at purchase time. Folded into pflxRaceLeaderboard() above (0 when
+// no raceEvents exist, so that fold-in is provably backward compatible).
+function pflxRacePowerupBonus(s, pid) {
+  var bonus = 0;
+  ((s && s.raceEvents) || []).forEach(function (ev) {
+    if (ev.key === 'speed_boost' && ev.pid === pid) bonus += (PFLX_POWERUPS.speed_boost.jumpAmount || 0);
+    if (ev.key === 'steal' && !ev.blocked) {
+      if (ev.pid === pid) bonus += (ev.stolenAmount || 0);
+      if (ev.targetPid === pid) bonus -= (ev.stolenAmount || 0);
+    }
+    if (ev.key === 'double_points' && ev.pid === pid && ev.slideId) {
+      var sl = ((s && s.slides) || []).find(function (x) { return x.id === ev.slideId; });
+      var resp = sl && sl.responses && sl.responses[pid];
+      if (sl && sl.revealed && resp && resp.value === sl.correctIndex) bonus += pflxRaceScore(sl, resp);
+    }
+  });
+  return bonus;
+}
+window.pflxRacePowerupBonus = pflxRacePowerupBonus;
+
+// Deterministic option-order shuffle for a Fogged player -- returns the
+// ORIGINAL option indices in fogged display order, so the same seed (a
+// slide+player pair) always reproduces the same order across re-renders,
+// but different players/slides get different orders.
+function pflxRaceFogOptions(length, seed) {
+  var order = [];
+  for (var i = 0; i < length; i++) order.push(i);
+  var h = 0;
+  String(seed).split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+  function rand() { h = (h * 1103515245 + 12345) >>> 0; return h / 4294967296; }
+  for (var j = order.length - 1; j > 0; j--) {
+    var k = Math.floor(rand() * (j + 1));
+    var tmp = order[j]; order[j] = order[k]; order[k] = tmp;
+  }
+  return order;
+}
+window.pflxRaceFogOptions = pflxRaceFogOptions;
+
+// Validates and constructs a powerup-purchase event -- PURE, does not save.
+// The caller (liveTriggerPowerupUi in the UI layer) pushes the returned
+// event onto s.raceEvents and calls saveSession(). Checks: powerup exists,
+// powerups/sabotage are host-enabled, a sabotage has a valid (not-self)
+// target, and the actor can afford it. A sabotage against a currently
+// shielded target is marked blocked (no duration/economic effect applies)
+// but still costs the actor their Nitro -- the shield is what "ate" it.
+function pflxRaceTriggerPowerup(s, pid, key, targetPid, now) {
+  now = now || Date.now();
+  var def = PFLX_POWERUPS[key];
+  if (!def) return { ok: false, reason: 'unknown-powerup' };
+  if (!s || !s.powerupsEnabled) return { ok: false, reason: 'powerups-disabled' };
+  if (def.kind === 'sabotage' && !s.sabotageEnabled) return { ok: false, reason: 'sabotage-disabled' };
+  if (def.needsTarget) {
+    if (!targetPid) return { ok: false, reason: 'missing-target' };
+    if (targetPid === pid) return { ok: false, reason: 'invalid-target' };
+  }
+  if (pflxRaceNitroBalance(s, pid) < def.cost) return { ok: false, reason: 'insufficient-nitro' };
+  var currentSlide = ((s && s.slides) || [])[s.currentSlideIndex || 0];
+  var event = { id: 'rev_' + now + '_' + Math.random().toString(36).slice(2, 8), pid: pid, key: key, targetPid: targetPid || null, at: now, slideId: currentSlide ? currentSlide.id : null };
+  if (def.kind === 'sabotage') {
+    var targetShielded = pflxRaceActiveEffects(s, targetPid, now).shieldActive;
+    if (targetShielded) event.blocked = true;
+  }
+  if (key === 'steal' && !event.blocked) {
+    event.stolenAmount = Math.min(def.stealAmount || 0, pflxRaceNitroBalance(s, targetPid));
+  }
+  return { ok: true, event: event };
+}
+window.pflxRaceTriggerPowerup = pflxRaceTriggerPowerup;
 
 // ── Shared Quizlet/CSV deck importer ────────────────────────────────
 var PFLX_DECKS_KEY = 'pflx_ba_decks';
@@ -2120,6 +2303,84 @@ async function liveClearYouTubeEmbed() {
   render();
 }
 
+// PATCH X-LIVE v0.31 -- host toggles for X-Rush Powerups & Sabotage,
+// independent of each other (a host can run boosts-only for younger
+// players). Same save/render pattern as the YouTube toggle above.
+async function liveTogglePowerups(on) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.powerupsEnabled = !!on;
+  await saveSession(s);
+  render();
+}
+async function liveToggleSabotage(on) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.sabotageEnabled = !!on;
+  await saveSession(s);
+  render();
+}
+function hasRaceSlide(s) { return (s && s.slides || []).some(function (x) { return x.type === 'quiz_race'; }); }
+
+// Player-side purchase UI wrapper -- validates via the pure
+// pflxRaceTriggerPowerup(), then appends the event and saves (merge-safe
+// via saveSession's existing read-merge-write path).
+async function liveTriggerPowerupUi(key) {
+  const s = nativeSessionAppliesToMe(); if (!s) return;
+  const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  const def = PFLX_POWERUPS[key];
+  var targetPid = null;
+  if (def && def.needsTarget) {
+    var sel = document.getElementById('pflxRaceTarget');
+    targetPid = sel ? sel.value : null;
+  }
+  const result = pflxRaceTriggerPowerup(s, myId, key, targetPid, Date.now());
+  if (!result.ok) { toast('Can\'t use that: ' + result.reason.replace(/-/g, ' ')); return; }
+  s.raceEvents = s.raceEvents || [];
+  s.raceEvents.push(result.event);
+  await saveSession(s);
+  render();
+  toast((def.icon || '') + ' ' + (def.label || 'Powerup') + (result.event.blocked ? ' \u2014 blocked by shield!' : ' used!'));
+}
+window.liveTriggerPowerupUi = liveTriggerPowerupUi;
+
+// Player-side powerup bar -- Nitro balance, boost buttons (self-only) and,
+// when the host has sabotage on, a target picker plus sabotage buttons.
+// Only rendered while a X-Rush slide is live and unrevealed.
+function pflxRacePowerupBarHtml(s, sl, myId) {
+  if (!s.powerupsEnabled || !sl || sl.type !== 'quiz_race' || sl.revealed) return '';
+  var bal = pflxRaceNitroBalance(s, myId);
+  var eff = pflxRaceActiveEffects(s, myId, Date.now());
+  var frozenUntil = eff.effects.freeze;
+  var fogUntil = eff.effects.fog;
+  var others = (s.liveParticipants || []).filter(function (p) { return p.id !== myId; });
+  var roster = classRoster();
+  function nameFor(pid) {
+    var p = roster.find(function (r) { return r.id === pid; });
+    return p ? (p.brand || 'Player') : 'Player';
+  }
+  var targetOptions = others.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(nameFor(p.id)) + '</option>'; }).join('');
+  var boostBtns = ['speed_boost', 'shield', 'double_points'].map(function (k) {
+    var def = PFLX_POWERUPS[k];
+    var afford = bal >= def.cost;
+    return '<button class="bigbtn ghost" style="font-size:9px;padding:6px 8px' + (afford ? '' : ';opacity:0.4') + '" ' + (afford ? '' : 'disabled') + ' onclick="liveTriggerPowerupUi(\'' + k + '\')">' + def.icon + ' ' + def.label + ' (' + def.cost + ')</button>';
+  }).join('');
+  var sabotageBtns = (!s.sabotageEnabled || !others.length) ? '' :
+    ['freeze', 'fog', 'steal'].map(function (k) {
+      var def = PFLX_POWERUPS[k];
+      var afford = bal >= def.cost;
+      return '<button class="bigbtn red" style="font-size:9px;padding:6px 8px' + (afford ? '' : ';opacity:0.4') + '" ' + (afford ? '' : 'disabled') + ' onclick="liveTriggerPowerupUi(\'' + k + '\')">' + def.icon + ' ' + def.label + ' (' + def.cost + ')</button>';
+    }).join('');
+  return '<div class="card" style="background:rgba(255,209,102,0.06);border-color:rgba(255,209,102,0.25);margin-bottom:8px;padding:10px">' +
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-family:Audiowide;font-size:10px;color:#ffd166">\u26a1 ' + bal + ' Nitro</span>' +
+    (frozenUntil ? '<span style="font-size:10px;color:#7ad9ff">\u2744\ufe0f Frozen ' + Math.ceil((frozenUntil - Date.now()) / 1000) + 's</span>' : '') +
+    (fogUntil ? '<span style="font-size:10px;color:#c9a7ff">\ud83c\udf2b\ufe0f Fogged</span>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + boostBtns + '</div>' +
+    (sabotageBtns ? ('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><select id="pflxRaceTarget" style="font-size:10px;padding:4px">' + targetOptions + '</select>' + sabotageBtns + '</div>') : '') +
+    '</div>';
+}
+window.pflxRacePowerupBarHtml = pflxRacePowerupBarHtml;
+
+
 function rLiveRun(s) {
   const idx = s.currentSlideIndex || 0;
   const sl = s.slides[idx];
@@ -2155,6 +2416,14 @@ function rLiveRun(s) {
          '<button class="bigbtn gold" style="font-size:10px;padding:6px 12px" onclick="liveSetYouTubeEmbedFromInput()">SET STREAM</button>')
       ) +
     '</div>' +
+    (hasRaceSlide(s) ? (
+      '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
+        '<div class="cardT" style="font-size:12px">\ud83c\udfc1 X-Rush Powerups</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">' +
+        '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:12px"><input type="checkbox" style="width:auto" ' + (s.powerupsEnabled ? 'checked' : '') + ' onchange="liveTogglePowerups(this.checked)"/> \u26a1 Powerups</label>' +
+        '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:12px"><input type="checkbox" style="width:auto" ' + (s.sabotageEnabled ? 'checked' : '') + ' onchange="liveToggleSabotage(this.checked)"/> \ud83d\udca3 Sabotage</label>' +
+        '</div></div>'
+    ) : '') +
     (sl ? (
       '<div class="card" style="background:rgba(255,255,255,0.03)">' +
       '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '(untitled)') + '</div>' +
@@ -2274,12 +2543,25 @@ function rLiveNative() {
   const raceTimerHtml = (sl.type === 'quiz_race' && !sl.revealed && sl.seconds) ? ('<div id="pflxRaceCountdown" style="font-family:Audiowide;font-size:40px;color:#ffd166;text-align:center;margin:6px 0">' + Math.max(0, Math.ceil(sl.seconds - (sl.startedAt ? (Date.now() - sl.startedAt) / 1000 : 0))) + 's</div>') : '';
   let body = '';
   if (meta.hasOptions || (sl.type === 'exit' && (sl.exitType || 'quickwrite') === 'poll')) {
-    body = raceTimerHtml + (sl.options || []).map(function (o, i) {
+    // PATCH X-LIVE v0.31 -- X-Rush Freeze/Fog: for every OTHER type using
+    // this branch (poll, exit-poll) isRace is false, raceEff stays null,
+    // frozen/fogged stay false, and displayOrder is the untouched
+    // identity order -- this whole block collapses back to byte-identical
+    // pre-v0.31 output for those types.
+    var isRace = sl.type === 'quiz_race';
+    var raceEff = isRace ? pflxRaceActiveEffects(s, myId, Date.now()) : null;
+    var frozen = !!(raceEff && raceEff.effects.freeze);
+    var fogged = !!(raceEff && raceEff.effects.fog);
+    var optCount = (sl.options || []).length;
+    var displayOrder = (isRace && fogged) ? pflxRaceFogOptions(optCount, sl.id + '_' + myId) : (sl.options || []).map(function (_, i) { return i; });
+    body = raceTimerHtml + displayOrder.map(function (i) {
+      const o = sl.options[i];
       const picked = myResp && myResp.value === i;
       const showCorrect = sl.revealed && meta.graded && i === sl.correctIndex;
-      return '<button class="bigbtn ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (hc.responsesLocked || myResp || raceExpired ? ';opacity:0.6' : '') + '" ' +
-        (hc.responsesLocked || myResp || raceExpired ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')">' + esc(o) + (showCorrect ? ' ⭐' : '') + '</button>';
-    }).join('');
+      const locked = hc.responsesLocked || myResp || raceExpired || frozen;
+      return '<button class="bigbtn ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (locked ? ';opacity:0.6' : '') + '" ' +
+        (locked ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')">' + esc(o) + (showCorrect ? ' \u2b50' : '') + '</button>';
+    }).join('') + (frozen ? '<div style="text-align:center;color:#7ad9ff;font-size:11px;margin-top:8px">\u2744\ufe0f Frozen! Answering unlocks soon.</div>' : '');
   } else if (sl.type === 'open_response') {
     body = '<textarea id="liveOpenResp" rows="3" placeholder="Type your response…" ' + (hc.responsesLocked || myResp ? 'disabled' : '') + '>' + (myResp ? esc(myResp.value) : '') + '</textarea>' +
       (!myResp && !hc.responsesLocked ? '<button class="bigbtn gold" style="margin-top:8px" onclick="liveSubmitText()">SUBMIT</button>' : '');
@@ -2313,6 +2595,7 @@ function rLiveNative() {
   return ytEmbed + '<div class="card">' +
     '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
     (sl.prompt && !meta.isEmbed ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
+    pflxRacePowerupBarHtml(s, sl, myId) +
     body +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
     pflxSlideResultsHtml(sl) +
