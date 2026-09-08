@@ -1032,8 +1032,8 @@ function render() {
     return;
   }
   const tabs = L.isHost
-    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
-    : [['me', '🤖 MY EXO'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
+    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
+    : [['me', '🤖 MY EXO'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
     '<div class="hd"><div class="logo"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" class="logo-img"/><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
@@ -1042,10 +1042,48 @@ function render() {
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     liveSessionBanner() + nativeLiveSessionBanner() +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
-    ({ class: rClass, live: rLive, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
+    ({ class: rClass, live: rLive, theater: rTheater, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
 }
 function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
+
+// PATCH X-LIVE -- Theater tab. Lists every currently-streaming session
+// (status active + a YouTube/OBS embed set, PATCH X-LIVE v0.19) and lets
+// ANY logged-in user watch, independent of that session's own roster/
+// cohort gating. Deliberately does not touch L.liveParticipants,
+// hostControls, or liveJoinSession() -- this is a read-only viewing
+// surface layered on top of the session object, not an entry into its
+// Nearpod-style flow.
+function pflxTheaterLiveSessions() {
+  return (L.sessions || []).filter(function (s) { return s.status === 'active' && s.youtubeEmbedId; });
+}
+window.pflxTheaterLiveSessions = pflxTheaterLiveSessions;
+
+function theaterWatch(id) { L.theaterWatchingId = id; render(); }
+function theaterStopWatching() { L.theaterWatchingId = null; render(); }
+
+function rTheater() {
+  const watching = L.theaterWatchingId ? (L.sessions || []).find(function (s) { return s.id === L.theaterWatchingId && s.status === 'active' && s.youtubeEmbedId; }) : null;
+  if (watching) {
+    return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">' +
+      '<div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(watching.youtubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>' +
+      '<div class="card"><div class="cardT">🎬 ' + esc(watching.title || 'Live Stream') + '</div>' +
+      '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Watching only — separate from this session\'s own slides/agenda. No sign-in to the session required.</div>' +
+      '<button class="bigbtn ghost" style="margin-top:10px" onclick="theaterStopWatching()">← BACK TO THEATER</button></div>';
+  }
+  const live = pflxTheaterLiveSessions();
+  return '<div class="card"><div class="cardT">🎬 Theater</div>' +
+    '<div style="font-size:12px;color:#8a93b8;margin:6px 0 12px">Every currently-streaming session, open to watch — no roster or cohort required. Separate from a session\'s own Live tab, where its actual players follow the slides/agenda.</div>' +
+    (live.length ? live.map(function (s) {
+      return '<div class="feedrow" style="align-items:center">' +
+        '<div style="flex:1;min-width:0"><b>' + esc(s.title || 'Untitled Session') + '</b>' +
+        '<div style="font-size:10px;color:#ff5d7a">🔴 LIVE NOW</div></div>' +
+        '<button class="bigbtn gold" style="padding:7px 14px;font-size:10px" onclick="theaterWatch(\'' + esc(s.id) + '\')">▶ WATCH</button></div>';
+    }).join('') : '<div style="font-size:12px;color:#5c6488;padding:20px 0;text-align:center">Nothing streaming right now — check back when a host goes live with a YouTube/OBS broadcast.</div>') +
+    '</div>';
+}
+window.rTheater = rTheater;
+
 
 // ── CLASS (roster grid) ──
 function rClass() {
