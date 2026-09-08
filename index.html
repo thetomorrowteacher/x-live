@@ -1126,6 +1126,10 @@ const SLIDE_TYPES = [
   { key: 'poll', label: 'Poll', icon: '📊', hasOptions: true, hasTimer: true, timerOnly: false },
   { key: 'mc', label: 'Multiple Choice', icon: '🔘', hasOptions: true, hasTimer: true, timerOnly: false, graded: true },
   { key: 'quiz', label: 'Quiz Question', icon: '❓', hasOptions: true, hasTimer: true, timerOnly: false, graded: true },
+  // PATCH X-LIVE v0.28 -- Quiz Race: same shape as Quiz Question
+  // (options/correctIndex/graded), plus speed-weighted scoring off
+  // sl.seconds/sl.startedAt -- see pflxRaceScore.
+  { key: 'quiz_race', label: 'Quiz Race', icon: '🏎️', hasOptions: true, hasTimer: true, timerOnly: false, graded: true, isRace: true },
   { key: 'open_response', label: 'Open Response', icon: '✍️', hasOptions: false, hasTimer: true, timerOnly: false },
   { key: 'discussion', label: 'Discussion Prompt', icon: '💬', hasOptions: false, hasTimer: false, timerOnly: false },
   { key: 'timer', label: 'Timer', icon: '⏱️', hasOptions: false, hasTimer: true, timerOnly: true },
@@ -1148,7 +1152,7 @@ function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.ke
 // of SLIDE_TYPES/slideTypeMeta is untouched.
 var PFLX_SLIDE_CATEGORIES = [
   { label: 'Content', keys: ['text', 'media', 'google_slides', 'google_doc', 'html_embed'] },
-  { label: 'Questions & Polls', keys: ['poll', 'mc', 'quiz', 'open_response', 'discussion'] },
+  { label: 'Questions & Polls', keys: ['poll', 'mc', 'quiz', 'quiz_race', 'open_response', 'discussion'] },
   { label: 'Timed Activities', keys: ['timer', 'challenge', 'mindful', 'social', 'project'] },
   { label: 'Tasks & Wrap-Up', keys: ['push_task', 'exit'] }
 ];
@@ -1270,6 +1274,115 @@ function pflxSlideResultsHtml(sl) {
 }
 window.pflxSlideResultsHtml = pflxSlideResultsHtml;
 window.pflxSlideHasResults = pflxSlideHasResults;
+
+// PATCH X-LIVE v0.28 -- Quiz Race mode (Kahoot/Blooket/Wayground/Quizlet-
+// Live-style): a graded, options-bearing slide type that speed-weights the
+// XC reward by how fast a correct answer was submitted, and shows a live,
+// always-recomputed leaderboard once a race question is revealed. Reuses
+// every existing slide field (options/correctIndex/seconds/rewardXc/
+// responses) -- no schema change -- and reuses sl.responses[pid].at
+// (already recorded by liveSubmitChoice) as the answer timestamp, so the
+// only new persisted field is sl.startedAt (see liveMarkSlideStarted
+// below), set once per slide and never overwritten -- merge-safe by
+// construction (first write wins, same value either way in practice).
+
+// Kahoot's own scoring curve: an instant correct answer earns the full
+// reward, one that lands right at the time limit earns half, linear in
+// between. A slide with no time limit (seconds:0, same "no limit" meaning
+// used everywhere else in this file) or no reward XC set just grants the
+// flat amount -- identical to every other graded slide type -- so Quiz
+// Race with a 0 timer behaves exactly like a plain Quiz Question.
+function pflxRaceScore(sl, resp) {
+  if (!sl || !resp || resp.value !== sl.correctIndex) return 0;
+  var maxPts = sl.rewardXc || 0;
+  if (!maxPts) return 0;
+  var limit = sl.seconds || 0;
+  if (!limit || typeof sl.startedAt !== 'number' || typeof resp.at !== 'number') return maxPts;
+  var elapsed = Math.min(Math.max(0, (resp.at - sl.startedAt) / 1000), limit);
+  var ratio = 1 - (elapsed / limit) / 2; // 1.0 at t=0 -> 0.5 at t=limit
+  return Math.max(1, Math.round(maxPts * ratio));
+}
+window.pflxRaceScore = pflxRaceScore;
+
+// Live-recomputed leaderboard -- same "never a frozen snapshot" discipline
+// as pflxSlideResultsHtml above -- summed only from Quiz Race slides that
+// have actually been revealed (an unrevealed race question hasn't "scored"
+// yet), so the board fills in progressively, one question at a time, the
+// same way Kahoot/Blooket show it between questions.
+function pflxRaceLeaderboard(s) {
+  var totals = {};
+  (s && s.slides || []).forEach(function (sl) {
+    if (sl.type !== 'quiz_race' || !sl.revealed) return;
+    var responses = sl.responses || {};
+    Object.keys(responses).forEach(function (pid) {
+      totals[pid] = (totals[pid] || 0) + pflxRaceScore(sl, responses[pid]);
+    });
+  });
+  return Object.keys(totals)
+    .map(function (pid) { return { id: pid, score: totals[pid] }; })
+    .sort(function (a, b) { return b.score - a.score; });
+}
+window.pflxRaceLeaderboard = pflxRaceLeaderboard;
+
+function pflxRaceLeaderboardHtml(s) {
+  var board = pflxRaceLeaderboard(s);
+  if (!board.length) return '';
+  var roster = classRoster();
+  var top = board[0].score || 1;
+  function nameFor(pid) {
+    var p = roster.find(function (r) { return r.id === pid; });
+    return p ? (p.brand || 'Player') : 'Player';
+  }
+  var rows = board.slice(0, 10).map(function (row, i) {
+    var pct = top ? Math.round(row.score / top * 100) : 0;
+    return '<div class="pflx-results-row">' +
+      '<div class="pflx-results-row-label">' + (i + 1) + '. ' + esc(nameFor(row.id)) + '</div>' +
+      '<div class="pflx-results-bar-track"><div class="pflx-results-bar-fill correct" style="width:' + pct + '%"></div></div>' +
+      '<div class="pflx-results-row-pct">' + row.score + ' pt' + (row.score === 1 ? '' : 's') + '</div>' +
+      '</div>';
+  }).join('');
+  return '<div class="pflx-results-block"><div class="pflx-results-title">\ud83c\udfc1 Race Leaderboard</div>' + rows + '</div>';
+}
+window.pflxRaceLeaderboardHtml = pflxRaceLeaderboardHtml;
+
+// Stamps when a slide FIRST becomes the current one -- the baseline
+// pflxRaceScore measures answer speed against. Idempotent: a host jumping
+// back to an already-visited slide (PREV, or the agenda-rail click-to-jump)
+// must never reset this, or every previous response on that slide would
+// suddenly look like it came in "late" against a brand-new start time.
+function liveMarkSlideStarted(s, i) {
+  var sl = s && s.slides && s.slides[i];
+  if (sl && !sl.startedAt) sl.startedAt = Date.now();
+}
+window.liveMarkSlideStarted = liveMarkSlideStarted;
+
+// Live-ticking countdown for the player's own screen during an unrevealed
+// Quiz Race question -- module-level state (same pattern as this file's
+// existing agendaTimerIv/agendaTimerFor) since it must survive across the
+// repeated render() calls the polling loop already triggers. Re-renders
+// once on hitting zero so the answer buttons pick up raceExpired and lock,
+// even if the host hasn't revealed yet.
+var pflxRaceTimerIv = null, pflxRaceTimerFor = null;
+function pflxStopRaceTimer() {
+  if (pflxRaceTimerIv) { clearInterval(pflxRaceTimerIv); pflxRaceTimerIv = null; }
+  pflxRaceTimerFor = null;
+}
+function pflxEnsureRaceTimer(sl) {
+  if (pflxRaceTimerFor === sl.id) return;
+  pflxStopRaceTimer();
+  if (!sl.seconds || !sl.startedAt) return;
+  pflxRaceTimerFor = sl.id;
+  var draw = function () {
+    var el = document.getElementById('pflxRaceCountdown');
+    if (!el) return;
+    var remaining = Math.max(0, Math.ceil(sl.seconds - (Date.now() - sl.startedAt) / 1000));
+    el.textContent = remaining + 's';
+    el.style.color = remaining <= 5 ? '#ff5d7a' : '#ffd166';
+    if (remaining <= 0 && pflxRaceTimerIv) { clearInterval(pflxRaceTimerIv); pflxRaceTimerIv = null; render(); }
+  };
+  draw();
+  pflxRaceTimerIv = setInterval(draw, 250);
+}
 
 // PATCH X-LIVE v0.21 -- embed slide types (google_slides, google_doc,
 // html_embed). All three reuse sl.prompt to hold whatever the host pasted
@@ -1606,6 +1719,7 @@ async function liveGoLiveSession(id) {
   s.status = 'active';
   s.currentSlideIndex = 0;
   s.hostControls = { paused: false, responsesLocked: false, slideFrozen: false };
+  liveMarkSlideStarted(s, 0); // PATCH X-LIVE v0.28 -- Quiz Race needs a start timestamp per slide
   await saveSession(s);
   L.liveRunningSessionId = s.id;
   L.liveEditingSession = null;
@@ -1619,6 +1733,7 @@ function liveMoveCurrentSlide(dir) {
   const j = (s.currentSlideIndex || 0) + dir;
   if (j < 0 || j >= s.slides.length) return;
   s.currentSlideIndex = j;
+  liveMarkSlideStarted(s, j); // PATCH X-LIVE v0.28
   saveSession(s); render();
 }
 // PATCH X-LIVE v0.23 -- absolute-jump sibling of liveMoveCurrentSlide,
@@ -1627,6 +1742,7 @@ function liveJumpToSlide(i) {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
   if (i < 0 || i >= s.slides.length) return;
   s.currentSlideIndex = i;
+  liveMarkSlideStarted(s, i); // PATCH X-LIVE v0.28
   saveSession(s); render();
 }
 function liveToggleControl(key) {
@@ -1648,7 +1764,10 @@ function liveRevealSlide() {
         const key = 'slide:' + sl.id + ':' + pid;
         if (s.awardedTo.indexOf(key) === -1) {
           s.awardedTo.push(key);
-          grantSessionReward(pid, sl.rewardXc, sl.rewardBadgeId, 'xlive-session:' + s.id + ':slide:' + sl.id);
+          // PATCH X-LIVE v0.28 -- Quiz Race grants speed-weighted XC instead
+          // of sl.rewardXc's flat amount; every other graded type unchanged.
+          const xc = sl.type === 'quiz_race' ? pflxRaceScore(sl, r) : sl.rewardXc;
+          grantSessionReward(pid, xc, sl.rewardBadgeId, 'xlive-session:' + s.id + ':slide:' + sl.id);
         }
       }
     });
@@ -1761,7 +1880,9 @@ function rLiveRun(s) {
       (sl.type === 'exit' ? '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Exit type: ' + esc(pflxExitTypeLabel(sl.exitType || 'quickwrite')) + '</div>' : '') +
       ((meta.hasOptions || (sl.type === 'exit' && (sl.exitType || 'quickwrite') === 'poll')) ? '<div style="font-size:11px;color:#8a93b8;margin-top:6px">' + (sl.options || []).map(function (o, i) { return (meta.graded && i === sl.correctIndex ? '⭐ ' : '') + esc(o); }).join(' · ') + '</div>' : '') +
       '<div style="font-size:11px;color:#7dffb8;margin-top:8px">' + respCount + ' response' + (respCount === 1 ? '' : 's') + (sl.revealed ? ' · revealed' : '') + '</div>' +
+      (sl.type === 'quiz_race' && !sl.revealed && sl.seconds ? '<div style="font-family:Audiowide;font-size:22px;color:#ffd166;margin-top:6px">⏱ ' + Math.max(0, Math.ceil(sl.seconds - (sl.startedAt ? (Date.now() - sl.startedAt) / 1000 : 0))) + 's remaining</div>' : '') +
       pflxSlideResultsHtml(sl) +
+      (sl.type === 'quiz_race' ? pflxRaceLeaderboardHtml(s) : '') +
       '</div>'
     ) : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No slides in this session.</div>') +
     '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
@@ -1861,13 +1982,19 @@ function rLiveNative() {
   const meta = slideTypeMeta(sl.type);
   const myId = (L.me && L.me.id) || '';
   const myResp = sl.responses ? sl.responses[myId] : null;
+  // PATCH X-LIVE v0.28 -- Quiz Race: keep the live countdown running (or
+  // stopped) for whichever slide is actually on screen right now, and lock
+  // the answer buttons once the clock hits zero even before the host reveals.
+  if (sl.type === 'quiz_race' && !sl.revealed) { pflxEnsureRaceTimer(sl); } else { pflxStopRaceTimer(); }
+  const raceExpired = sl.type === 'quiz_race' && !sl.revealed && !!sl.seconds && !!sl.startedAt && (Date.now() - sl.startedAt) / 1000 >= sl.seconds;
+  const raceTimerHtml = (sl.type === 'quiz_race' && !sl.revealed && sl.seconds) ? ('<div id="pflxRaceCountdown" style="font-family:Audiowide;font-size:40px;color:#ffd166;text-align:center;margin:6px 0">' + Math.max(0, Math.ceil(sl.seconds - (sl.startedAt ? (Date.now() - sl.startedAt) / 1000 : 0))) + 's</div>') : '';
   let body = '';
   if (meta.hasOptions || (sl.type === 'exit' && (sl.exitType || 'quickwrite') === 'poll')) {
-    body = (sl.options || []).map(function (o, i) {
+    body = raceTimerHtml + (sl.options || []).map(function (o, i) {
       const picked = myResp && myResp.value === i;
       const showCorrect = sl.revealed && meta.graded && i === sl.correctIndex;
-      return '<button class="bigbtn ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (hc.responsesLocked || myResp ? ';opacity:0.6' : '') + '" ' +
-        (hc.responsesLocked || myResp ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')">' + esc(o) + (showCorrect ? ' ⭐' : '') + '</button>';
+      return '<button class="bigbtn ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (hc.responsesLocked || myResp || raceExpired ? ';opacity:0.6' : '') + '" ' +
+        (hc.responsesLocked || myResp || raceExpired ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')">' + esc(o) + (showCorrect ? ' ⭐' : '') + '</button>';
     }).join('');
   } else if (sl.type === 'open_response') {
     body = '<textarea id="liveOpenResp" rows="3" placeholder="Type your response…" ' + (hc.responsesLocked || myResp ? 'disabled' : '') + '>' + (myResp ? esc(myResp.value) : '') + '</textarea>' +
@@ -1905,6 +2032,7 @@ function rLiveNative() {
     body +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
     pflxSlideResultsHtml(sl) +
+    (sl.type === 'quiz_race' ? pflxRaceLeaderboardHtml(s) : '') +
     '</div>';
 }
 
