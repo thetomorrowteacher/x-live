@@ -74,7 +74,7 @@ function makeSandbox() {
   check('guest CANNOT delete sessions', guest.deleteSessions === false);
   check('guest CANNOT reach Teams tab', guest.teamsTab === false);
   check('guest CANNOT reach Setup tab', guest.setupTab === false);
-  check('guest is not cohort-scoped (X-Live scoping is cohort-based, not project-based)', guest.scopedToCohorts === false);
+  check('guest IS cohort-scoped (corrected Sept 9: Guest Host manages one MC Project AND one Cohort)', guest.scopedToCohorts === true);
 
   const instructor = f('instructor');
   check('instructor can build+run sessions', instructor.buildSessions === true && instructor.runSessions === true);

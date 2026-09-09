@@ -419,6 +419,35 @@ function pflxTryOpenPendingSession() {
 }
 window.pflxTryOpenPendingSession = pflxTryOpenPendingSession;
 
+// PATCH X-LIVE -- tiered host access, part 2: cohort scoping. Pure,
+// unit-testable without any DOM/session state: given a session and a
+// scoped host's managedCohorts[], decides whether that session is in
+// their scope. An 'All Players' session spans every cohort -- treated
+// as explicitly OUT of a scoped host's reach, not implicitly included
+// (see the file header comment on this patch). A scoped host with an
+// empty managedCohorts[] (assigned the tier but no cohort yet) manages
+// nothing -- strict, matching the Console's own scopeAssigned()
+// semantics rather than failing open.
+function pflxSessionInCohortScope(session, managedCohorts) {
+  if (!session) return false;
+  if (session.allCohorts) return false;
+  var mine = (managedCohorts || []).map(function (c) { return String(c).toLowerCase(); });
+  if (!mine.length) return false;
+  var theirs = (session.cohorts || []).map(function (c) { return String(c).toLowerCase(); });
+  return theirs.some(function (c) { return mine.indexOf(c) !== -1; });
+}
+window.pflxSessionInCohortScope = pflxSessionInCohortScope;
+
+// Filters a session list down to what a host may see. An unscoped
+// tier (admin/master, or a non-cohort-scoped guest) sees everything,
+// unchanged from before this patch; a cohort-scoped tier
+// (instructor/cohost) sees only in-scope sessions.
+function pflxVisibleSessions(sessions, caps, managedCohorts) {
+  if (!caps || !caps.scopedToCohorts) return sessions || [];
+  return (sessions || []).filter(function (s) { return pflxSessionInCohortScope(s, managedCohorts); });
+}
+window.pflxVisibleSessions = pflxVisibleSessions;
+
 // PATCH X-LIVE -- tiered host access. Mirrors the Console's own
 // hostTier() resolution (pflx-platform-check/preview.html) exactly: an
 // explicit hostTier field always wins; otherwise fall back to the
@@ -459,7 +488,7 @@ function pflxHostCapabilities(tier) {
     deleteSessions: rank >= 2,
     teamsTab: rank >= 2,
     setupTab: rank >= 4,
-    scopedToCohorts: (tier === 'instructor' || tier === 'cohost')
+    scopedToCohorts: (tier === 'guest' || tier === 'instructor' || tier === 'cohost') // PATCH X-LIVE -- corrected part 2: Guest is cohort-scoped too, see file header
   };
 }
 window.pflxHostCapabilities = pflxHostCapabilities;
@@ -2334,10 +2363,19 @@ function newLiveSession() {
     createdAt: Date.now(), updatedAt: Date.now()
   };
 }
-function liveNewSession() { L.liveEditingSession = newLiveSession(); render(); }
+function liveNewSession() {
+  const s = newLiveSession();
+  if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts) {
+    s.allCohorts = false;
+    s.cohorts = (L.me && Array.isArray(L.me.managedCohorts)) ? L.me.managedCohorts.slice() : [];
+  }
+  L.liveEditingSession = s;
+  render();
+}
 function liveEditSession(id) {
   const s = L.sessions.find(function (x) { return x.id === id; });
   if (!s) return;
+  if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) { toast("That session is outside your assigned cohort(s)"); return; }
   L.liveEditingSession = JSON.parse(JSON.stringify(s)); // edit a working copy; only Save commits it
   render();
 }
@@ -2354,6 +2392,8 @@ async function liveSaveSessionForm() {
 function liveDeleteSessionPrompt(id) {
   const s = L.sessions.find(function (x) { return x.id === id; });
   if (!s) return;
+  if (!(L.hostCapabilities && L.hostCapabilities.deleteSessions)) { toast("You don't have permission to delete sessions"); return; }
+  if (L.hostCapabilities.scopedToCohorts && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) { toast("That session is outside your assigned cohort(s)"); return; }
   modal('<div class="cardT">Delete "' + esc(s.title || 'Untitled Session') + '"?</div>' +
     '<div style="font-size:12px;color:#aeb6d8">This removes it from your Live Sessions list. This can\'t be undone.</div>' +
     '<div style="margin-top:14px;display:flex;gap:8px">' +
@@ -2568,7 +2608,7 @@ function rLive() {
   return L.liveEditingSession ? rLiveBuilder() : rLiveList();
 }
 function rLiveList() {
-  const active = (L.sessions || []).filter(function (s) { return s.status !== 'archived'; });
+  const active = pflxVisibleSessions((L.sessions || []).filter(function (s) { return s.status !== 'archived'; }), L.hostCapabilities, L.me && L.me.managedCohorts);
   const groups = { scheduled: [], active: [], ended: [] };
   active.forEach(function (s) { (groups[s.status] || groups.scheduled).push(s); });
   function sessionRow(s) {
@@ -2598,7 +2638,8 @@ function rLiveList() {
 }
 function rLiveBuilder() {
   const s = L.liveEditingSession;
-  const cs = cohortList();
+  const scoped = !!(L.hostCapabilities && L.hostCapabilities.scopedToCohorts);
+  const cs = scoped ? ((L.me && Array.isArray(L.me.managedCohorts)) ? L.me.managedCohorts.slice() : []) : cohortList();
   return '<div class="card">' +
     '<div class="cardT" style="display:flex;align-items:center;gap:10px">' + (s.updatedAt && s.createdAt !== s.updatedAt ? 'Edit Session' : 'New Session') +
     // PATCH X-LIVE v0.27 -- this button discards unsaved changes
@@ -2608,7 +2649,9 @@ function rLiveBuilder() {
     '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveCancelEdit()">✕ CANCEL</button></div>' +
     '<label>Session Title</label><input value="' + esc(s.title) + '" onchange="L.liveEditingSession.title=this.value" placeholder="e.g. Friday Quiz Bowl"/>' +
     '<label style="margin-top:10px">Who is this for?</label>' +
-    '<div style="display:flex;gap:14px;align-items:center;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (s.allCohorts ? 'checked' : '') + ' onchange="L.liveEditingSession.allCohorts=this.checked;render()"/> All players</label></div>' +
+    (scoped
+      ? '<div style="font-size:12px;color:#8a93b8;margin-top:4px">🔒 Scoped to your assigned cohort(s) -- you can\'t create an All Players session.</div>'
+      : '<div style="display:flex;gap:14px;align-items:center;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (s.allCohorts ? 'checked' : '') + ' onchange="L.liveEditingSession.allCohorts=this.checked;render()"/> All players</label></div>') +
     (!s.allCohorts ? ('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + cs.map(function (c) {
       return '<label style="display:flex;gap:5px;align-items:center;font-size:12px;text-transform:none;font-family:inherit"><input type="checkbox" style="width:auto" ' + ((s.cohorts || []).indexOf(c) !== -1 ? 'checked' : '') + ' onchange="liveToggleCohort(' + JSON.stringify(c) + ',this.checked)"/>' + esc(c) + '</label>';
     }).join('') + '</div>') : '') +
@@ -2655,6 +2698,7 @@ function grantSessionReward(pid, xc, badgeId, reason) {
 }
 async function liveGoLiveSession(id) {
   const s = L.sessions.find(function (x) { return x.id === id; }); if (!s) return;
+  if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) { toast("That session is outside your assigned cohort(s)"); return; }
   if (!s.slides || !s.slides.length) { toast('Add at least one slide before going live'); return; }
   s.status = 'active';
   s.currentSlideIndex = 0;
@@ -2666,7 +2710,11 @@ async function liveGoLiveSession(id) {
   render();
   toast('🔴 Session is LIVE' + (L.demo ? ' (demo)' : ''));
 }
-function liveManageSession(id) { L.liveRunningSessionId = id; render(); }
+function liveManageSession(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; });
+  if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts && s && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) { toast("That session is outside your assigned cohort(s)"); return; }
+  L.liveRunningSessionId = id; render();
+}
 function liveExitRun() { L.liveRunningSessionId = null; render(); }
 function liveMoveCurrentSlide(dir) {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
