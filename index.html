@@ -2179,10 +2179,56 @@ function pflxSlideEmbedHtml(sl) {
   return '';
 }
 
+// PATCH X-LIVE -- session scheduling (Ennis: "Start time and End time
+// with calendar select options and clock"). Pure formatting/validation
+// helpers, no DOM/Date.now() dependency -- fully unit-testable given a
+// fixed pair of <input type="datetime-local"> value strings.
+//
+// datetime-local values look like 'YYYY-MM-DDTHH:mm' with no timezone
+// suffix -- per the ECMAScript Date Time String spec, the `new Date(...)`
+// constructor parses that exact shape as LOCAL time (only a date-only
+// string like 'YYYY-MM-DD' is parsed as UTC), so this is reliable across
+// browsers and Node without any manual offset math.
+function pflxFormatSessionSchedule(startVal, endVal) {
+  var start = startVal ? new Date(startVal) : null;
+  var end = endVal ? new Date(endVal) : null;
+  if (start && isNaN(start.getTime())) start = null;
+  if (end && isNaN(end.getTime())) end = null;
+  if (!start && !end) return null;
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtTime(d) {
+    var h = d.getHours(), m = d.getMinutes();
+    var ap = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ':' + (m < 10 ? '0' : '') + m + ' ' + ap;
+  }
+  function fmtDate(d) { return DAYS[d.getDay()] + ', ' + MONTHS[d.getMonth()] + ' ' + d.getDate(); }
+  if (start && end) {
+    var sameDay = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth() && start.getDate() === end.getDate();
+    if (sameDay) return fmtDate(start) + ' · ' + fmtTime(start) + ' – ' + fmtTime(end);
+    return fmtDate(start) + ' ' + fmtTime(start) + ' – ' + fmtDate(end) + ' ' + fmtTime(end);
+  }
+  if (start) return fmtDate(start) + ' · ' + fmtTime(start);
+  return 'Ends ' + fmtDate(end) + ' · ' + fmtTime(end);
+}
+window.pflxFormatSessionSchedule = pflxFormatSessionSchedule;
+// Soft validation only -- scheduling is informational (see the file
+// header comment on this patch), so this never blocks Save; it just
+// warns the host in the builder UI when End is at/before Start.
+function pflxSessionScheduleWarning(startVal, endVal) {
+  if (!startVal || !endVal) return null;
+  var s = new Date(startVal), e = new Date(endVal);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return null;
+  if (e.getTime() <= s.getTime()) return 'End Time is before (or the same as) Start Time';
+  return null;
+}
+window.pflxSessionScheduleWarning = pflxSessionScheduleWarning;
 function newLiveSession() {
   return {
     id: 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
     title: '', cohorts: [], allCohorts: true, slides: [],
+    scheduledStart: '', scheduledEnd: '', // PATCH X-LIVE -- session scheduling; informational only, see comment above
     rewards: { attendanceXc: 0, attendanceBadgeId: '', completionXc: 0, completionBadgeId: '' },
     status: 'scheduled', liveParticipants: [], awardedTo: [],
     createdAt: Date.now(), updatedAt: Date.now()
@@ -2429,9 +2475,12 @@ function rLiveList() {
     const slideCount = (s.slides || []).length;
     const scope = s.allCohorts ? 'All players' : ((s.cohorts || []).join(', ') || 'No cohort set');
     const partCount = (s.liveParticipants || []).length;
+    const sched = pflxFormatSessionSchedule(s.scheduledStart, s.scheduledEnd);
     return '<div class="feedrow" style="align-items:center">' +
       '<div style="flex:1;min-width:0"><b>' + esc(s.title || 'Untitled Session') + '</b>' +
-      '<div style="font-size:10px;color:#8a93b8">' + slideCount + ' slide' + (slideCount === 1 ? '' : 's') + ' · ' + esc(scope) + (s.status === 'active' ? ' · ' + partCount + ' joined' : '') + '</div></div>' +
+      '<div style="font-size:10px;color:#8a93b8">' + slideCount + ' slide' + (slideCount === 1 ? '' : 's') + ' · ' + esc(scope) + (s.status === 'active' ? ' · ' + partCount + ' joined' : '') + '</div>' +
+      (sched ? '<div style="font-size:10px;color:#7dd3fc">🗓️ ' + esc(sched) + '</div>' : '') +
+      '</div>' +
       '<span class="t" style="display:flex;gap:6px;flex-wrap:wrap">' +
       (s.status === 'scheduled' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveGoLiveSession(\'' + esc(s.id) + '\')">🔴 GO LIVE</button>' : '') +
       (s.status === 'active' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveManageSession(\'' + esc(s.id) + '\')">▶ MANAGE</button>' : '') +
@@ -2463,6 +2512,12 @@ function rLiveBuilder() {
     (!s.allCohorts ? ('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + cs.map(function (c) {
       return '<label style="display:flex;gap:5px;align-items:center;font-size:12px;text-transform:none;font-family:inherit"><input type="checkbox" style="width:auto" ' + ((s.cohorts || []).indexOf(c) !== -1 ? 'checked' : '') + ' onchange="liveToggleCohort(' + JSON.stringify(c) + ',this.checked)"/>' + esc(c) + '</label>';
     }).join('') + '</div>') : '') +
+    '</div>' +
+    '<div class="card" style="margin-top:14px"><div class="cardT">🗓️ Schedule</div>' +
+    '<label>Start Time</label><input type="datetime-local" value="' + esc(s.scheduledStart || '') + '" onchange="L.liveEditingSession.scheduledStart=this.value;render()"/>' +
+    '<label style="margin-top:8px">End Time</label><input type="datetime-local" value="' + esc(s.scheduledEnd || '') + '" onchange="L.liveEditingSession.scheduledEnd=this.value;render()"/>' +
+    (pflxSessionScheduleWarning(s.scheduledStart, s.scheduledEnd) ? '<div style="font-size:11px;color:#ff8a8a;margin-top:6px">⚠ ' + esc(pflxSessionScheduleWarning(s.scheduledStart, s.scheduledEnd)) + '</div>' : '') +
+    '<div style="font-size:11px;color:#8a93b8;margin-top:6px">Informational for now -- you still tap GO LIVE yourself when ready. This does not auto-start or auto-end the session.</div>' +
     '</div>' +
     '<div class="card" style="margin-top:14px"><div class="cardT">🎁 Session Rewards</div>' +
     '<label>Attendance XC (granted on join)</label><input type="number" value="' + (s.rewards.attendanceXc || 0) + '" onchange="L.liveEditingSession.rewards.attendanceXc=parseInt(this.value)||0"/>' +
