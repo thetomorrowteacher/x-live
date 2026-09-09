@@ -1187,9 +1187,9 @@ const SLIDE_TYPES = [
   { key: 'html_embed', label: 'HTML / Embed Code', icon: '🧩', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
   // First slice of the Host Interactive View epic (plan Phase 3) --
   // embeds a whole PFLX sub-app (Core Pathways / Battle Arena /
-  // DarkCampus) as a session's focal point, same iframe technique as
-  // the embeds above. Picks the app from PFLX_SUBAPPS (sl.subApp), not
-  // a pasted URL/prompt.
+  // DarkCampus / Mission Control) as a session's focal point, same
+  // iframe technique as the embeds above. Picks the app from
+  // PFLX_SUBAPPS (sl.subApp), not a pasted URL/prompt.
   { key: 'sub_app', label: 'PFLX Sub-App', icon: '🧭', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
   // PATCH X-LIVE v0.22 -- inspired by the Daily Lesson Guide reference app.
   { key: 'mindful', label: 'Mindful Moment', icon: '🧘', hasOptions: false, hasTimer: true, timerOnly: false },
@@ -2133,16 +2133,24 @@ function pflxGoogleEmbedUrl(kind, input) {
 // via a sandboxed srcdoc iframe with NO allow-same-origin -- its scripts
 // still run, but in an opaque origin that can't read this page's DOM or
 // session storage. Returns '' when there's nothing to embed yet.
-// The three PFLX sub-apps that are real, separately-deployed, already-
-// iframable apps (same URLs preview.html's own APP_BASE_URLS map uses).
-// Mission Control is NOT here -- it has no separate deployed URL, it's
-// native to preview.html itself, a different repo; embedding it needs a
-// dedicated chrome-free embed mode there, not this technique. See the
-// Handoff entry for this patch.
+// The PFLX sub-apps that are real, iframable apps (same URLs
+// preview.html's own APP_BASE_URLS map uses for the first three).
+// Mission Control has no SEPARATE deployed URL -- it's native to
+// preview.html itself (a different repo), so its entry points at that
+// same app's own production URL instead of a dedicated sub-app deploy.
+// Verified directly (PATCH X-LIVE, Mission Control sub-app): that URL
+// serves with `content-security-policy: frame-ancestors *` (see
+// pflx-platform/vercel.json), so it iframes cleanly with no CSP
+// blocker -- this embeds the FULL Console (nav/login and all), not a
+// dedicated chrome-free "just this Project" mode. That richer mode
+// (popup mini-activities, live badge-awarding, freeze/annotate) is
+// still the separate, unscoped Phase 3 Host Interactive View epic --
+// see the plan file. See the Handoff entry for this patch.
 var PFLX_SUBAPPS = {
-  pathways:   { label: 'Core Pathways', url: 'https://pflx-pathway-portal.vercel.app' },
-  arena:      { label: 'Battle Arena',   url: 'https://pflx-battle-arena.vercel.app' },
-  darkcampus: { label: 'DarkCampus',     url: 'https://pflx-darkcampus.vercel.app' }
+  pathways:      { label: 'Core Pathways',    url: 'https://pflx-pathway-portal.vercel.app' },
+  arena:         { label: 'Battle Arena',      url: 'https://pflx-battle-arena.vercel.app' },
+  darkcampus:    { label: 'DarkCampus',        url: 'https://pflx-darkcampus.vercel.app' },
+  missioncontrol: { label: 'Mission Control',  url: 'https://www.prototypeflx.com/', fullChrome: true }
 };
 window.PFLX_SUBAPPS = PFLX_SUBAPPS;
 
@@ -2376,7 +2384,9 @@ function renderSlideModal() {
     '<label style="margin-top:10px">Which PFLX app?</label><select onchange="L.liveEditingSlide.slide.subApp=this.value"><option value="">Choose one…</option>' +
     Object.keys(PFLX_SUBAPPS).map(function (k) { return '<option value="' + k + '"' + (sl.subApp === k ? ' selected' : '') + '>' + esc(PFLX_SUBAPPS[k].label) + '</option>'; }).join('') +
     '</select>' +
-    '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Embeds the app itself as this activity\'s focal point. Popup mini-activities and live badge-awarding tied to it are not built yet.</div>'
+    '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Embeds the app itself as this activity\'s focal point. Popup mini-activities and live badge-awarding tied to it are not built yet.' +
+    ((sl.subApp && PFLX_SUBAPPS[sl.subApp] && PFLX_SUBAPPS[sl.subApp].fullChrome) ? ' This embeds the full Console (host signs in inside the frame, same as any other browser tab) -- not a focused, chrome-free view of one Project yet.' : '') +
+    '</div>'
   ) : '';
   const rewardHtml = !meta.timerOnly ? (
     '<label style="margin-top:10px">Reward XC' + (meta.graded ? ' (correct answer only, granted on Reveal)' : ' (granted on Reveal)') + '</label><input type="number" value="' + (sl.rewardXc || 0) + '" onchange="L.liveEditingSlide.slide.rewardXc=parseInt(this.value)||0"/>' +
