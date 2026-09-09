@@ -1666,6 +1666,9 @@ function pflxRacePowerupBonus(s, pid) {
   var bonus = 0;
   ((s && s.raceEvents) || []).forEach(function (ev) {
     if (ev.key === 'speed_boost' && ev.pid === pid) bonus += (PFLX_POWERUPS.speed_boost.jumpAmount || 0);
+    // PATCH X-LIVE v0.32 -- shortcut puzzle solve, folded in exactly
+    // like every other raceEvents-derived bonus above/below.
+    if (ev.key === 'puzzle_solved' && ev.pid === pid) bonus += (ev.jumpAmount || 0);
     if (ev.key === 'steal' && !ev.blocked) {
       if (ev.pid === pid) bonus += (ev.stolenAmount || 0);
       if (ev.targetPid === pid) bonus -= (ev.stolenAmount || 0);
@@ -1756,6 +1759,133 @@ function pflxRaceTriggerPowerup(s, pid, key, targetPid, now) {
   return { ok: true, event: event };
 }
 window.pflxRaceTriggerPowerup = pflxRaceTriggerPowerup;
+
+// PATCH X-LIVE v0.32 -- X-Rush shortcut puzzle challenges. See the
+// file-level comment at the top of this patch for the design rationale.
+function pflxSeededRand(seed) {
+  var h = 0;
+  String(seed).split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+  return function () { h = (h * 1103515245 + 12345) >>> 0; return h / 4294967296; };
+}
+window.pflxSeededRand = pflxSeededRand;
+
+var PFLX_PUZZLE_WORDBANK = ['CODE', 'TEAM', 'QUIZ', 'RUSH', 'TRACK', 'SPARK', 'NITRO', 'SHIELD', 'LAUNCH', 'ORBIT', 'PIXEL', 'VAULT', 'CIPHER', 'ROCKET', 'PLASMA'];
+var PFLX_PUZZLE_JUMP_AMOUNT = 15;
+
+function pflxPuzzleCaesarGenerate(rand) {
+  rand = rand || Math.random;
+  var word = PFLX_PUZZLE_WORDBANK[Math.floor(rand() * PFLX_PUZZLE_WORDBANK.length)];
+  var shift = 1 + Math.floor(rand() * 25);
+  var encoded = word.split('').map(function (c) {
+    var code = c.charCodeAt(0) - 65;
+    return String.fromCharCode(((code + shift) % 26 + 26) % 26 + 65);
+  }).join('');
+  return { prompt: 'Caesar cipher, shift ' + shift + ':\n' + encoded, answer: word };
+}
+
+function pflxPuzzleBase64Generate(rand) {
+  rand = rand || Math.random;
+  var word = PFLX_PUZZLE_WORDBANK[Math.floor(rand() * PFLX_PUZZLE_WORDBANK.length)];
+  return { prompt: 'Decode this Base64:\n' + btoa(word), answer: word };
+}
+
+function pflxPuzzleBinaryGenerate(rand) {
+  rand = rand || Math.random;
+  var short = PFLX_PUZZLE_WORDBANK.filter(function (w) { return w.length <= 5; });
+  var word = short[Math.floor(rand() * short.length)];
+  var bin = word.split('').map(function (c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }).join(' ');
+  return { prompt: 'Decode this binary (8 digits = 1 letter):\n' + bin, answer: word };
+}
+
+var PFLX_PUZZLE_CODE_TEMPLATES = [
+  { min: 3, max: 8, render: function (n) { return 'let total = 0;\nfor (let i = 1; i <= ' + n + '; i++) { total += i; }\nconsole.log(total);'; }, compute: function (n) { var t = 0; for (var i = 1; i <= n; i++) t += i; return t; } },
+  { min: 2, max: 9, render: function (n) { return 'let s = "";\nfor (let i = 0; i < ' + n + '; i++) { s += "x"; }\nconsole.log(s.length);'; }, compute: function (n) { return n; } },
+  { min: 2, max: 50, render: function (n) { return 'function doubleIt(x) { return x * 2; }\nconsole.log(doubleIt(' + n + '));'; }, compute: function (n) { return n * 2; } },
+  { min: 1, max: 5, render: function (n) { return 'let arr = [1, 2, 3].map(x => x + ' + n + ');\nconsole.log(arr.join(","));'; }, compute: function (n) { return [1, 2, 3].map(function (x) { return x + n; }).join(','); } }
+];
+function pflxPuzzleCodeGenerate(rand) {
+  rand = rand || Math.random;
+  var tmpl = PFLX_PUZZLE_CODE_TEMPLATES[Math.floor(rand() * PFLX_PUZZLE_CODE_TEMPLATES.length)];
+  var n = tmpl.min + Math.floor(rand() * (tmpl.max - tmpl.min + 1));
+  return { prompt: 'What does this code output?\n' + tmpl.render(n), answer: String(tmpl.compute(n)) };
+}
+
+var PFLX_PUZZLE_TYPES = {
+  caesar: { key: 'caesar', label: 'Caesar Cipher', icon: '\ud83d\udd10', generate: pflxPuzzleCaesarGenerate },
+  base64: { key: 'base64', label: 'Base64', icon: '\ud83e\uddec', generate: pflxPuzzleBase64Generate },
+  binary: { key: 'binary', label: 'Binary', icon: '\ud83d\udcbe', generate: pflxPuzzleBinaryGenerate },
+  code:   { key: 'code',   label: 'Code Output', icon: '\ud83d\udcbb', generate: pflxPuzzleCodeGenerate }
+};
+window.PFLX_PUZZLE_TYPES = PFLX_PUZZLE_TYPES;
+
+function pflxPuzzleCheckAnswer(correct, given) {
+  function norm(x) { return String(x == null ? '' : x).trim().toUpperCase().replace(/\s+/g, ''); }
+  return norm(correct) === norm(given);
+}
+window.pflxPuzzleCheckAnswer = pflxPuzzleCheckAnswer;
+
+// Deterministic single instance for a (typeKey, seed) pair -- the same
+// seed always regenerates the identical puzzle, so nothing needs to be
+// stored on the slide itself; every player and every re-render derive
+// it fresh from the same inputs.
+function pflxPuzzleGenerate(typeKey, seed) {
+  var def = PFLX_PUZZLE_TYPES[typeKey];
+  if (!def) return null;
+  var rand = pflxSeededRand(seed == null ? Math.random() : seed);
+  var inst = def.generate(rand);
+  inst.key = typeKey;
+  return inst;
+}
+window.pflxPuzzleGenerate = pflxPuzzleGenerate;
+
+// Every Nth quiz_race slide (host-configurable s.puzzleInterval, default
+// 3) is a shortcut station -- counts quiz_race slides in document order
+// so other slide types interleaved in the deck don't throw off the
+// interval.
+function pflxPuzzleStationSlideIds(s) {
+  var interval = (s && s.puzzleInterval) || 3;
+  if (interval < 1) interval = 1;
+  var out = [];
+  var count = 0;
+  ((s && s.slides) || []).forEach(function (sl) {
+    if (sl.type !== 'quiz_race') return;
+    count++;
+    if (count % interval === 0) out.push(sl.id);
+  });
+  return out;
+}
+window.pflxPuzzleStationSlideIds = pflxPuzzleStationSlideIds;
+
+// The puzzle for a given station slide -- null if that slide isn't a
+// station, puzzles are off, or (in principle) no categories are
+// enabled. The TYPE picked for a station is itself seeded off the slide
+// id, so it's stable too.
+function pflxPuzzleForSlide(s, slideId) {
+  if (!s || !s.puzzlesEnabled) return null;
+  if (pflxPuzzleStationSlideIds(s).indexOf(slideId) === -1) return null;
+  var categories = (s.puzzleCategories && s.puzzleCategories.length) ? s.puzzleCategories : Object.keys(PFLX_PUZZLE_TYPES);
+  var pickRand = pflxSeededRand(slideId + '_pick');
+  var typeKey = categories[Math.floor(pickRand() * categories.length)];
+  return pflxPuzzleGenerate(typeKey, slideId);
+}
+window.pflxPuzzleForSlide = pflxPuzzleForSlide;
+
+// Validates and constructs a puzzle-solve event -- PURE, does not save,
+// same shape as pflxRaceTriggerPowerup above. One solve per player per
+// station slide, checked against the existing raceEvents log (no
+// separate "solved" field to drift out of sync).
+function pflxPuzzleSolve(s, pid, slideId, answer, now) {
+  now = now || Date.now();
+  if (!s || !s.puzzlesEnabled) return { ok: false, reason: 'puzzles-disabled' };
+  var puzzle = pflxPuzzleForSlide(s, slideId);
+  if (!puzzle) return { ok: false, reason: 'not-a-station' };
+  var already = ((s.raceEvents) || []).some(function (ev) { return ev.key === 'puzzle_solved' && ev.pid === pid && ev.slideId === slideId; });
+  if (already) return { ok: false, reason: 'already-solved' };
+  if (!pflxPuzzleCheckAnswer(puzzle.answer, answer)) return { ok: false, reason: 'incorrect' };
+  var event = { id: 'rev_' + now + '_' + Math.random().toString(36).slice(2, 8), pid: pid, key: 'puzzle_solved', at: now, slideId: slideId, puzzleType: puzzle.key, jumpAmount: PFLX_PUZZLE_JUMP_AMOUNT };
+  return { ok: true, event: event };
+}
+window.pflxPuzzleSolve = pflxPuzzleSolve;
 
 // ── Shared Quizlet/CSV deck importer ────────────────────────────────
 var PFLX_DECKS_KEY = 'pflx_ba_decks';
@@ -2502,6 +2632,31 @@ async function liveToggleSabotageTeamWide(on) {
   await saveSession(s);
   render();
 }
+// PATCH X-LIVE v0.32 -- Shortcut Puzzles host toggles: on/off, the
+// question interval, and which puzzle categories are in play. Same
+// save/render pattern as every other X-Rush toggle above.
+async function liveTogglePuzzles(on) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.puzzlesEnabled = !!on;
+  await saveSession(s);
+  render();
+}
+async function liveSetPuzzleInterval(n) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  var v = parseInt(n, 10);
+  s.puzzleInterval = (v && v > 0) ? v : 3;
+  await saveSession(s);
+  render();
+}
+async function liveTogglePuzzleCategory(key, on) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  var cats = (s.puzzleCategories && s.puzzleCategories.length) ? s.puzzleCategories.slice() : Object.keys(PFLX_PUZZLE_TYPES);
+  if (on) { if (cats.indexOf(key) === -1) cats.push(key); }
+  else { cats = cats.filter(function (k) { return k !== key; }); }
+  s.puzzleCategories = cats;
+  await saveSession(s);
+  render();
+}
 function hasRaceSlide(s) { return (s && s.slides || []).some(function (x) { return x.type === 'quiz_race'; }); }
 
 // Player-side purchase UI wrapper -- validates via the pure
@@ -2533,6 +2688,27 @@ async function liveTriggerPowerupUi(key) {
   toast((def.icon || '') + ' ' + (def.label || 'Powerup') + blockedNote);
 }
 window.liveTriggerPowerupUi = liveTriggerPowerupUi;
+
+// PATCH X-LIVE v0.32 -- Player-side shortcut-puzzle solve wrapper --
+// validates via the pure pflxPuzzleSolve(), then appends the event and
+// saves, same merge-safe pattern as liveTriggerPowerupUi above.
+async function liveSolvePuzzleUi(slideId) {
+  const s = nativeSessionAppliesToMe(); if (!s) return;
+  const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  var input = document.getElementById('pflxPuzzleAnswerInput');
+  var answer = input ? input.value : '';
+  const result = pflxPuzzleSolve(s, myId, slideId, answer, Date.now());
+  if (!result.ok) {
+    toast(result.reason === 'incorrect' ? 'Not quite \u2014 try again!' : 'Can\'t solve that: ' + result.reason.replace(/-/g, ' '));
+    return;
+  }
+  s.raceEvents = s.raceEvents || [];
+  s.raceEvents.push(result.event);
+  await saveSession(s);
+  render();
+  toast('\ud83e\udde9 Shortcut solved! +' + PFLX_PUZZLE_JUMP_AMOUNT + ' track jump!');
+}
+window.liveSolvePuzzleUi = liveSolvePuzzleUi;
 
 // Player-side powerup bar -- Nitro balance, boost buttons (self-only) and,
 // when the host has sabotage on, a target picker plus sabotage buttons.
@@ -2589,6 +2765,31 @@ function pflxRacePowerupBarHtml(s, sl, myId) {
 }
 window.pflxRacePowerupBarHtml = pflxRacePowerupBarHtml;
 
+// PATCH X-LIVE v0.32 -- Player-side shortcut-puzzle bar. Only rendered
+// while the CURRENT slide is an active station (host-configured
+// interval), the race slide is still unrevealed, and puzzles are
+// host-enabled. A solved station shows a simple confirmation instead of
+// the prompt/input.
+function pflxPuzzleBarHtml(s, sl, myId) {
+  if (!s.puzzlesEnabled || !sl || sl.type !== 'quiz_race' || sl.revealed) return '';
+  var puzzle = pflxPuzzleForSlide(s, sl.id);
+  if (!puzzle) return '';
+  var solved = ((s.raceEvents) || []).some(function (ev) { return ev.key === 'puzzle_solved' && ev.pid === myId && ev.slideId === sl.id; });
+  var typeDef = PFLX_PUZZLE_TYPES[puzzle.key] || {};
+  if (solved) {
+    return '<div class="card" style="background:rgba(201,167,255,0.08);border-color:rgba(201,167,255,0.3);margin-bottom:8px;padding:10px">' +
+      '<span style="font-family:Audiowide;font-size:10px;color:#c9a7ff">\ud83e\udde9 Shortcut solved! +' + PFLX_PUZZLE_JUMP_AMOUNT + ' track jump</span></div>';
+  }
+  return '<div class="card" style="background:rgba(201,167,255,0.08);border-color:rgba(201,167,255,0.3);margin-bottom:8px;padding:10px">' +
+    '<div style="font-family:Audiowide;font-size:10px;color:#c9a7ff">\ud83e\udde9 Shortcut Station \u2014 ' + (typeDef.icon || '') + ' ' + (typeDef.label || '') + '</div>' +
+    '<div style="font-size:11px;color:#c9cfe8;margin:6px 0;white-space:pre-wrap;font-family:monospace">' + esc(puzzle.prompt) + '</div>' +
+    '<div style="display:flex;gap:6px;align-items:center">' +
+    '<input type="text" id="pflxPuzzleAnswerInput" placeholder="Your answer" style="flex:1;font-size:11px;padding:6px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff">' +
+    '<button class="bigbtn gold" style="font-size:10px;padding:6px 10px" onclick="liveSolvePuzzleUi(\'' + esc(sl.id) + '\')">SUBMIT</button>' +
+    '</div></div>';
+}
+window.pflxPuzzleBarHtml = pflxPuzzleBarHtml;
+
 
 function rLiveRun(s) {
   const idx = s.currentSlideIndex || 0;
@@ -2634,6 +2835,22 @@ function rLiveRun(s) {
         (s.sabotageEnabled && L.cfg.teams && L.cfg.teams.names && L.cfg.teams.names.length ?
           '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:12px"><input type="checkbox" style="width:auto" ' + (s.sabotageTeamWide ? 'checked' : '') + ' onchange="liveToggleSabotageTeamWide(this.checked)"/> \ud83c\udff3\ufe0f Team-wide Sabotage</label>' : '') +
         '</div></div>'
+    ) : '') +
+    (hasRaceSlide(s) ? (
+      '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
+        '<div class="cardT" style="font-size:12px">\ud83e\udde9 Shortcut Puzzles</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;align-items:center">' +
+        '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:12px"><input type="checkbox" style="width:auto" ' + (s.puzzlesEnabled ? 'checked' : '') + ' onchange="liveTogglePuzzles(this.checked)"/> \ud83e\udde9 Puzzles</label>' +
+        '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:12px">Every <input type="number" min="1" value="' + (s.puzzleInterval || 3) + '" style="width:40px;padding:2px 4px" onchange="liveSetPuzzleInterval(this.value)"/> questions</label>' +
+        '</div>' +
+        (s.puzzlesEnabled ? ('<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">' +
+          Object.keys(PFLX_PUZZLE_TYPES).map(function (k) {
+            var def = PFLX_PUZZLE_TYPES[k];
+            var cats = (s.puzzleCategories && s.puzzleCategories.length) ? s.puzzleCategories : Object.keys(PFLX_PUZZLE_TYPES);
+            var on = cats.indexOf(k) !== -1;
+            return '<label style="display:flex;gap:5px;align-items:center;text-transform:none;font-family:inherit;font-size:11px"><input type="checkbox" style="width:auto" ' + (on ? 'checked' : '') + ' onchange="liveTogglePuzzleCategory(\'' + k + '\', this.checked)"/> ' + def.icon + ' ' + def.label + '</label>';
+          }).join('') + '</div>') : '') +
+        '</div>'
     ) : '') +
     (sl ? (
       '<div class="card" style="background:rgba(255,255,255,0.03)">' +
@@ -2807,6 +3024,7 @@ function rLiveNative() {
     '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
     (sl.prompt && !meta.isEmbed ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
     pflxRacePowerupBarHtml(s, sl, myId) +
+    pflxPuzzleBarHtml(s, sl, myId) +
     body +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
     pflxSlideResultsHtml(sl) +
