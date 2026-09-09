@@ -64,10 +64,15 @@ function makeSandbox() {
 (function () {
   const sb = makeSandbox();
   const html = sb.pflxSlideEmbedHtml({ type: 'sub_app', subApp: 'missioncontrol' });
-  check('renders an iframe', /<iframe/.test(html));
-  check('iframe src points at the real Console URL', html.indexOf('src="https://www.prototypeflx.com/"') !== -1);
+  // PATCH X-LIVE -- the persistent embed portal patch (Sept 9, Ennis:
+  // "it is refreshing") replaced the raw <iframe> here with a stable
+  // placeholder slot; the real iframe is now created once and moved
+  // across renders by pflxSyncEmbedPortal(), covered in
+  // test_xlive_mc_embed_relogin.js. These assertions were updated to match.
+  check('renders a placeholder embed slot, not a raw iframe (anti-refresh portal)', !/<iframe/.test(html) && html.indexOf('data-pflx-embed-slot') !== -1);
+  check('slot carries the missioncontrol key for the portal to resolve', html.indexOf('data-pflx-embed-key="missioncontrol"') !== -1);
   const htmlArena = sb.pflxSlideEmbedHtml({ type: 'sub_app', subApp: 'arena' });
-  check('regression: Battle Arena embed unaffected', htmlArena.indexOf('src="https://pflx-battle-arena.vercel.app"') !== -1);
+  check('regression: Battle Arena embed also uses the placeholder-slot path now (same portal, all sub_app types)', htmlArena.indexOf('data-pflx-embed-key="arena"') !== -1);
   const htmlUnknown = sb.pflxSlideEmbedHtml({ type: 'sub_app', subApp: 'nope' });
   check('unknown subApp key -> empty string, no crash', htmlUnknown === '');
   const htmlNone = sb.pflxSlideEmbedHtml({ type: 'sub_app', subApp: '' });

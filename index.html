@@ -1154,10 +1154,12 @@ function render() {
   if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center"><img src="' + XLIVE_LOGO_STACKED + '" alt="X-Live" style="width:220px;max-width:70vw;display:inline-block"/><div style="margin-top:14px;font-family:Audiowide;color:#7de9ff;letter-spacing:0.2em;font-size:13px">LOADING…</div></div>'; return; }
   if (L.screen === 'liveagenda' && L.liveSession && L.liveSession.agenda && L.liveSession.agenda.length) {
     app.innerHTML = rLiveAgenda();
+    pflxSyncEmbedPortal();
     return;
   }
   if (L.screen === 'livenative') {
     app.innerHTML = rLiveNative();
+    pflxSyncEmbedPortal();
     return;
   }
   const tabs = L.isHost
@@ -1173,6 +1175,7 @@ function render() {
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
     ({ class: rClass, live: rLive, theater: rTheater, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
+  pflxSyncEmbedPortal();
 }
 function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
 
@@ -2283,12 +2286,89 @@ var PFLX_SUBAPPS = {
 };
 window.PFLX_SUBAPPS = PFLX_SUBAPPS;
 
+// PATCH X-LIVE -- persistent embed portal (Sept 9, Ennis: "it is
+// refreshing"). render() rebuilds the whole screen's innerHTML on every
+// state change/poll (see render(), 60+ call sites) -- for every other
+// element that's cheap to recreate, but an <iframe> embedded directly in
+// that HTML string gets destroyed and recreated by the browser on every
+// single render(), forcing a full reload of whatever's inside it (the
+// Mission Control Console, for the sub_app slide type) -- visibly
+// "refreshing" every few seconds as roster/activity polls fire.
+// pflxSlideEmbedHtml() now emits a placeholder <div> slot, never the real
+// <iframe>. ONE real iframe is created once, kept in a module-level
+// variable, and MOVED (via appendChild) into whichever slot is present
+// after each render() -- appendChild on an already-attached node relocates
+// it without destroying/reloading it, so the same iframe survives every
+// re-render. Its `src` (and the identity handshake below) are only
+// touched the FIRST time a given embed key appears, or when the key
+// changes to a different sub-app -- never on a same-key re-render.
+var _pflxEmbedFrame = null;
+var _pflxEmbedFrameKey = null;
+function pflxSyncEmbedPortal() {
+  try {
+    var slot = document.querySelector('[data-pflx-embed-slot]');
+    if (!slot) { if (_pflxEmbedFrame) _pflxEmbedFrame.style.display = 'none'; return; }
+    var key = slot.getAttribute('data-pflx-embed-key');
+    var app = (typeof PFLX_SUBAPPS !== 'undefined') ? PFLX_SUBAPPS[key] : null;
+    if (!app) { if (_pflxEmbedFrame) _pflxEmbedFrame.style.display = 'none'; return; }
+    if (!_pflxEmbedFrame) {
+      _pflxEmbedFrame = document.createElement('iframe');
+      _pflxEmbedFrame.setAttribute('allow', 'autoplay; fullscreen');
+      _pflxEmbedFrame.setAttribute('allowfullscreen', '');
+      _pflxEmbedFrame.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:0';
+    }
+    if (_pflxEmbedFrameKey !== key) {
+      _pflxEmbedFrameKey = key;
+      _pflxEmbedFrame.onload = (function (k) { return function () { pflxOnEmbedFrameLoad(k); }; })(key);
+      _pflxEmbedFrame.src = app.url;
+    }
+    _pflxEmbedFrame.style.display = 'block';
+    if (_pflxEmbedFrame.parentNode !== slot) slot.appendChild(_pflxEmbedFrame);
+  } catch (e) { console.warn('[PFLX] embed portal sync failed', e); }
+}
+window.pflxSyncEmbedPortal = pflxSyncEmbedPortal;
+
+// PATCH X-LIVE -- Mission Control embed auto-login relay (Sept 9, Ennis:
+// "I shouldn't have to login... This should open directly to MC when I
+// choose Mission Control not the start screen"). The missioncontrol
+// sub-app is the SAME Console app X-Live itself receives ITS OWN identity
+// from (see pflx_identity_broadcast elsewhere in this file) -- other
+// sub-apps (pathways/arena/darkcampus) are untouched, they don't speak
+// this handshake. Deliberately sends ONLY the current viewer's brand
+// (host or player, whoever L.me is) -- never a PIN, XC balance, or role --
+// so the embedded Console re-derives the entire session itself from its
+// own roster via its existing loginUser() path; this frame only ever
+// asserts "log in as this already-known brand," it can't hand over
+// balances or privileges the roster doesn't already have on file. Sent
+// with an explicit targetOrigin (never '*') so nothing else can read or
+// spoof it.
+function pflxOnEmbedFrameLoad(key) {
+  try {
+    if (key !== 'missioncontrol') return;
+    if (!_pflxEmbedFrame || !_pflxEmbedFrame.contentWindow) return;
+    var brand = (L.me && L.me.brand) || '';
+    if (!brand) return;
+    var app = PFLX_SUBAPPS[key];
+    if (!app) return;
+    var targetOrigin;
+    try { targetOrigin = new URL(app.url).origin; } catch (e) { targetOrigin = app.url; }
+    _pflxEmbedFrame.contentWindow.postMessage(JSON.stringify({ type: 'pflx_xlive_embed_identity', brand: brand }), targetOrigin);
+  } catch (e) { console.warn('[PFLX] embed identity relay failed', e); }
+}
+window.pflxOnEmbedFrameLoad = pflxOnEmbedFrameLoad;
+
 function pflxSlideEmbedHtml(sl) {
   if (!sl) return '';
   if (sl.type === 'sub_app') {
     var app = PFLX_SUBAPPS[sl.subApp];
     if (!app) return '';
-    return '<div class="pflx-embed-wrap" style="position:relative;padding-top:66%;margin:8px 0 4px;border-radius:10px;overflow:hidden;background:#000"><iframe src="' + esc(app.url) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe></div>';
+    // PATCH X-LIVE -- was a raw <iframe> here; render() rebuilds this
+    // whole string on every poll/state change (see render(), 60+ call
+    // sites), which destroyed and recreated the iframe -- forcing a full
+    // reload of the embedded app every few seconds ("it is refreshing",
+    // Ennis, Sept 9). A placeholder slot + the persistent portal below
+    // (pflxSyncEmbedPortal) keeps ONE real iframe alive across renders.
+    return '<div class="pflx-embed-wrap" style="position:relative;padding-top:66%;margin:8px 0 4px;border-radius:10px;overflow:hidden;background:#000"><div data-pflx-embed-slot="1" data-pflx-embed-key="' + esc(sl.subApp) + '" style="position:absolute;top:0;left:0;width:100%;height:100%"></div></div>';
   }
   if (!sl.prompt) return '';
   var src = null;
