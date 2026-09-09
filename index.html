@@ -337,7 +337,7 @@ async function kvSave(key, value) {
 }
 
 const L = {
-  me: null, isHost: false, demo: !inPlatform,
+  me: null, isHost: false, realIsHost: false, demo: !inPlatform,
   screen: 'class', boardTab: 'weekly',
   liveSession: null,   // {sessionId, code, title, host, cohorts, allCohorts, agenda, currentAgendaIndex} | null = no active session
   agendaScreenFrom: 'class', // tab to return to when leaving the live Agenda screen
@@ -385,6 +385,7 @@ function adoptFromParams() {
     if (p.get('sso') !== 'pflx') return false;
     L.me = { id: p.get('id') || '', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
     L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || p.get('host') === '1';
+    L.realIsHost = L.isHost; // PATCH X-LIVE -- role-toggle; see pflxApplyRoleChange
     L.demo = false;
     // v0.17 -- carried by the Platform's /xlive restricted login door
     // (pflxXLiveBuildRedirectURL in preview.html). Restricts this session
@@ -413,18 +414,49 @@ function pflxTryOpenPendingSession() {
 }
 window.pflxTryOpenPendingSession = pflxTryOpenPendingSession;
 
+// PATCH X-LIVE -- Host/Player view toggle. Pure decision function,
+// unit-testable without a DOM/message event: given the REAL (signed-
+// identity-derived) host status and an incoming 'pflx_role_changed'
+// role string from the Console's existing toolbar toggle, returns the
+// L.isHost value to apply, or null if the event should be ignored.
+// Fails closed -- a genuine player account can never be switched INTO
+// host view by this message (even a spoofed one), since only
+// realIsHost === true can ever move the display state to 'host'.
+function pflxApplyRoleChange(realIsHost, role) {
+  if (!realIsHost) return null;
+  if (role === 'player') return false;
+  if (role === 'host') return true;
+  return null;
+}
+window.pflxApplyRoleChange = pflxApplyRoleChange;
+
 window.addEventListener('message', function (e) {
   let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (er) { return; } }
   if (!m || !m.type) return;
   if ((m.type === 'pflx_identity_broadcast' || m.type === 'pflx_identity_response') && m.user) {
     L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student' };
     L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || m.user.isHost === true;
+    L.realIsHost = L.isHost; // PATCH X-LIVE -- role-toggle; see pflxApplyRoleChange
     L.demo = false; resolveMyId(); render();
     pflxTryOpenPendingSession();
   }
   if (m.type === 'pflx_player_changed' && m.player) {
     const p = L.roster.find(r => r.id === m.player.id);
     if (p) { p.xc = (typeof m.player.xc === 'number') ? m.player.xc : (m.player.xcoin || p.xc); p.totalXc = m.player.totalXcoin || p.totalXc; render(); }
+  }
+  // PATCH X-LIVE -- the Console's existing toolbar-role-toggle
+  // (pflxToggleRole()/pflxSetRole() in preview.html) already fans this
+  // out to every sub-app iframe on every click; this is the first time
+  // X-Live has listened for it. Since every tab/screen in this whole
+  // Host Dashboard already branches off L.isHost, reacting here alone
+  // makes the entire app follow the toggle.
+  if (m.type === 'pflx_role_changed' && m.role) {
+    const next = pflxApplyRoleChange(L.realIsHost, m.role);
+    if (next !== null && next !== L.isHost) {
+      L.isHost = next;
+      if (L.screen && !(L.isHost ? ['class', 'live', 'theater', 'teams', 'boards', 'tools', 'play', 'feed', 'setup'] : ['me', 'theater', 'boards', 'shop', 'play']).includes(L.screen)) L.screen = L.isHost ? 'class' : 'me';
+      render();
+    }
   }
 
   // X-Live ↔ Console Live Sessions (PATCH LITE v0.2, historical name) —
