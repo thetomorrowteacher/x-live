@@ -810,6 +810,7 @@ async function loadSessions() {
     if (Array.isArray(cloud)) L.sessions = mergeSessionList(L.sessions, cloud);
   } catch (e) {}
   L.loaded.sessions = true;
+  pflxLiveAutoLifecycleCheck(); // PATCH X-LIVE -- auto-start/auto-stop, checked on every sessions refresh
   render();
 }
 async function saveSession(sess) {
@@ -2843,7 +2844,7 @@ function rLiveBuilder() {
     '<label>Start Time</label><input type="datetime-local" value="' + esc(s.scheduledStart || '') + '" onchange="L.liveEditingSession.scheduledStart=this.value;render()"/>' +
     '<label style="margin-top:8px">End Time</label><input type="datetime-local" value="' + esc(s.scheduledEnd || '') + '" onchange="L.liveEditingSession.scheduledEnd=this.value;render()"/>' +
     (pflxSessionScheduleWarning(s.scheduledStart, s.scheduledEnd) ? '<div style="font-size:11px;color:#ff8a8a;margin-top:6px">⚠ ' + esc(pflxSessionScheduleWarning(s.scheduledStart, s.scheduledEnd)) + '</div>' : '') +
-    '<div style="font-size:11px;color:#8a93b8;margin-top:6px">Informational for now -- you still tap GO LIVE yourself when ready. This does not auto-start or auto-end the session.</div>' +
+    '<div style="font-size:11px;color:#8a93b8;margin-top:6px">Auto-starts and auto-ends at these times once set -- but only while a host has X-Live open (PFLX has no server-side scheduler). You can still tap GO LIVE / END SESSION yourself any time.</div>' +
     '</div>' +
     ((L.hostCapabilities && L.hostCapabilities.editRewards) ? (
     '<div class="card" style="margin-top:14px"><div class="cardT">🎁 Session Rewards</div>' +
@@ -2879,14 +2880,22 @@ function grantSessionReward(pid, xc, badgeId, reason) {
     }
   }
 }
-async function liveGoLiveSession(id) {
-  const s = L.sessions.find(function (x) { return x.id === id; }); if (!s) return;
-  if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) { toast("That session is outside your assigned cohort(s)"); return; }
-  if (!s.slides || !s.slides.length) { toast('Add at least one slide before going live'); return; }
+function pflxActivateSession(s) {
+  // Shared "flip a session into active/running state" core, used by both
+  // the host's manual GO LIVE button (liveGoLiveSession) and the new
+  // scheduled auto-start check (pflxLiveAutoStart) below -- one
+  // implementation, not two copies that could drift.
   s.status = 'active';
   s.currentSlideIndex = 0;
   s.hostControls = { paused: false, responsesLocked: false, slideFrozen: false };
   liveMarkSlideStarted(s, 0); // PATCH X-LIVE v0.28 -- Quiz Race needs a start timestamp per slide
+}
+window.pflxActivateSession = pflxActivateSession;
+async function liveGoLiveSession(id) {
+  const s = L.sessions.find(function (x) { return x.id === id; }); if (!s) return;
+  if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) { toast("That session is outside your assigned cohort(s)"); return; }
+  if (!s.slides || !s.slides.length) { toast('Add at least one slide before going live'); return; }
+  pflxActivateSession(s);
   await saveSession(s);
   L.liveRunningSessionId = s.id;
   L.liveEditingSession = null;
@@ -2952,9 +2961,10 @@ function liveEndSessionPrompt() {
     '<button class="bigbtn red" onclick="modalClose();liveEndSession()">END SESSION</button>' +
     '<button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
 }
-async function liveEndSession() {
-  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
-  s.status = 'ended';
+function pflxGrantCompletionRewards(s) {
+  // Shared "grant completion rewards to everyone who joined" core, used by
+  // both the host's manual END SESSION flow (liveEndSession) and the new
+  // scheduled auto-stop check (pflxLiveAutoEnd) below.
   s.awardedTo = s.awardedTo || [];
   (s.liveParticipants || []).forEach(function (p) {
     const key = 'complete:' + s.id + ':' + p.id;
@@ -2963,11 +2973,65 @@ async function liveEndSession() {
       grantSessionReward(p.id, s.rewards.completionXc, s.rewards.completionBadgeId, 'xlive-session:' + s.id + ':complete');
     }
   });
+}
+window.pflxGrantCompletionRewards = pflxGrantCompletionRewards;
+async function liveEndSession() {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.status = 'ended';
+  pflxGrantCompletionRewards(s);
   await saveSession(s);
   L.liveRunningSessionId = null;
   render();
   toast('🏁 Session ended' + (L.demo ? ' (demo)' : ''));
 }
+
+// PATCH X-LIVE -- auto-start / auto-stop session lifecycle (Sept 9, Ennis:
+// "This should auto start and auto stop"). There is no server-side cron
+// anywhere in PFLX (static hosting + a polled Supabase KV store) -- this
+// only fires when SOME host-tier client (this device or another host's)
+// has X-Live open at/after the scheduled moment, checked every time
+// loadSessions() refreshes (every 5s while a session is actively running,
+// every 60s otherwise -- see scheduleSessionsPoll). That is a real,
+// documented limitation, not silently hidden -- see the schedule card copy
+// and the Handoff entry for this patch.
+async function pflxLiveAutoStart(s) {
+  pflxActivateSession(s);
+  s.autoStarted = true; // transparency flag -- shows the host this wasn't a manual click
+  await saveSession(s);
+  if (!L.liveRunningSessionId) L.liveRunningSessionId = s.id; // don't yank the host away from a session they're already actively running
+  render();
+  toast('🔴 "' + (s.title || 'Session') + '" auto-started (scheduled time reached)' + (L.demo ? ' (demo)' : ''));
+}
+window.pflxLiveAutoStart = pflxLiveAutoStart;
+async function pflxLiveAutoEnd(s) {
+  s.status = 'ended';
+  s.autoEnded = true;
+  pflxGrantCompletionRewards(s);
+  await saveSession(s);
+  if (L.liveRunningSessionId === s.id) L.liveRunningSessionId = null;
+  render();
+  toast('🏁 "' + (s.title || 'Session') + '" auto-ended (scheduled end time reached)' + (L.demo ? ' (demo)' : ''));
+}
+window.pflxLiveAutoEnd = pflxLiveAutoEnd;
+// Host-tier-only (never fires for a player client -- a stray player client
+// should never be able to end a session for everyone), scans every known
+// session for a due auto-start or auto-stop. Guarded by the session's own
+// status field so a given transition only ever fires once.
+function pflxLiveAutoLifecycleCheck() {
+  if (!L.isHost || !L.hostCapabilities || !L.hostCapabilities.runSessions) return;
+  const now = Date.now();
+  (L.sessions || []).forEach(function (s) {
+    if (L.hostCapabilities.scopedToCohorts && !pflxSessionInCohortScope(s, L.me && L.me.managedCohorts)) return;
+    if (s.status === 'scheduled' && s.scheduledStart && s.slides && s.slides.length) {
+      const startMs = new Date(s.scheduledStart).getTime();
+      if (!isNaN(startMs) && startMs <= now) pflxLiveAutoStart(s);
+    } else if (s.status === 'active' && s.scheduledEnd) {
+      const endMs = new Date(s.scheduledEnd).getTime();
+      if (!isNaN(endMs) && endMs <= now) pflxLiveAutoEnd(s);
+    }
+  });
+}
+window.pflxLiveAutoLifecycleCheck = pflxLiveAutoLifecycleCheck;
 
 // PATCH X-LIVE v0.19 -- Phase 1d: YouTube/OBS embed, an independent
 // broadcast mode alongside the LiveKit video room (Phase 1a-1c). No
