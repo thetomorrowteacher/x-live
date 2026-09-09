@@ -338,6 +338,7 @@ async function kvSave(key, value) {
 
 const L = {
   me: null, isHost: false, realIsHost: false, hostCapabilities: null, demo: !inPlatform,
+  ytRelayStatus: null, // null=not checked yet, else {connected,channelId}
   screen: 'class', boardTab: 'weekly',
   liveSession: null,   // {sessionId, code, title, host, cohorts, allCohorts, agenda, currentAgendaIndex} | null = no active session
   agendaScreenFrom: 'class', // tab to return to when leaving the live Agenda screen
@@ -2357,6 +2358,108 @@ function pflxOnEmbedFrameLoad(key) {
 }
 window.pflxOnEmbedFrameLoad = pflxOnEmbedFrameLoad;
 
+// PATCH X-LIVE -- Theater/YouTube API relay (Sept 9, Ennis: "Both 1 and
+// 2"). X-Live has no YouTube OAuth credentials of its own and never will
+// -- Ennis connected YouTube once, in the Console's Settings -> YouTube
+// API, and those tokens are deliberately kept Console-side only (see the
+// Mission Control embed identity relay above for the same reasoning).
+// This opens a SEPARATE, hidden (off-screen) iframe of the same Console
+// app purely as a relay: X-Live posts a request naming an action
+// (status/createBroadcast/endBroadcast), the Console performs the real,
+// already-working YouTube Data API call using ITS OWN ytConfig, and posts
+// the result back. The tokens never cross the frame boundary.
+var _pflxYtRelayFrame = null;
+var _pflxYtRelayPending = {};
+var _pflxYtRelayReqSeq = 0;
+function pflxYtRelayTargetOrigin() {
+  var app = PFLX_SUBAPPS.missioncontrol;
+  try { return new URL(app.url).origin; } catch (e) { return app.url; }
+}
+function pflxYtEnsureRelayFrame() {
+  if (_pflxYtRelayFrame) return _pflxYtRelayFrame;
+  var app = PFLX_SUBAPPS.missioncontrol;
+  var f = document.createElement('iframe');
+  // Off-screen, not display:none -- some browsers throttle/never-load a
+  // display:none iframe's script timers; 1x1 off-screen loads normally.
+  f.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+  f.setAttribute('aria-hidden', 'true');
+  f.onload = function () {
+    try {
+      var brand = (L.me && L.me.brand) || '';
+      if (brand) f.contentWindow.postMessage(JSON.stringify({ type: 'pflx_xlive_embed_identity', brand: brand }), pflxYtRelayTargetOrigin());
+    } catch (e) {}
+    f.dataset.pflxLoaded = '1';
+    (f._pflxOnLoadWaiters || []).forEach(function (fn) { try { fn(); } catch (e) {} });
+    f._pflxOnLoadWaiters = [];
+  };
+  f._pflxOnLoadWaiters = [];
+  f.src = app.url;
+  document.body.appendChild(f);
+  _pflxYtRelayFrame = f;
+  return f;
+}
+function pflxYtRelayRequest(action, payload) {
+  return new Promise(function (resolve, reject) {
+    try {
+      var frame = pflxYtEnsureRelayFrame();
+      var requestId = 'yt-' + (++_pflxYtRelayReqSeq) + '-' + Date.now();
+      var timer = setTimeout(function () {
+        delete _pflxYtRelayPending[requestId];
+        reject(new Error('YouTube relay timed out'));
+      }, 12000);
+      _pflxYtRelayPending[requestId] = function (result) { clearTimeout(timer); resolve(result); };
+      function send() {
+        try { frame.contentWindow.postMessage(JSON.stringify({ type: 'pflx_yt_relay_request', requestId: requestId, action: action, payload: payload || {} }), pflxYtRelayTargetOrigin()); }
+        catch (e) { clearTimeout(timer); delete _pflxYtRelayPending[requestId]; reject(e); }
+      }
+      if (frame.dataset.pflxLoaded === '1') send();
+      else frame._pflxOnLoadWaiters.push(send);
+    } catch (e) { reject(e); }
+  });
+}
+window.pflxYtRelayRequest = pflxYtRelayRequest;
+window.addEventListener('message', function (ev) {
+  try {
+    var msg = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'pflx_yt_relay_response' && msg.requestId && _pflxYtRelayPending[msg.requestId]) {
+      var handler = _pflxYtRelayPending[msg.requestId];
+      delete _pflxYtRelayPending[msg.requestId];
+      handler(msg);
+    }
+  } catch (e) {}
+});
+
+var _pflxYtStatusChecked = false;
+function pflxYtEnsureStatusChecked() {
+  if (_pflxYtStatusChecked) return;
+  _pflxYtStatusChecked = true;
+  pflxYtRelayRequest('status').then(function (r) {
+    L.ytRelayStatus = { connected: !!(r && r.connected), channelId: (r && r.channelId) || '' };
+    render();
+  }).catch(function () {
+    L.ytRelayStatus = { connected: false };
+    render();
+  });
+}
+
+async function liveYtCreateAndGoLive() {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  toast('Creating YouTube broadcast…');
+  try {
+    const r = await pflxYtRelayRequest('createBroadcast', { title: s.title || 'PFLX Live Session' });
+    if (!r || !r.ok) { toast('YouTube error: ' + ((r && r.error) || 'unknown') + ' -- check Console \u2192 Settings \u2192 YouTube API'); return; }
+    s.youtubeEmbedId = r.videoId;
+    s.youtubeViaRelay = true;
+    await saveSession(s);
+    render();
+    toast('\ud83d\udd34 Live on YouTube!');
+  } catch (e) {
+    toast('YouTube relay timed out -- check Console \u2192 Settings \u2192 YouTube API');
+  }
+}
+window.liveYtCreateAndGoLive = liveYtCreateAndGoLive;
+
 function pflxSlideEmbedHtml(sl) {
   if (!sl) return '';
   if (sl.type === 'sub_app') {
@@ -2899,7 +3002,14 @@ async function liveSetYouTubeEmbedFromInput() {
 
 async function liveClearYouTubeEmbed() {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  // PATCH X-LIVE -- if this stream was created via the YouTube relay
+  // (not a manually-pasted URL), also end the real broadcast so it
+  // doesn't keep running on YouTube after the host stops it here.
+  if (s.youtubeViaRelay && s.youtubeEmbedId) {
+    try { await pflxYtRelayRequest('endBroadcast', { videoId: s.youtubeEmbedId }); } catch (e) { toast('Could not confirm the YouTube broadcast ended -- check Console \u2192 Settings \u2192 YouTube API'); }
+  }
   delete s.youtubeEmbedId;
+  delete s.youtubeViaRelay;
   await saveSession(s);
   render();
 }
@@ -3110,15 +3220,26 @@ function rLiveRun(s) {
     }).join('') +
     '</div>';
   const stage =
+    (function () { pflxYtEnsureStatusChecked(); return ''; })() +
     '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
-      '<div class="cardT" style="font-size:12px">📺 YouTube/OBS Stream (optional)</div>' +
+      '<div class="cardT" style="font-size:12px">\ud83d\udcfa YouTube Stream (optional)</div>' +
       (s.youtubeEmbedId ?
-        ('<div style="font-size:11px;color:#7dffb8;margin:6px 0">Streaming: <code>' + esc(s.youtubeEmbedId) + '</code></div>' +
+        ('<div style="font-size:11px;color:#7dffb8;margin:6px 0">Streaming' + (s.youtubeViaRelay ? ' (via connected YouTube account)' : '') + ': <code>' + esc(s.youtubeEmbedId) + '</code></div>' +
          '<button class="bigbtn ghost" style="font-size:10px;padding:6px 12px" onclick="liveClearYouTubeEmbed()">STOP YOUTUBE STREAM</button>')
+      : (L.ytRelayStatus && L.ytRelayStatus.connected ?
+        // PATCH X-LIVE -- YouTube API relay (Sept 9, Ennis: "Both 1 and
+        // 2"). The Console has a real, authorized YouTube account
+        // (Settings -> YouTube API) -- create the broadcast and pull the
+        // live video id automatically, no manual YouTube Studio steps.
+        // OBS still needs to be pointed at that channel's stream key to
+        // actually push video (unchanged -- X-Live has no camera/encoder
+        // of its own), same as documented for the manual-paste flow.
+        ('<div style="font-size:11px;color:#8a93b8;margin:6px 0">Connected YouTube account found. Creates an unlisted broadcast and grabs its video ID automatically -- you still start OBS pushing to that channel\u2019s stream key when ready.</div>' +
+         '<button class="bigbtn gold" style="font-size:10px;padding:6px 12px" onclick="liveYtCreateAndGoLive()">\ud83d\udd34 CREATE &amp; GO LIVE ON YOUTUBE</button>')
       :
-        ('<div style="font-size:11px;color:#8a93b8;margin:6px 0">Start streaming in OBS to an unlisted YouTube Live broadcast, then paste the URL here.</div>' +
+        ('<div style="font-size:11px;color:#8a93b8;margin:6px 0">Start streaming in OBS to an unlisted YouTube Live broadcast, then paste the URL here.' + (L.ytRelayStatus ? ' (No connected YouTube account found -- connect one in the Console under Settings \u2192 YouTube API to skip this step.)' : '') + '</div>' +
          '<input type="text" id="liveYtInput" placeholder="YouTube Live URL or video ID" style="width:100%;margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff">' +
-         '<button class="bigbtn gold" style="font-size:10px;padding:6px 12px" onclick="liveSetYouTubeEmbedFromInput()">SET STREAM</button>')
+         '<button class="bigbtn gold" style="font-size:10px;padding:6px 12px" onclick="liveSetYouTubeEmbedFromInput()">SET STREAM</button>'))
       ) +
     '</div>' +
     (hasRaceSlide(s) ? (
