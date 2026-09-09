@@ -50,6 +50,8 @@ function makeSandbox(overrides) {
     if (!sandbox.__scopeDeny) return true;
     return sandbox.__scopeDeny.indexOf(session.id) === -1;
   };
+  sandbox.__stopTimerCalls = 0;
+  sandbox.pflxStopSessionTimer = function () { sandbox.__stopTimerCalls++; }; // PATCH X-LIVE Session Timer -- stubbed here, covered by its own test file
 
   const full = body +
     '\nsandbox.pflxActivateSession = pflxActivateSession;\n' +
