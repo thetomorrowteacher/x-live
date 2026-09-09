@@ -337,7 +337,7 @@ async function kvSave(key, value) {
 }
 
 const L = {
-  me: null, isHost: false, realIsHost: false, demo: !inPlatform,
+  me: null, isHost: false, realIsHost: false, hostCapabilities: null, demo: !inPlatform,
   screen: 'class', boardTab: 'weekly',
   liveSession: null,   // {sessionId, code, title, host, cohorts, allCohorts, agenda, currentAgendaIndex} | null = no active session
   agendaScreenFrom: 'class', // tab to return to when leaving the live Agenda screen
@@ -384,7 +384,12 @@ function adoptFromParams() {
     const p = new URLSearchParams(location.search);
     if (p.get('sso') !== 'pflx') return false;
     L.me = { id: p.get('id') || '', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
-    L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || p.get('host') === '1';
+    { // PATCH X-LIVE -- tiered host access; see pflxResolveHostTier/pflxHostCapabilities
+      var __tier = pflxResolveHostTier(L.me.role, null);
+      if (!__tier && p.get('host') === '1') __tier = 'admin'; // existing full-host escape hatch, unchanged
+      L.isHost = !!__tier;
+      L.hostCapabilities = pflxHostCapabilities(__tier);
+    }
     L.realIsHost = L.isHost; // PATCH X-LIVE -- role-toggle; see pflxApplyRoleChange
     L.demo = false;
     // v0.17 -- carried by the Platform's /xlive restricted login door
@@ -414,6 +419,64 @@ function pflxTryOpenPendingSession() {
 }
 window.pflxTryOpenPendingSession = pflxTryOpenPendingSession;
 
+// PATCH X-LIVE -- tiered host access. Mirrors the Console's own
+// hostTier() resolution (pflx-platform-check/preview.html) exactly: an
+// explicit hostTier field always wins; otherwise fall back to the
+// legacy role string in the SAME order (admin -> master, host ->
+// admin, instructor/teacher -> instructor). Returns null for a
+// non-host (a plain player). Reusing the Console's own resolution
+// order (rather than inventing a separate one) means the two apps can
+// never disagree about what tier an account holds.
+function pflxResolveHostTier(role, hostTier) {
+  var KNOWN = { guest: 1, instructor: 1, cohost: 1, admin: 1, master: 1 };
+  if (hostTier && KNOWN[hostTier]) return hostTier;
+  var r = String(role || '').toLowerCase().trim();
+  if (r === 'admin') return 'master';
+  if (r === 'host') return 'admin';
+  if (r === 'instructor' || r === 'teacher') return 'instructor';
+  return null;
+}
+window.pflxResolveHostTier = pflxResolveHostTier;
+
+var PFLX_HOST_TIER_RANK = { guest: 1, instructor: 2, cohost: 2, admin: 4, master: 5 };
+// X-Live's own capability set for a resolved tier, per Ennis's
+// confirmed scope (Sept 9): Guest Host can build AND run sessions, but
+// not touch rewards, delete a session, or reach Teams/Setup.
+// Instructor Host (and Co-Host, treated the same here -- X-Live
+// doesn't yet distinguish single-cohort Instructor from multi-cohort
+// Co-Host) gets everything except Setup; cohort SCOPING (which
+// sessions/roster they can actually see) is a separate patch, see
+// pflxSessionInCohortScope. Admin/Master (a full host, exactly
+// today's pre-patch behavior) get everything, unrestricted.
+function pflxHostCapabilities(tier) {
+  if (!tier) return null;
+  var rank = PFLX_HOST_TIER_RANK[tier] || 0;
+  return {
+    tier: tier,
+    buildSessions: rank >= 1,
+    runSessions: rank >= 1,
+    editRewards: rank >= 2,
+    deleteSessions: rank >= 2,
+    teamsTab: rank >= 2,
+    setupTab: rank >= 4,
+    scopedToCohorts: (tier === 'instructor' || tier === 'cohost')
+  };
+}
+window.pflxHostCapabilities = pflxHostCapabilities;
+
+// Whether a given Host Dashboard tab key should show for the current
+// capability set. Every tab not explicitly gated here (class/live/
+// theater/boards/tools/play/feed) stays open to every host tier --
+// only Teams and Setup were called out as full-admin-only in Ennis's
+// confirmed scope.
+function pflxHostTabAllowed(tabKey, caps) {
+  if (!caps) return true;
+  if (tabKey === 'setup') return !!caps.setupTab;
+  if (tabKey === 'teams') return !!caps.teamsTab;
+  return true;
+}
+window.pflxHostTabAllowed = pflxHostTabAllowed;
+
 // PATCH X-LIVE -- Host/Player view toggle. Pure decision function,
 // unit-testable without a DOM/message event: given the REAL (signed-
 // identity-derived) host status and an incoming 'pflx_role_changed'
@@ -434,8 +497,13 @@ window.addEventListener('message', function (e) {
   let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (er) { return; } }
   if (!m || !m.type) return;
   if ((m.type === 'pflx_identity_broadcast' || m.type === 'pflx_identity_response') && m.user) {
-    L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student' };
-    L.isHost = /admin|host|teacher|instructor/i.test(L.me.role) || m.user.isHost === true;
+    L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student', hostTier: m.user.hostTier || null, managedCohorts: Array.isArray(m.user.managedCohorts) ? m.user.managedCohorts : [] };
+    { // PATCH X-LIVE -- tiered host access; see pflxResolveHostTier/pflxHostCapabilities
+      var __tier2 = pflxResolveHostTier(L.me.role, L.me.hostTier);
+      if (!__tier2 && m.user.isHost === true) __tier2 = 'admin'; // existing full-host escape hatch, unchanged
+      L.isHost = !!__tier2;
+      L.hostCapabilities = pflxHostCapabilities(__tier2);
+    }
     L.realIsHost = L.isHost; // PATCH X-LIVE -- role-toggle; see pflxApplyRoleChange
     L.demo = false; resolveMyId(); render();
     pflxTryOpenPendingSession();
@@ -1064,7 +1132,7 @@ function render() {
     return;
   }
   const tabs = L.isHost
-    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']]
+    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']].filter(function (t) { return pflxHostTabAllowed(t[0], L.hostCapabilities); })
     : [['me', '🤖 MY EXO'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
@@ -2517,7 +2585,7 @@ function rLiveList() {
       (s.status === 'scheduled' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveGoLiveSession(\'' + esc(s.id) + '\')">🔴 GO LIVE</button>' : '') +
       (s.status === 'active' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveManageSession(\'' + esc(s.id) + '\')">▶ MANAGE</button>' : '') +
       '<button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="liveEditSession(\'' + esc(s.id) + '\')">EDIT</button>' +
-      '<button class="bigbtn red" style="padding:6px 10px;font-size:9px" onclick="liveDeleteSessionPrompt(\'' + esc(s.id) + '\')">DELETE</button>' +
+      ((L.hostCapabilities && L.hostCapabilities.deleteSessions) ? '<button class="bigbtn red" style="padding:6px 10px;font-size:9px" onclick="liveDeleteSessionPrompt(\'' + esc(s.id) + '\')">DELETE</button>' : '') +
       '</span></div>';
   }
   return '<div class="card"><div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 Live Sessions' +
@@ -2551,12 +2619,14 @@ function rLiveBuilder() {
     (pflxSessionScheduleWarning(s.scheduledStart, s.scheduledEnd) ? '<div style="font-size:11px;color:#ff8a8a;margin-top:6px">⚠ ' + esc(pflxSessionScheduleWarning(s.scheduledStart, s.scheduledEnd)) + '</div>' : '') +
     '<div style="font-size:11px;color:#8a93b8;margin-top:6px">Informational for now -- you still tap GO LIVE yourself when ready. This does not auto-start or auto-end the session.</div>' +
     '</div>' +
+    ((L.hostCapabilities && L.hostCapabilities.editRewards) ? (
     '<div class="card" style="margin-top:14px"><div class="cardT">🎁 Session Rewards</div>' +
     '<label>Attendance XC (granted on join)</label><input type="number" value="' + (s.rewards.attendanceXc || 0) + '" onchange="L.liveEditingSession.rewards.attendanceXc=parseInt(this.value)||0"/>' +
     '<label style="margin-top:8px">Attendance Badge</label>' + badgeSelectHtml(s.rewards.attendanceBadgeId, 'L.liveEditingSession.rewards.attendanceBadgeId') +
     '<label style="margin-top:8px">Completion XC (granted on End)</label><input type="number" value="' + (s.rewards.completionXc || 0) + '" onchange="L.liveEditingSession.rewards.completionXc=parseInt(this.value)||0"/>' +
     '<label style="margin-top:8px">Completion Badge</label>' + badgeSelectHtml(s.rewards.completionBadgeId, 'L.liveEditingSession.rewards.completionBadgeId') +
-    '</div>' +
+    '</div>'
+    ) : '') +
     '<div class="card" style="margin-top:14px"><div class="cardT" style="display:flex;align-items:center;gap:10px">Activities (' + s.slides.length + ')' +
     '<button class="bigbtn green" style="margin-left:auto;padding:7px 12px;font-size:9px" onclick="liveAddSlide()">+ ADD ACTIVITY</button></div>' +
     (s.slides.length ? s.slides.map(function (sl, i) { return slideRowHtml(sl, i); }).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No activities yet.</div>') +
