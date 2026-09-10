@@ -1193,6 +1193,94 @@ function pflxTheaterLiveSessions() {
 }
 window.pflxTheaterLiveSessions = pflxTheaterLiveSessions;
 
+// PATCH X-LIVE -- Virtual Theater: Production Crew (Sept 10, Ennis). Ported
+// from Mission Control's orphaned VT_ROLES (same 6 roles, same
+// labels/icons/colors/capacities Ennis originally designed) -- but for
+// real this time: assignments live on the session object
+// (s.crewAssignments = {playerId: roleKey}), saved through the existing
+// merge-safe saveSession() path, and the assignable pool is the REAL
+// class roster, not a manually prompt()-typed fake participant list like
+// the MC mockup used.
+var PFLX_CREW_ROLES = {
+  director:        { label: 'Studio Director',     icon: '\u{1F451}', color: '#ef4444', max: 3 },
+  presenter:       { label: 'Presenter / Speaker',  icon: '\u{1F399}\uFE0F', color: '#facc15', max: 4 },
+  'sound-tech':     { label: 'Sound Technician',    icon: '\u{1F3B5}', color: '#00d4e8', max: 2 },
+  dj:              { label: 'DJ',                  icon: '\u{1F3A7}', color: '#00d4e8', max: 1 },
+  'lighting-tech':  { label: 'Lighting Technician', icon: '\u{1F4A1}', color: '#a78bfa', max: 2 },
+  'media-tech':     { label: 'Media Technician',    icon: '\u{1F4FA}', color: '#22c55e', max: 3 }
+};
+window.PFLX_CREW_ROLES = PFLX_CREW_ROLES;
+
+// Pure -- given the current {playerId: roleKey} map, a target player, and
+// a role (falsy roleKey means "unassign"), returns the NEW map plus an
+// ok/error result. Never mutates the input. A player holds at most one
+// crew role at a time (assigning a new one silently drops any prior
+// one); a role at its max capacity is refused rather than bumping
+// someone else out.
+function pflxComputeCrewAssignment(assignments, playerId, roleKey) {
+  var next = Object.assign({}, assignments || {});
+  if (!roleKey) { delete next[playerId]; return { ok: true, assignments: next }; }
+  var def = PFLX_CREW_ROLES[roleKey];
+  if (!def) return { ok: false, error: 'unknown_role', assignments: assignments || {} };
+  var count = 0;
+  for (var pid in next) { if (pid !== playerId && next[pid] === roleKey) count++; }
+  if (count >= def.max) return { ok: false, error: 'role_full', assignments: assignments || {} };
+  delete next[playerId];
+  next[playerId] = roleKey;
+  return { ok: true, assignments: next };
+}
+window.pflxComputeCrewAssignment = pflxComputeCrewAssignment;
+
+function pflxCrewParticipantName(playerId) {
+  var p = (L.roster || []).find(function (x) { return x.id === playerId; });
+  return p ? p.brand : playerId;
+}
+window.pflxCrewParticipantName = pflxCrewParticipantName;
+
+async function pflxAssignCrewRole(sessionId, playerId, roleKey) {
+  var s = (L.sessions || []).find(function (x) { return x.id === sessionId; }); if (!s || !playerId) return;
+  var result = pflxComputeCrewAssignment(s.crewAssignments || {}, playerId, roleKey);
+  if (!result.ok) {
+    if (result.error === 'role_full') toast((PFLX_CREW_ROLES[roleKey] || {}).label + ' is already at max capacity');
+    render(); // reset the <select> back to its previous state
+    return;
+  }
+  s.crewAssignments = result.assignments;
+  await saveSession(s);
+  render();
+  var name = pflxCrewParticipantName(playerId);
+  toast(roleKey ? ('\u{1F3AD} ' + name + ' assigned as ' + PFLX_CREW_ROLES[roleKey].label) : ('Removed ' + name + ' from the crew'));
+}
+window.pflxAssignCrewRole = pflxAssignCrewRole;
+
+function pflxUnassignCrewRole(sessionId, playerId) { return pflxAssignCrewRole(sessionId, playerId, ''); }
+window.pflxUnassignCrewRole = pflxUnassignCrewRole;
+
+function pflxTheaterCrewPanelHtml(s) {
+  var assignments = s.crewAssignments || {};
+  var pool = sortedRoster(classRoster());
+  return '<div style="font-size:12px;color:#8a93b8;margin:6px 0 12px">Production Crew for <b style="color:#fff">' + esc(s.title || 'this session') + '</b> \u2014 assign roles to your roster, same as the Virtual Theater crew board.</div>' +
+    Object.keys(PFLX_CREW_ROLES).map(function (key) {
+      var def = PFLX_CREW_ROLES[key];
+      var assignedIds = Object.keys(assignments).filter(function (pid) { return assignments[pid] === key; });
+      return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:11px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
+        '<span style="font-size:20px">' + def.icon + '</span>' +
+        '<span style="font-weight:700;font-size:12px;min-width:150px;color:' + def.color + '">' + esc(def.label) + '</span>' +
+        '<select onchange="pflxAssignCrewRole(\'' + esc(s.id) + '\', this.value, \'' + key + '\')" style="flex:1;min-width:150px;background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:6px">' +
+        '<option value="">\u2014 Assign \u2014</option>' +
+        pool.map(function (p) { return '<option value="' + esc(p.id) + '"' + (assignments[p.id] === key ? ' selected' : '') + '>' + esc(p.brand) + '</option>'; }).join('') +
+        '</select>' +
+        '<span style="font-size:10px;color:#8a93b8;margin-left:auto">' + assignedIds.length + '/' + def.max + '</span>' +
+        (assignedIds.length ? ('<div style="width:100%;display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">' +
+          assignedIds.map(function (pid) {
+            var name = pflxCrewParticipantName(pid);
+            return '<span style="font-size:10px;background:' + def.color + '22;color:' + def.color + ';padding:2px 8px;border-radius:10px;border:1px solid ' + def.color + '44">' + esc(name) + ' <span style="cursor:pointer;opacity:0.7" onclick="pflxUnassignCrewRole(\'' + esc(s.id) + '\', \'' + esc(pid) + '\')">\u2715</span></span>';
+          }).join('') + '</div>') : '') +
+        '</div>';
+    }).join('');
+}
+window.pflxTheaterCrewPanelHtml = pflxTheaterCrewPanelHtml;
+
 function theaterWatch(id) { L.theaterWatchingId = id; render(); }
 function theaterStopWatching() { L.theaterWatchingId = null; render(); }
 
@@ -1205,8 +1293,15 @@ function rTheater() {
       '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Watching only — separate from this session\'s own slides/agenda. No sign-in to the session required.</div>' +
       '<button class="bigbtn ghost" style="margin-top:10px" onclick="theaterStopWatching()">← BACK TO THEATER</button></div>';
   }
+  const runningSession = (L.isHost && L.liveRunningSessionId) ? (L.sessions || []).find(function (x) { return x.id === L.liveRunningSessionId; }) : null;
   const live = pflxTheaterLiveSessions();
-  return '<div class="card"><div class="cardT">🎬 Theater</div>' +
+  return (L.isHost ?
+    ('<div class="card" style="margin-bottom:10px"><div class="cardT">🎭 Virtual Theater — Production Crew</div>' +
+      (runningSession ? pflxTheaterCrewPanelHtml(runningSession) :
+        '<div style="font-size:12px;color:#8a93b8;margin:6px 0">Start a Live Session (🔴 LIVE tab) to open its Production Crew here — assign Director, Sound Tech, DJ, Lighting Tech, and Media Tech roles from your roster.</div>') +
+      '</div>')
+    : '') +
+    '<div class="card"><div class="cardT">🎬 Theater</div>' +
     '<div style="font-size:12px;color:#8a93b8;margin:6px 0 12px">Every currently-streaming session, open to watch — no roster or cohort required. Separate from a session\'s own Live tab, where its actual players follow the slides/agenda.</div>' +
     (live.length ? live.map(function (s) {
       return '<div class="feedrow" style="align-items:center">' +
