@@ -523,18 +523,58 @@ function pflxApplyRoleChange(realIsHost, role) {
 }
 window.pflxApplyRoleChange = pflxApplyRoleChange;
 
+// PATCH X-LIVE -- Host/Player parallel toggle, part 2 (Sept 10, Ennis).
+// Pure -- given the REAL (identity-derived) host status and an optional
+// role string carried on an identity sync (pflxBroadcastIdentity() in
+// the Console already sends `role: window.pflxRole`), decides what
+// L.isHost should display as. A genuine player account can never be
+// shown host view no matter what the broadcast claims (same fail-closed
+// invariant as pflxApplyRoleChange). When no role is given at all
+// (a caller that predates this patch, or a message type that never
+// carried one), defaults to the real tier -- unchanged behavior for
+// every other case.
+function pflxResolveDisplayHost(realIsHost, broadcastRole) {
+  if (!realIsHost) return false;
+  if (broadcastRole === 'player') return false;
+  return true;
+}
+window.pflxResolveDisplayHost = pflxResolveDisplayHost;
+
+// Pure -- given the NEXT display-host state and the CURRENT screen key,
+// returns the screen that should be showing after a host/player mode
+// switch. A screen present in both mode's tab bars (e.g. 'theater')
+// carries straight over -- that is what makes "Theater in Host Mode ->
+// Theater in Player Mode" actually parallel, rather than an accident of
+// two arrays happening to share a string. A host on the LIVE run-control
+// tab with a session actually running lands on 'livenative' when
+// switching to Player Mode -- the real player's-eye view of what's
+// happening right now, not a generic home screen. Anything else host-
+// only falls back to each mode's natural home ('class' for host, 'me'
+// for player).
+function pflxSyncScreenForRoleChange(nextIsHost, currentScreen, hasRunningSession) {
+  var tabs = nextIsHost
+    ? ['class', 'live', 'theater', 'teams', 'boards', 'tools', 'play', 'feed', 'setup']
+    : ['me', 'theater', 'boards', 'shop', 'play'];
+  if (tabs.indexOf(currentScreen) !== -1) return currentScreen;
+  if (!nextIsHost && currentScreen === 'live' && hasRunningSession) return 'livenative';
+  return nextIsHost ? 'class' : 'me';
+}
+window.pflxSyncScreenForRoleChange = pflxSyncScreenForRoleChange;
+
 window.addEventListener('message', function (e) {
   let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (er) { return; } }
   if (!m || !m.type) return;
   if ((m.type === 'pflx_identity_broadcast' || m.type === 'pflx_identity_response') && m.user) {
     L.me = { id: m.user.id, brand: m.user.brand || m.user.brandName || m.user.name, role: m.user.role || 'Student', hostTier: m.user.hostTier || null, managedCohorts: Array.isArray(m.user.managedCohorts) ? m.user.managedCohorts : [] };
+    var __prevIsHost = L.isHost;
     { // PATCH X-LIVE -- tiered host access; see pflxResolveHostTier/pflxHostCapabilities
       var __tier2 = pflxResolveHostTier(L.me.role, L.me.hostTier);
       if (!__tier2 && m.user.isHost === true) __tier2 = 'admin'; // existing full-host escape hatch, unchanged
-      L.isHost = !!__tier2;
+      L.realIsHost = !!__tier2; // PATCH X-LIVE -- Host/Player parallel: the REAL tier, independent of any active toggle
+      L.isHost = pflxResolveDisplayHost(L.realIsHost, m.role); // PATCH X-LIVE -- Host/Player parallel: respect the Console's OWN current toggle state (already sent on every identity sync) instead of always reverting to the real tier
       L.hostCapabilities = pflxHostCapabilities(__tier2);
     }
-    L.realIsHost = L.isHost; // PATCH X-LIVE -- role-toggle; see pflxApplyRoleChange
+    if (L.isHost !== __prevIsHost) L.screen = pflxSyncScreenForRoleChange(L.isHost, L.screen, !!L.liveRunningSessionId); // PATCH X-LIVE -- Host/Player parallel: keep the same tab (e.g. Theater) across an identity re-sync, exactly like the explicit toggle click already does below
     L.demo = false; resolveMyId(); render();
     pflxTryOpenPendingSession();
   }
@@ -552,7 +592,7 @@ window.addEventListener('message', function (e) {
     const next = pflxApplyRoleChange(L.realIsHost, m.role);
     if (next !== null && next !== L.isHost) {
       L.isHost = next;
-      if (L.screen && !(L.isHost ? ['class', 'live', 'theater', 'teams', 'boards', 'tools', 'play', 'feed', 'setup'] : ['me', 'theater', 'boards', 'shop', 'play']).includes(L.screen)) L.screen = L.isHost ? 'class' : 'me';
+      if (L.screen) L.screen = pflxSyncScreenForRoleChange(L.isHost, L.screen, !!L.liveRunningSessionId); // PATCH X-LIVE -- Host/Player parallel: shared with the identity-sync path above, see pflxSyncScreenForRoleChange
       render();
     }
   }
@@ -1170,7 +1210,7 @@ function render() {
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
     '<div class="hd"><div class="logo"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" class="logo-img"/><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
-    (L.isHost ? 'Host Dashboard · ' + esc((L.cfg.cohorts && L.cfg.cohorts.length) ? L.cfg.cohorts.join(', ') : 'All Players') : esc((L.me && L.me.brand) || 'Player')) + '</div><div class="sp"></div>' +
+    (L.isHost ? 'Host Dashboard · ' + esc((L.cfg.cohorts && L.cfg.cohorts.length) ? L.cfg.cohorts.join(', ') : 'All Players') : esc((L.me && L.me.brand) || 'Player') + (L.realIsHost ? ' · \u{1F441}\uFE0F PREVIEWING AS PLAYER' : '')) + '</div><div class="sp"></div>' +
     (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     liveSessionBanner() + nativeLiveSessionBanner() +
@@ -3524,9 +3564,25 @@ function rLiveRun(s) {
 // against L.sessions instead of the Mission-Control-driven L.liveSession.
 function nativeSessionAppliesToMe() {
   const myId = (L.me && L.me.id) || '';
+  // PATCH X-LIVE -- Host/Player parallel (Sept 10, Ennis): a REAL host
+  // previewing Player Mode is very often not enrolled as a player
+  // anywhere at all (masters/admins especially) -- without this, an
+  // honest live-session preview would wrongly show "session ended" just
+  // because the host's own account has no roster/cohort entry. A
+  // previewing host instead sees whatever their own host scope already
+  // covers: an unscoped tier (admin/master, or a non-cohort-scoped
+  // guest) sees any active session, a cohort-scoped tier sees only
+  // sessions inside their own managed cohorts -- reusing the exact same
+  // pflxSessionInCohortScope primitive the Host Dashboard's own session
+  // list already uses, not a separate rule.
+  const previewingAsHost = L.realIsHost && !L.isHost;
   return (L.sessions || []).find(function (s) {
     if (s.status !== 'active') return false;
     if (s.allCohorts || !s.cohorts || !s.cohorts.length) return true;
+    if (previewingAsHost) {
+      if (!L.hostCapabilities || !L.hostCapabilities.scopedToCohorts) return true;
+      return pflxSessionInCohortScope(s, L.me && L.me.managedCohorts);
+    }
     const mine = (L.roster.find(function (r) { return r.id === myId; }) || {}).cohort || '';
     return s.cohorts.indexOf(mine) !== -1;
   }) || null;
