@@ -3748,7 +3748,9 @@ function rTeams() {
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">' +
     '<button class="bigbtn green" onclick="teamsShufflePlayers()">🔀 SHUFFLE PLAYERS</button>' +
     '<button class="bigbtn" onclick="teamsRerollNames()">🎲 NEW NAMES</button>' +
-    '<button class="bigbtn gold" onclick="projTeams()">📽️ PROJECT</button>' +
+    // PATCH X-LIVE v0.33 -- renamed PROJECT to PRESENT (Ennis: don't mix up
+    // terminology with Mission Control's own "Projects")
+    '<button class="bigbtn gold" onclick="projTeams()">📽️ PRESENT</button>' +
     '<span style="flex:1"></span>' +
     '<span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + names.length + '" style="width:64px;text-align:center"/>' +
     '<button class="bigbtn ghost" onclick="makeTeams()">REDRAFT</button>' +
