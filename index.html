@@ -261,7 +261,14 @@
           padding:9px 11px; font-family:'Exo 2'; font-size:14px; width:100%; }
   label { font-size:11px; color:#8a93b8; letter-spacing:0.06em; display:block; margin:10px 0 4px; text-transform:uppercase; font-family:'Audiowide'; font-weight:700; }
   /* projector */
-  #proj { position:fixed; inset:0; z-index:200; background:radial-gradient(ellipse at 50% -20%, #101b3f 0%, #05070f 70%); display:none;
+  /* PATCH X-LIVE v0.34 (Ennis): the Projector uses the SAME animated HUD
+     background as the Host Dashboard. #proj is now see-through, so the one
+     shared #hudbg layer (grid, glows, rings, scan) + the body gradient show
+     behind it, and the dashboard (#app/#tray) is hidden while it's open so
+     it can't show through. Pure CSS: covers every path that opens #proj
+     (Projector, Teams PRESENT, wheel, timer). */
+  body:has(#proj.on) #app, body:has(#proj.on) #tray { visibility:hidden; }
+  #proj { position:fixed; inset:0; z-index:200; background:transparent; display:none;
           flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; }
   #proj.on { display:flex; }
   .projTitle { font-family:'Audiowide'; font-weight:900; font-size:clamp(22px,3.6vw,40px); letter-spacing:0.14em; color:#7de9ff; margin-bottom:22px; }
