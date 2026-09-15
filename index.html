@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.35, Sept 15 2026 — PATCH X-LIVE v0.35: gameshow mode.
+     PFLX Sound Library SFX on every host move and player moment, arcade
+     music zones (🎵 / 🔊 header toggles), a synced SHOW CONTROL timer
+     (s.showTimer + per-slide time limits that lock answers at zero), the
+     shared PflxFx countdown (voice 10-1, yellow flashes, TIME'S UP shake
+     and red strobe -- handed to the Platform so all of PFLX gets it), a
+     host SHOW FX pad (s.fxEvents), a player LIVE strip with color answer
+     tiles, instant session updates (realtime), and the Live Theater card.
+     See pflx-pathway-portal/docs/HANDOFF.md.
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.17, Sept 6 2026 — PATCH X-LIVE v0.17: consumes the
      xliveOnly=true flag the Platform's new /xlive restricted login
      door (PATCH PLATFORM v1.138) carries on its SSO handoff URL.
@@ -291,6 +303,67 @@
   .feedrow b { color:#fff; } .feedrow .t { margin-left:auto; font-size:10px; color:#5c6488; white-space:nowrap; }
   .upcard { border:1px solid rgba(179,136,255,0.35); background:rgba(179,136,255,0.07); border-radius:14px; padding:14px; text-align:center; }
   .upcard .ic { font-size:26px; } .upcard .lb { font-family:'Audiowide'; font-size:10px; font-weight:800; color:#fff; margin:6px 0; }
+  /* PATCH X-LIVE v0.35 -- gameshow mode */
+  .xl-audio-btn { cursor:pointer; display:inline-flex; align-items:center; gap:6px; padding:9px 12px; font-family:'Audiowide'; font-size:10px; letter-spacing:0.1em;
+    border:1px solid rgba(255,255,255,0.14); background:rgba(255,255,255,0.03); color:#6f789c; border-radius:10px; transition:all .15s; }
+  .xl-audio-btn span { font-size:8.5px; }
+  .xl-audio-btn.on { border-color:rgba(255,209,102,0.5); color:#ffd166; background:rgba(255,209,102,0.08); box-shadow:0 0 12px rgba(255,209,102,0.15); }
+  .xl-onair { display:inline-flex; align-items:center; gap:5px; font-family:'Audiowide'; font-size:9.5px; letter-spacing:0.16em; color:#ff4d6d; text-shadow:0 0 10px rgba(255,77,109,0.8); animation:xlOnAir 1.4s ease-in-out infinite; white-space:nowrap; }
+  @keyframes xlOnAir { 50% { opacity:0.45; } }
+  .xl-showctl { margin-bottom:10px; border-color:rgba(255,77,109,0.35); background:linear-gradient(135deg,rgba(255,77,109,0.07),rgba(57,192,255,0.05)); }
+  .xl-showctl-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:#ffdce3; }
+  .xl-showctl-music { margin-left:auto; font-family:'Exo 2'; font-size:11px; letter-spacing:0; text-transform:none; color:#9aa3c8; }
+  .xl-showctl-grid { display:grid; grid-template-columns:minmax(200px,0.9fr) 1.1fr; gap:14px; align-items:start; }
+  @media (max-width:760px) { .xl-showctl-grid { grid-template-columns:1fr; } }
+  .xl-showctl-timer { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .xl-timer-btns { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .bigbtn.xl-sm { padding:8px 11px; font-size:10px; }
+  .xl-hint { font-size:10.5px; color:#7d86ab; text-align:center; line-height:1.4; }
+  .xl-fxpad { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .xl-fxbtn { cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; border-radius:12px; font-family:'Audiowide'; font-size:9px; letter-spacing:0.06em;
+    color:#dfe4ff; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); transition:transform .08s, box-shadow .15s, border-color .15s; }
+  .xl-fxbtn span { font-size:22px; line-height:1; }
+  .xl-fxbtn:hover { border-color:rgba(255,209,102,0.6); box-shadow:0 0 16px rgba(255,209,102,0.2); }
+  .xl-fxbtn:active { transform:scale(0.93); }
+  .xl-fx-win, .xl-fx-hit { border-color:rgba(255,209,102,0.35); }
+  .xl-fx-fail, .xl-fx-alarm { border-color:rgba(255,77,109,0.35); }
+  .xl-fx-intro, .xl-fx-go { border-color:rgba(57,192,255,0.35); }
+  .xl-ring { position:relative; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .xl-ring svg { position:absolute; inset:0; width:100%; height:100%; transform:rotate(-90deg); }
+  .xl-ring circle { fill:none; stroke-width:6; }
+  .xl-ring .bg { stroke:rgba(255,255,255,0.08); }
+  .xl-ring .fg { stroke-linecap:round; transition:stroke-dashoffset .25s linear, stroke .3s; filter:drop-shadow(0 0 6px currentColor); }
+  .xl-ring-t { position:relative; font-family:'Audiowide'; font-weight:900; color:#eaf0ff; font-variant-numeric:tabular-nums; }
+  .xl-ring.big .xl-ring-t { font-size:clamp(48px, 13vmin, 150px); letter-spacing:0.04em; text-shadow:0 0 30px rgba(57,192,255,0.5); }
+  .xl-ring.hot .xl-ring-t { color:#fff1b8; text-shadow:0 0 18px rgba(255,209,102,0.9); animation:xlRingBeat 1s ease-in-out infinite; }
+  @keyframes xlRingBeat { 0%,100% { transform:scale(1); } 12% { transform:scale(1.14); } }
+  .xl-ring-s { position:absolute; bottom:22%; font-family:'Audiowide'; font-size:9px; letter-spacing:0.18em; color:#ff8ba0; }
+  .xl-ring.big .xl-ring-s { font-size:clamp(12px, 2.4vmin, 22px); bottom:24%; }
+  .xl-strip { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin-bottom:10px; border-radius:14px;
+    background:linear-gradient(90deg,rgba(255,77,109,0.12),rgba(57,192,255,0.08) 60%,rgba(168,85,247,0.1)); border:1px solid rgba(255,77,109,0.3);
+    box-shadow:0 0 22px rgba(255,77,109,0.08); position:relative; overflow:hidden; }
+  .xl-strip::after { content:''; position:absolute; top:0; bottom:0; width:30%; left:-30%; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent); animation:xlStripSweep 4.5s linear infinite; pointer-events:none; }
+  @keyframes xlStripSweep { to { left:130%; } }
+  .xl-strip b { font-family:'Audiowide'; font-size:12px; color:#fff; letter-spacing:0.06em; }
+  .xl-strip-q, .xl-strip-n { font-family:'Audiowide'; font-size:10px; color:#ffd166; letter-spacing:0.1em; padding:3px 8px; border-radius:8px; background:rgba(0,0,0,0.25); }
+  .xl-slide-in { animation:xlSlideIn .55s cubic-bezier(.2,1.2,.35,1); }
+  @keyframes xlSlideIn { 0% { opacity:0; transform:translateX(60px) scale(0.96); filter:blur(4px); } 100% { opacity:1; transform:none; filter:none; } }
+  .bigbtn.xl-opt { position:relative; display:flex !important; align-items:center; gap:12px; padding:16px 18px; font-size:13px; letter-spacing:0.04em; }
+  .xl-shape { flex:0 0 auto; width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; font-size:15px; color:#fff; }
+  .xl-opt-0 .xl-shape { background:#e2365a; } .xl-opt-1 .xl-shape { background:#2f7cf6; } .xl-opt-2 .xl-shape { background:#e8a70c; } .xl-opt-3 .xl-shape { background:#23a868; }
+  .bigbtn.ghost.xl-opt-0 { border-color:rgba(226,54,90,0.45); } .bigbtn.ghost.xl-opt-1 { border-color:rgba(47,124,246,0.45); }
+  .bigbtn.ghost.xl-opt-2 { border-color:rgba(232,167,12,0.45); } .bigbtn.ghost.xl-opt-3 { border-color:rgba(35,168,104,0.45); }
+  .bigbtn.xl-opt:not([disabled]):hover { transform:translateX(4px); }
+  .xl-timeup { text-align:center; margin-top:10px; font-family:'Audiowide'; font-size:11px; letter-spacing:0.14em; color:#ff8ba0; }
+  .xl-banner { position:fixed; left:50%; top:26%; transform:translate(-50%,-50%) scale(0.4); z-index:260; opacity:0; pointer-events:none; white-space:nowrap;
+    font-family:'Audiowide'; font-weight:900; font-size:clamp(28px,7vw,72px); letter-spacing:0.06em; color:#fff; padding:14px 30px; border-radius:18px; background:rgba(6,10,24,0.82); }
+  .xl-banner.on { animation:xlBanner 2.2s cubic-bezier(.2,1.5,.35,1) forwards; }
+  .xl-banner.good { border:2px solid #7dffb8; text-shadow:0 0 20px #2fd66b; box-shadow:0 0 40px rgba(47,214,107,0.45); }
+  .xl-banner.bad { border:2px solid #ff5d7a; text-shadow:0 0 20px #ff2e63; box-shadow:0 0 40px rgba(255,46,99,0.4); }
+  .xl-banner.gold { border:2px solid #ffd166; text-shadow:0 0 22px #ffb000; box-shadow:0 0 44px rgba(255,209,102,0.5); }
+  @keyframes xlBanner { 0% { opacity:0; transform:translate(-50%,-50%) scale(0.4); } 14% { opacity:1; transform:translate(-50%,-50%) scale(1.08); } 24% { transform:translate(-50%,-50%) scale(1); } 82% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-62%) scale(1); } }
+  .xl-theater-live { border-color:rgba(255,77,109,0.4); background:rgba(255,77,109,0.06); margin-bottom:10px; }
+  @media (prefers-reduced-motion:reduce) { .xl-strip::after, .xl-onair, .xl-ring.hot .xl-ring-t, .xl-slide-in { animation:none !important; } }
 </style>
 </head>
 <body>
@@ -359,6 +432,9 @@ const L = {
   liveEditingSlide: null,   // {idx, slide} being edited in the slide modal, or null
   liveRunningSessionId: null, // host: id of the session whose RUN PANEL is open (Phase 2 GO LIVE/NEXT/PREV/REVEAL/PAUSE/LOCK/FREEZE/END)
   rosterSort: 'xc_desc', // 'xc_desc' | 'xc_asc' | 'name_asc' | 'name_desc' — Players roster sort order
+  // PATCH X-LIVE v0.35 -- gameshow mode state (see xlFxSync)
+  fxStarted: {}, fxSeen: {}, fxSeenInit: {}, fxSnap: {}, fxSlideAnim: null,
+  toolTimer: null, agendaFx: null, projTimerOn: null, theaterLive: null,
   loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false },
   xliveOnly: false // v0.17 -- true when this session arrived via the Platform's /xlive restricted door
 };
@@ -834,6 +910,17 @@ function mergeSession(local, incoming) {
   (local.raceEvents || []).forEach(function (e) { raceEventById[e.id] = e; });
   merged.raceEvents = Object.keys(raceEventById).map(function (k) { return raceEventById[k]; });
 
+  // PATCH X-LIVE v0.35 -- showTimer is last-write-wins on its OWN
+  // updatedAt (a +30s can land between two session saves); fxEvents is
+  // append-only, unioned by id, newest 30 kept.
+  const lt = local.showTimer, it = incoming.showTimer;
+  merged.showTimer = (!lt ? it : (!it ? lt : ((it.updatedAt || 0) > (lt.updatedAt || 0) ? it : lt))) || null;
+  const fxById = {};
+  (incoming.fxEvents || []).forEach(function (e) { if (e && e.id) fxById[e.id] = e; });
+  (local.fxEvents || []).forEach(function (e) { if (e && e.id) fxById[e.id] = e; });
+  merged.fxEvents = Object.keys(fxById).map(function (k) { return fxById[k]; })
+    .sort(function (a, b) { return (a.at || 0) - (b.at || 0); }).slice(-30);
+
   // status — a terminal (ended/archived) status always wins over a
   // non-terminal one, from EITHER side, so a stale poll can never
   // resurrect a session another client already ended.
@@ -985,6 +1072,7 @@ function applyAction(players, preset, kind) {
     liteLog(p.id, kind, preset.label, preset.xc);
     burst(p.id, (preset.xc > 0 ? '+' : '') + preset.xc);
   });
+  if (typeof xlSfx === 'function') xlSfx(preset.xc >= 0 ? 'award' : 'fine'); // PATCH X-LIVE v0.35
   clearSel(); render();
   toast(preset.icon + ' ' + preset.label + ' → ' + players.length + ' player' + (players.length === 1 ? '' : 's') + (L.demo ? ' (demo — not saved to real balances)' : ''));
 }
@@ -999,6 +1087,7 @@ function grantBadge(players, badgeOrName) {
     liteLog(p.id, 'badge', badge.name, badge.xc || 0);
     burst(p.id, badge.xc ? ('+' + badge.xc) : '🎖️');
   });
+  if (typeof xlSfx === 'function') xlSfx('award'); // PATCH X-LIVE v0.35
   clearSel(); render(); toast('🎖️ ' + badge.name + ' granted to ' + players.length + (L.demo ? ' (demo — not saved to real balances)' : ''));
 }
 function applyModifier(players, modifier) {
@@ -1008,6 +1097,7 @@ function applyModifier(players, modifier) {
     liteLog(p.id, modifier.type, modifier.name, -modifier.costXcoin);
     burst(p.id, '-' + modifier.costXcoin);
   });
+  if (typeof xlSfx === 'function') xlSfx(modifier.type === 'upgrade' ? 'award' : 'fine'); // PATCH X-LIVE v0.35
   clearSel(); render();
   toast((modifier.icon || (modifier.type === 'upgrade' ? '🎁' : '🏛️')) + ' ' + modifier.name + ' → ' + players.length + ' player' + (players.length === 1 ? '' : 's') + (L.demo ? ' (demo — not saved to real balances)' : ''));
 }
@@ -1134,6 +1224,7 @@ function startAgendaTimer() {
   if (!item || !item.timer || !item.timer.enabled) return;
   let remaining = (item.timer.presetMinutes || 5) * 60;
   const total = remaining;
+  L.agendaFx = { id: 'agenda:' + (s.sessionId || '') + ':' + agendaTimerFor + ':' + Date.now().toString(36), endsAt: Date.now() + remaining * 1000, label: item.title || 'Agenda' }; // PATCH X-LIVE v0.35
   const draw = () => {
     const bar = document.getElementById('agendaTimerBar');
     const val = document.getElementById('agendaTimerVal');
@@ -1154,6 +1245,7 @@ function startAgendaTimer() {
 function stopAgendaTimer() {
   if (agendaTimerIv) { clearInterval(agendaTimerIv); agendaTimerIv = null; }
   agendaTimerFor = null;
+  L.agendaFx = null; // PATCH X-LIVE v0.35
 }
 function rLiveAgenda() {
   const s = L.liveSession;
@@ -1185,7 +1277,7 @@ function rLiveAgenda() {
     '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">\u{1F534} LIVE</span>' +
     '<span style="font-family:Audiowide;font-size:12px;font-weight:800;color:#7de9ff;">' + esc(s.title || 'Session') + '</span>' +
     '<span style="flex:1"></span>' +
-    '<button class="bigbtn ghost" style="padding:7px 14px;font-size:9.5px;" onclick="leaveLiveAgenda()">\u2715 LEAVE</button>' +
+    xlAudioButtonsHtml() + '<button class="bigbtn ghost" style="padding:7px 14px;font-size:9.5px;" onclick="leaveLiveAgenda()">\u2715 LEAVE</button>' +
     '</div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">' +
     '<div style="width:150px;flex:0 0 auto;">' + rail + '</div>' +
@@ -1204,11 +1296,13 @@ function render() {
   if (L.screen === 'liveagenda' && L.liveSession && L.liveSession.agenda && L.liveSession.agenda.length) {
     app.innerHTML = rLiveAgenda();
     pflxSyncEmbedPortal();
+    xlAfterRender();
     return;
   }
   if (L.screen === 'livenative') {
     app.innerHTML = rLiveNative();
     pflxSyncEmbedPortal();
+    xlAfterRender();
     return;
   }
   const tabs = L.isHost
@@ -1218,14 +1312,17 @@ function render() {
   app.innerHTML =
     '<div class="hd"><div class="logo"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" class="logo-img"/><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
     (L.isHost ? 'Host Dashboard · ' + esc((L.cfg.cohorts && L.cfg.cohorts.length) ? L.cfg.cohorts.join(', ') : 'All Players') : esc((L.me && L.me.brand) || 'Player') + (L.realIsHost ? ' · \u{1F441}\uFE0F PREVIEWING AS PLAYER' : '')) + '</div><div class="sp"></div>' +
-    (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
+    xlAudioButtonsHtml() + (L.isHost ? '<button class="bigbtn ghost" onclick="projOpen()">📽️ PROJECTOR</button>' : '') + '</div>' +
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     liveSessionBanner() + nativeLiveSessionBanner() +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
     ({ class: rClass, live: rLive, theater: rTheater, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
   pflxSyncEmbedPortal();
+  xlAfterRender();
 }
+// PATCH X-LIVE v0.35 -- data -> countdowns/SFX/music after every render.
+function xlAfterRender() { try { if (typeof xlFxSync === 'function' && L.fxStarted) xlFxSync(); } catch (e) {} }
 function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
 
 // PATCH X-LIVE -- Theater tab. Lists every currently-streaming session
@@ -1348,6 +1445,7 @@ function rTheater() {
         '<div style="font-size:12px;color:#8a93b8;margin:6px 0">Start a Live Session (🔴 LIVE tab) to open its Production Crew here — assign Director, Sound Tech, DJ, Lighting Tech, and Media Tech roles from your roster.</div>') +
       '</div>')
     : '') +
+    (typeof xlTheaterLiveCard === 'function' ? xlTheaterLiveCard() : '') + // PATCH X-LIVE v0.35
     '<div class="card"><div class="cardT">🎬 Theater</div>' +
     '<div style="font-size:12px;color:#8a93b8;margin:6px 0 12px">Every currently-streaming session, open to watch — no roster or cohort required. Separate from a session\'s own Live tab, where its actual players follow the slides/agenda.</div>' +
     (live.length ? live.map(function (s) {
@@ -3032,6 +3130,7 @@ function pflxActivateSession(s) {
   s.hostControls = { paused: false, responsesLocked: false, slideFrozen: false };
   s.liveStartedAt = Date.now(); // PATCH X-LIVE -- anchor for the prominent Session Timer's elapsed-time mode
   liveMarkSlideStarted(s, 0); // PATCH X-LIVE v0.28 -- Quiz Race needs a start timestamp per slide
+  if (typeof xlSlideAutoTimer === 'function') xlSlideAutoTimer(s, 0); // PATCH X-LIVE v0.35
 }
 window.pflxActivateSession = pflxActivateSession;
 async function liveGoLiveSession(id) {
@@ -3044,6 +3143,7 @@ async function liveGoLiveSession(id) {
   L.liveEditingSession = null;
   render();
   toast('🔴 Session is LIVE' + (L.demo ? ' (demo)' : ''));
+  if (typeof xlShowFx === 'function') xlShowFx('intro'); // PATCH X-LIVE v0.35 -- the show opens for everyone
 }
 function liveManageSession(id) {
   const s = L.sessions.find(function (x) { return x.id === id; });
@@ -3057,6 +3157,7 @@ function liveMoveCurrentSlide(dir) {
   if (j < 0 || j >= s.slides.length) return;
   s.currentSlideIndex = j;
   liveMarkSlideStarted(s, j); // PATCH X-LIVE v0.28
+  if (typeof xlSlideAutoTimer === 'function') { xlSlideAutoTimer(s, j); xlSfx('next'); } // PATCH X-LIVE v0.35
   saveSession(s); render();
 }
 // PATCH X-LIVE v0.23 -- absolute-jump sibling of liveMoveCurrentSlide,
@@ -3066,12 +3167,17 @@ function liveJumpToSlide(i) {
   if (i < 0 || i >= s.slides.length) return;
   s.currentSlideIndex = i;
   liveMarkSlideStarted(s, i); // PATCH X-LIVE v0.28
+  if (typeof xlSlideAutoTimer === 'function') { xlSlideAutoTimer(s, i); xlSfx('next'); } // PATCH X-LIVE v0.35
   saveSession(s); render();
 }
 function liveToggleControl(key) {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
   s.hostControls = s.hostControls || { paused: false, responsesLocked: false, slideFrozen: false };
   s.hostControls[key] = !s.hostControls[key];
+  if (typeof xlSfx === 'function') { // PATCH X-LIVE v0.35
+    const on = s.hostControls[key];
+    xlSfx(key === 'paused' ? (on ? 'pause' : 'resume') : (key === 'slideFrozen' ? (on ? 'freeze' : 'resume') : 'lock'));
+  }
   saveSession(s); render();
 }
 function liveRevealSlide() {
@@ -3079,6 +3185,7 @@ function liveRevealSlide() {
   const sl = s.slides[s.currentSlideIndex || 0]; if (!sl) return;
   const meta = slideTypeMeta(sl.type);
   sl.revealed = true;
+  if (typeof xlSfx === 'function') xlSfx('reveal'); // PATCH X-LIVE v0.35
   if (meta.graded && sl.rewardXc) {
     s.awardedTo = s.awardedTo || [];
     Object.keys(sl.responses || {}).forEach(function (pid) {
@@ -3121,6 +3228,11 @@ window.pflxGrantCompletionRewards = pflxGrantCompletionRewards;
 async function liveEndSession() {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
   s.status = 'ended';
+  if (s.showTimer && !s.showTimer.stoppedAt && typeof xlCastCancel === 'function') { // PATCH X-LIVE v0.35
+    xlCastCancel(xlTimerId(s, s.showTimer), xlSessionCohorts(s));
+    s.showTimer.stoppedAt = Date.now(); s.showTimer.updatedAt = Date.now();
+  }
+  if (typeof xlSfx === 'function') xlSfx('end');
   pflxGrantCompletionRewards(s);
   await saveSession(s);
   L.liveRunningSessionId = null;
@@ -3482,6 +3594,7 @@ function rLiveRun(s) {
     '</div>';
   const stage =
     (function () { pflxYtEnsureStatusChecked(); return ''; })() +
+    (typeof xlShowControlHtml === 'function' ? xlShowControlHtml(s) : '') + // PATCH X-LIVE v0.35
     '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
       '<div class="cardT" style="font-size:12px">\ud83d\udcfa YouTube Stream (optional)</div>' +
       (s.youtubeEmbedId ?
@@ -3617,6 +3730,7 @@ async function liveJoinSession(id) {
     s.awardedTo.push(key);
     grantSessionReward(myId, s.rewards.attendanceXc, s.rewards.attendanceBadgeId, 'xlive-session:' + s.id + ':attend');
   }
+  if (typeof xlSfx === 'function') xlSfx('golive', 0.8); // PATCH X-LIVE v0.35
   await saveSession(s);
   go('livenative');
 }
@@ -3625,9 +3739,11 @@ async function liveSubmitChoice(choiceIdx) {
   const hc = s.hostControls || {}; if (hc.responsesLocked) return;
   const sl = s.slides[s.currentSlideIndex || 0]; if (!sl) return;
   const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  if (typeof xlSlideTimerExpired === 'function' && xlSlideTimerExpired(s, sl, Date.now())) return; // PATCH X-LIVE v0.35
   sl.responses = sl.responses || {};
   if (sl.responses[myId]) return;
   sl.responses[myId] = { value: choiceIdx, at: Date.now() };
+  if (typeof xlSfx === 'function') xlSfx('submit');
   await saveSession(s);
   render();
 }
@@ -3638,25 +3754,31 @@ async function liveSubmitText() {
   const myId = (L.me && L.me.id) || ''; if (!myId) return;
   const ta = document.getElementById('liveOpenResp'); const val = ta ? ta.value.trim() : '';
   if (!val) return;
+  if (typeof xlSlideTimerExpired === 'function' && xlSlideTimerExpired(s, sl, Date.now())) return; // PATCH X-LIVE v0.35
   sl.responses = sl.responses || {};
   if (sl.responses[myId]) return;
   sl.responses[myId] = { value: val, at: Date.now() };
+  if (typeof xlSfx === 'function') xlSfx('submit');
   await saveSession(s);
   render();
 }
 function rLiveNative() {
   const s = nativeSessionAppliesToMe();
   if (!s) return '<div class="card"><div class="cardT">Session ended</div><div style="font-size:12px;color:#8a93b8">This live session is no longer active.</div><button class="bigbtn ghost" style="margin-top:10px" onclick="go(\'me\')">← BACK</button></div>';
-  const hc = s.hostControls || {};
+  let hc = s.hostControls || {};
   const ytEmbed = s.youtubeEmbedId ? ('<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(s.youtubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>') : '';
-  if (hc.slideFrozen) return ytEmbed + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
-  if (hc.paused) return ytEmbed + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
+  if (hc.slideFrozen) return ytEmbed + xlPlayerStripHtml(s) + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
+  if (hc.paused) return ytEmbed + xlPlayerStripHtml(s) + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
   const idx = s.currentSlideIndex || 0;
   const sl = s.slides[idx];
   if (!sl) return ytEmbed + '<div class="card"><div class="cardT">' + esc(s.title || 'Session') + '</div><div style="font-size:12px;color:#8a93b8">Waiting for the host to add slides…</div></div>';
   const meta = slideTypeMeta(sl.type);
   const myId = (L.me && L.me.id) || '';
   const myResp = sl.responses ? sl.responses[myId] : null;
+  // PATCH X-LIVE v0.35 -- a slide's own time limit ran out: answers lock.
+  const slideTimeUp = xlSlideTimerExpired(s, sl, Date.now());
+  if (slideTimeUp) hc = Object.assign({}, hc, { responsesLocked: true });
+  const slideAnim = L.fxSlideAnim === sl.id; if (slideAnim) L.fxSlideAnim = null;
   // PATCH X-LIVE v0.28 -- Quiz Race: keep the live countdown running (or
   // stopped) for whichever slide is actually on screen right now, and lock
   // the answer buttons once the clock hits zero even before the host reveals.
@@ -3681,8 +3803,8 @@ function rLiveNative() {
       const picked = myResp && myResp.value === i;
       const showCorrect = sl.revealed && meta.graded && i === sl.correctIndex;
       const locked = hc.responsesLocked || myResp || raceExpired || frozen;
-      return '<button class="bigbtn ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (locked ? ';opacity:0.6' : '') + '" ' +
-        (locked ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')">' + esc(o) + (showCorrect ? ' \u2b50' : '') + '</button>';
+      return '<button class="bigbtn xl-opt xl-opt-' + (i % 4) + ' ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (locked ? ';opacity:0.6' : '') + '" ' +
+        (locked ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')"><span class="xl-shape">' + ['\u25B2', '\u25C6', '\u25CF', '\u25A0'][i % 4] + '</span>' + esc(o) + (showCorrect ? ' \u2b50' : '') + '</button>';
     }).join('') + (frozen ? '<div style="text-align:center;color:#7ad9ff;font-size:11px;margin-top:8px">\u2744\ufe0f Frozen! Answering unlocks soon.</div>' : '');
   } else if (sl.type === 'open_response') {
     body = '<textarea id="liveOpenResp" rows="3" placeholder="Type your response…" ' + (hc.responsesLocked || myResp ? 'disabled' : '') + '>' + (myResp ? esc(myResp.value) : '') + '</textarea>' +
@@ -3690,7 +3812,10 @@ function rLiveNative() {
   } else if (sl.type === 'challenge' || sl.type === 'push_task') {
     body = myResp ? '<div style="font-size:13px;color:#7dffb8;margin-top:8px">✅ Marked done</div>' : ('<button class="bigbtn gold" style="margin-top:8px" ' + (hc.responsesLocked ? 'disabled' : '') + ' onclick="liveSubmitChoice(1)">MARK DONE</button>');
   } else if (sl.type === 'timer') {
-    body = '<div style="font-family:Audiowide;font-size:34px;color:#ffd166;text-align:center;margin-top:10px">' + (sl.seconds || 0) + 's</div>';
+    // PATCH X-LIVE v0.35 -- the live synced ring once the host presses START
+    body = (s.showTimer && s.showTimer.slideId === sl.id)
+      ? '<div style="display:flex;justify-content:center;margin-top:10px">' + xlTimerBox('session', 200, false) + '</div>'
+      : '<div style="font-family:Audiowide;font-size:34px;color:#ffd166;text-align:center;margin-top:10px">' + xlFmt(sl.seconds || 0) + '</div><div class="xl-hint">Waiting for the host to start the clock\u2026</div>';
   } else if (sl.type === 'exit') {
     // PATCH X-LIVE v0.22 -- Poll is handled by the hasOptions branch above;
     // this covers the remaining Exit Ticket sub-types. 'share' falls through
@@ -3714,12 +3839,13 @@ function rLiveNative() {
   } else if (meta.isEmbed) {
     body = pflxSlideEmbedHtml(sl);
   }
-  return ytEmbed + '<div class="card">' +
+  return ytEmbed + xlPlayerStripHtml(s) + '<div class="card' + (slideAnim ? ' xl-slide-in' : '') + '">' +
     '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
     (sl.prompt && !meta.isEmbed ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
     pflxRacePowerupBarHtml(s, sl, myId) +
     pflxPuzzleBarHtml(s, sl, myId) +
     body +
+    (slideTimeUp && !sl.revealed ? '<div class="xl-timeup">\u23F1 TIME\u2019S UP \u2014 ANSWERS LOCKED</div>' : '') +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
     pflxSlideResultsHtml(sl) +
     (sl.type === 'quiz_race' ? (pflxRaceTrackHtml(s) + pflxRaceLeaderboardHtml(s)) : '') +
@@ -3815,7 +3941,9 @@ function rTools() {
   return '<div class="grid3">' +
     '<div class="card"><div class="cardT">🎡 Randomizer</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Spin the wheel of players — full screen on the projector.</div><button class="bigbtn gold" onclick="wheelOpen()">SPIN THE WHEEL</button></div>' +
     '<div class="card"><div class="cardT">⏱️ Timer</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    [1, 3, 5, 10].map(m => '<button class="bigbtn" onclick="timerStart(' + m + ')">' + m + ' MIN</button>').join('') + '</div></div>' +
+    [[10, '10 SEC'], [30, '30 SEC'], [60, '1 MIN'], [180, '3 MIN'], [300, '5 MIN'], [600, '10 MIN']].map(m => '<button class="bigbtn" onclick="xlToolTimerStart(' + m[0] + ')">' + m[1] + '</button>').join('') + '</div>' +
+    '<div class="xl-hint" style="text-align:left;margin-top:10px">Big ring on the projector. The last 10 seconds count down out loud and flash every screen in your class.</div></div>' +
+    '<div class="card"><div class="cardT">🎬 Show FX</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Gameshow sound + screen effects for the whole class.</div>' + (typeof xlFxPadHtml === 'function' ? xlFxPadHtml() : '') + '</div>' +
     '<div class="card"><div class="cardT">🔊 Noise Meter</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Live ambient mic level — green/yellow/red, projector-friendly.</div><button class="bigbtn" id="noiseMeterBtn" onclick="toggleNoiseMeter()">START LISTENING</button></div>' +
     '<div class="card"><div class="cardT">🔗 Post a Link</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Pop a link + QR code on every player\'s screen — pairs great with the projector.</div><button class="bigbtn" onclick="postLinkModal()">POST A LINK</button></div>' +
     '</div>';
@@ -4065,6 +4193,7 @@ function makeTeams() {
   const assign = {};
   R.forEach((p, i) => assign[p.id] = names[i % n]);
   L.cfg.teams = { names: names, assign: assign }; saveCfg();
+  if (typeof xlSfx === 'function') xlSfx('groups'); // PATCH X-LIVE v0.35
   toast('👥 ' + n + ' teams drafted'); go('teams');
 }
 function teamsShufflePlayers() {
@@ -4098,6 +4227,7 @@ function wheelOpen() {
   if (!wheelPlayers.length) return;
   const proj = document.getElementById('proj');
   proj.classList.add('on');
+  clearInterval(projIv); projIv = null; L.projTimerOn = null; // PATCH X-LIVE v0.35
   const seg = 360 / wheelPlayers.length;
   const colors = wheelPlayers.map((p, i) => TEAM_COLORS[i % TEAM_COLORS.length] + ' ' + (i * seg) + 'deg ' + ((i + 1) * seg) + 'deg').join(',');
   proj.innerHTML = '<div class="projTitle">WHO\'S NEXT?</div>' +
@@ -4115,13 +4245,20 @@ function wheelSpin() {
   w.style.transition = 'transform 4.2s cubic-bezier(.12,.7,.1,1)';
   w.style.transform = 'rotate(' + target + 'deg)';
   document.getElementById('wheelName').textContent = '';
+  if (typeof xlSfx === 'function') xlSfx('wheelSpin'); // PATCH X-LIVE v0.35
   setTimeout(() => {
     const p = wheelPlayers[idx];
     document.getElementById('wheelName').innerHTML = '🌟 ' + esc(p.brand) + ' 🌟';
+    if (typeof xlSfx === 'function') { xlSfx('wheelLand'); xlSfx('award', 0.9); }
+    // A pick during a live session tells THAT player "YOU'RE UP!".
+    const rs = (typeof xlRunningSession === 'function') ? xlRunningSession() : null;
+    if (rs && rs.status === 'active') { rs.lastRandomPickId = p.id; rs.lastRandomPickAt = Date.now(); saveSession(rs); }
   }, 4300);
 }
 // timer
 function timerStart(mins) {
+  // PATCH X-LIVE v0.35 -- now the synced ring timer (see xlToolTimerStart)
+  if (typeof xlToolTimerStart === 'function') { xlToolTimerStart(Math.round(mins * 60)); return; }
   const proj = document.getElementById('proj');
   proj.classList.add('on');
   let left = mins * 60;
@@ -4163,11 +4300,15 @@ function projOpen() {
       '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" style="height:34px;width:auto;opacity:0.9"/></div>';
   }
   window.projDrawNow = draw;
+  L.projTimerOn = null; // PATCH X-LIVE v0.35
   draw();
   clearInterval(projIv); projIv = setInterval(() => { projIdx++; draw(); }, 12000);
+  if (typeof xlMusic !== 'undefined') xlMusic.set(xlMusicZone());
 }
 function projClose() {
-  clearInterval(projIv); clearInterval(L.timers.main);
+  clearInterval(projIv); projIv = null; clearInterval(L.timers.main);
+  L.projTimerOn = null; // PATCH X-LIVE v0.35
+  setTimeout(function () { if (typeof xlMusic !== 'undefined') xlMusic.set(xlMusicZone()); }, 0);
   document.getElementById('proj').classList.remove('on');
   document.getElementById('proj').innerHTML = '';
 }
@@ -4298,10 +4439,1045 @@ function confirmUpgrade(i) {
   modalClose(); render(); toast('🎁 ' + u.label + ' redeemed! Your teacher has been notified.' + (L.demo ? ' (demo)' : ''));
 }
 
+/* ═══ PflxFx -- shared gameshow countdown + show-FX engine ═══════════════
+   One copy lives in the PFLX Platform (preview.html) and one in X-Live
+   (index.html); the two copies are byte-identical inside these markers so
+   a fix in one is a copy-paste into the other.
+   · startCountdown({id, endsAt, label}) -- idempotent by id. While it
+     runs a small pill shows the clock. In the last 10 seconds every
+     second gets a voice count, a tick, a yellow screen flash and a big
+     animated number with a draining ring; a riser starts at 5 and lands
+     on 0; heartbeats under 3-2-1. At 0: a drop, "time's up", the alarm,
+     a TIME'S UP slam, a red strobe and a screen shake.
+   · cancel(id) stops one countdown (and its sounds) immediately.
+   · playShow(name) fires one host "show FX" (sound + matching visual).
+   · Audio: every clip comes from the PFLX Sound Library pack (see
+     SOUND FILES below). Mute/volume come from the host app via
+     configure({ isMuted, volume }).
+   · Late arrival: a beat that arrives more than 600ms late is skipped,
+     and a finale that is more than 3s late never fires, so a client that
+     loads mid-countdown never plays a pile of stale sounds. */
+(function (root) {
+  if (root.PflxFx) return;
+  var CFG = {
+    soundRoot: '/public/sounds/',
+    shakeSelector: 'body',
+    isMuted: function () { return false; },
+    volume: function () { return 1; },
+    onDuck: null,
+    pillTop: '12px',
+    alarmRepeats: 6        // Ennis: "The alarm sound in the timer should repeat about 5-7 times."
+  };
+  var FILES = {
+    c1: 'countdown/count_1.mp3', c2: 'countdown/count_2.mp3', c3: 'countdown/count_3.mp3',
+    c4: 'countdown/count_4.mp3', c5: 'countdown/count_5.mp3', c6: 'countdown/count_6.mp3',
+    c7: 'countdown/count_7.mp3', c8: 'countdown/count_8.mp3', c9: 'countdown/count_9.mp3',
+    c10: 'countdown/count_10.mp3', go: 'countdown/count_go.mp3', timesup: 'countdown/count_timesup.mp3',
+    alarm: 'countdown/fx_alarm.mp3', ring: 'countdown/fx_alarm_ring.mp3', drop: 'countdown/fx_drop.mp3', riser: 'countdown/fx_riser.mp3',
+    tickHi: 'countdown/fx_tick_hi.mp3', tickLo: 'countdown/fx_tick_lo.mp3',
+    heart: 'countdown/fx_heartbeat.mp3', alert: 'countdown/fx_alert.mp3'
+  };
+  var RISER_LEN = 5.17; // fx_riser.mp3 peaks at its very end
+  var RING_MS = 1780;    // one fx_alarm_ring.mp3 ring
+  // Host "show FX" pad -- every sound is a PFLX Sound Library clip.
+  var SHOWS = {
+    intro:    { label: 'Intro',     icon: '🎬', file: 'pflx-library/09_Music_Stingers/sting_intro_orbit_arcade.mp3', vis: 'sweep' },
+    drumroll: { label: 'Drumroll',  icon: '🥁', file: 'pflx-library/05_Risers/riser_009.mp3', vis: 'pulse' },
+    hit:      { label: 'Big Hit',   icon: '💥', file: 'pflx-library/09_Music_Stingers/sting_hit_midnight_mission_run.mp3', vis: 'cyan' },
+    boom:     { label: 'Boom',      icon: '🔊', file: 'pflx-library/04_Impacts_Hits/impact_019.mp3', vis: 'boom' },
+    glitch:   { label: 'Glitch',    icon: '👾', file: 'pflx-library/03_Glitch_Data_Pulses/glitch_009.mp3', vis: 'glitch' },
+    win:      { label: 'Winner',    icon: '🏆', file: 'pflx-library/09_Music_Stingers/sting_outro_orbit_arcade.mp3', vis: 'win' },
+    fail:     { label: 'Fail',      icon: '💀', file: 'pflx-library/06_Power_Downs/powerdown_005.mp3', vis: 'fail' },
+    alarm:    { label: 'Alarm',     icon: '🚨', file: 'countdown/fx_alarm.mp3', vis: 'alarm' },
+    go:       { label: 'GO!',       icon: '🚀', file: 'countdown/count_go.mp3', vis: 'go' }
+  };
+  var GAIN = { tickHi: 0.5, tickLo: 0.45, heart: 0.85, riser: 0.75, alarm: 0.8, ring: 0.85, drop: 1, alert: 0.7 };
+  function finaleMs() { var n = Math.max(1, Math.min(12, CFG.alarmRepeats | 0)); return 350 + n * RING_MS + 250; }
+
+  var cache = {};
+  var live = {};          // id -> countdown state
+  var cancelled = {};     // id -> when it was cancelled
+  var finished = {};      // id -> endsAt of its finale (never replay it)
+  var ivl = null, finaleUntil = 0, ducked = false, layer = null;
+
+  function reducedMotion() {
+    try { return !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  function url(path) { return CFG.soundRoot + path; }
+  function vol() { var v = +CFG.volume(); return isFinite(v) ? Math.max(0, Math.min(1, v)) : 1; }
+  function muted() { try { return !!CFG.isMuted(); } catch (e) { return false; } }
+  function play(path, gain, offset, owner) {
+    if (muted() || typeof Audio === 'undefined') return null;
+    if (owner && owner.silent) return null;
+    var a;
+    try {
+      a = cache[path] ? cache[path].cloneNode(true) : new Audio(url(path));
+      a.volume = Math.max(0, Math.min(1, vol() * (gain == null ? 1 : gain)));
+      if (offset > 0) { try { a.currentTime = offset; } catch (e) {} }
+      var p = a.play(); if (p && p.catch) p.catch(function () {});
+    } catch (e) { return null; }
+    if (owner) { owner.sounds.push(a); }
+    return a;
+  }
+  function stopSounds(cd) {
+    (cd.sounds || []).forEach(function (a) { try { a.pause(); } catch (e) {} });
+    cd.sounds = [];
+  }
+  function preload() {
+    if (typeof Audio === 'undefined') return;
+    Object.keys(FILES).forEach(function (k) {
+      var p = FILES[k]; if (cache[p]) return;
+      try { var a = new Audio(); a.preload = 'auto'; a.src = url(p); cache[p] = a; } catch (e) {}
+    });
+  }
+
+  // ── visuals ──
+  var CSS = '' +
+    '#pflx-fx-layer{position:fixed;inset:0;z-index:210000;pointer-events:none;overflow:hidden;font-family:"Orbitron","Audiowide",sans-serif;}' +
+    '#pflx-fx-layer .pfx-pill{position:absolute;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:8px;padding:5px 14px 5px 10px;border-radius:999px;background:rgba(6,10,24,0.86);border:1px solid rgba(0,240,255,0.45);box-shadow:0 0 18px rgba(0,240,255,0.25);color:#bff6ff;font-size:12px;letter-spacing:1.5px;white-space:nowrap;}' +
+    '#pflx-fx-layer .pfx-pill.on{display:flex;}' +
+    '#pflx-fx-layer .pfx-pill b{font-size:15px;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:1px;}' +
+    '#pflx-fx-layer .pfx-pill i{width:8px;height:8px;border-radius:50%;background:#ff2e63;box-shadow:0 0 8px #ff2e63;animation:pfxBlink 1s steps(2) infinite;}' +
+    '#pflx-fx-layer.pfx-final .pfx-pill{border-color:#ffd600;color:#ffe680;box-shadow:0 0 22px rgba(255,214,0,0.5);}' +
+    '@keyframes pfxBlink{50%{opacity:0.2}}' +
+    '#pflx-fx-layer .pfx-flash{position:absolute;inset:0;opacity:0;}' +
+    '#pflx-fx-layer .pfx-flash.y{background:radial-gradient(ellipse at center,rgba(255,214,0,0.10) 0%,rgba(255,214,0,0.32) 70%,rgba(255,170,0,0.55) 100%);box-shadow:inset 0 0 120px 30px rgba(255,214,0,0.75);}' +
+    '#pflx-fx-layer .pfx-flash.y.go{animation:pfxFlashY 0.85s ease-out;}' +
+    '#pflx-fx-layer .pfx-flash.y.go.hot{background:radial-gradient(ellipse at center,rgba(255,150,0,0.16) 0%,rgba(255,110,0,0.4) 70%,rgba(255,60,0,0.62) 100%);box-shadow:inset 0 0 140px 40px rgba(255,120,0,0.85);}' +
+    '@keyframes pfxFlashY{0%{opacity:1}100%{opacity:0}}' +
+    '#pflx-fx-layer .pfx-flash.r{background:rgba(255,0,40,0.38);box-shadow:inset 0 0 160px 60px rgba(255,0,40,0.9);}' +
+    '#pflx-fx-layer .pfx-flash.r.go{animation:pfxStrobe 0.3s steps(2) infinite;}' +
+    '@keyframes pfxStrobe{0%{opacity:1}100%{opacity:0.05}}' +
+    '#pflx-fx-layer .pfx-big{position:absolute;left:50%;top:50%;width:min(46vmin,420px);height:min(46vmin,420px);transform:translate(-50%,-50%);display:none;align-items:center;justify-content:center;}' +
+    '#pflx-fx-layer .pfx-big.on{display:flex;}' +
+    '#pflx-fx-layer .pfx-big svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);filter:drop-shadow(0 0 14px rgba(255,214,0,0.8));}' +
+    '#pflx-fx-layer .pfx-big circle{fill:none;stroke-width:5;}' +
+    '#pflx-fx-layer .pfx-big .bg{stroke:rgba(255,255,255,0.10);}' +
+    '#pflx-fx-layer .pfx-big .fg{stroke:#ffd600;stroke-linecap:round;transition:stroke-dashoffset 0.2s linear,stroke 0.3s;}' +
+    '#pflx-fx-layer .pfx-big .tk{stroke:rgba(255,214,0,0.35);stroke-width:2;stroke-dasharray:1.2 5.08;}' +
+    '#pflx-fx-layer .pfx-num{position:relative;font-size:min(30vmin,280px);font-weight:900;line-height:1;color:#fff4b0;text-shadow:0 0 18px #ffd600,0 0 44px rgba(255,170,0,0.9),3px 0 0 rgba(255,0,80,0.55),-3px 0 0 rgba(0,240,255,0.55);font-variant-numeric:tabular-nums;}' +
+    '#pflx-fx-layer .pfx-num.pop{animation:pfxPop 0.9s cubic-bezier(.2,1.6,.4,1);}' +
+    '#pflx-fx-layer .pfx-num.hot{color:#ffd0c0;text-shadow:0 0 18px #ff5a00,0 0 50px rgba(255,40,0,0.95),4px 0 0 rgba(255,0,80,0.7),-4px 0 0 rgba(0,240,255,0.6);}' +
+    '@keyframes pfxPop{0%{transform:scale(1.9);opacity:0;filter:blur(6px)}35%{transform:scale(0.92);opacity:1;filter:blur(0)}55%{transform:scale(1.05)}100%{transform:scale(1)}}' +
+    '#pflx-fx-layer .pfx-lab{position:absolute;bottom:-12%;left:50%;transform:translateX(-50%);font-size:clamp(11px,1.6vmin,16px);letter-spacing:4px;color:#ffe680;white-space:nowrap;text-shadow:0 0 10px rgba(255,214,0,0.8);}' +
+    '#pflx-fx-layer .pfx-wave{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:3px solid rgba(255,214,0,0.9);opacity:0;}' +
+    '#pflx-fx-layer .pfx-wave.go{animation:pfxWave 0.9s ease-out;}' +
+    '@keyframes pfxWave{0%{opacity:0.95;transform:scale(1)}100%{opacity:0;transform:scale(90)}}' +
+    '#pflx-fx-layer .pfx-scan{position:absolute;left:0;right:0;height:22vh;top:-22vh;background:linear-gradient(180deg,transparent,rgba(255,214,0,0.16),transparent);display:none;}' +
+    '#pflx-fx-layer.pfx-final .pfx-scan{display:block;animation:pfxScan 1s linear infinite;}' +
+    '@keyframes pfxScan{to{transform:translateY(130vh)}}' +
+    '#pflx-fx-layer .pfx-slam{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;text-align:center;white-space:nowrap;font-size:min(13vw,150px);font-weight:900;letter-spacing:0.06em;color:#fff;text-shadow:0 0 20px #ff0033,0 0 60px rgba(255,0,51,0.9),6px 0 0 rgba(0,240,255,0.7),-6px 0 0 rgba(255,0,120,0.8);}' +
+    '#pflx-fx-layer .pfx-slam small{display:block;font-size:0.16em;letter-spacing:0.5em;margin-top:0.4em;color:#ffb3c0;}' +
+    '#pflx-fx-layer .pfx-slam.on{display:block;animation:pfxSlam 0.55s cubic-bezier(.2,1.8,.35,1),pfxJitter 0.12s steps(2) 0.55s infinite;}' +
+    '@keyframes pfxSlam{0%{transform:translate(-50%,-50%) scale(3.2);opacity:0}60%{transform:translate(-50%,-50%) scale(0.9);opacity:1}100%{transform:translate(-50%,-50%) scale(1)}}' +
+    '@keyframes pfxJitter{0%{transform:translate(-50.6%,-49.4%)}100%{transform:translate(-49.4%,-50.6%)}}' +
+    '#pflx-fx-layer .pfx-show{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);display:none;font-size:min(12vw,120px);font-weight:900;color:#fff;white-space:nowrap;text-align:center;}' +
+    '#pflx-fx-layer .pfx-show.on{display:block;animation:pfxShow 1.6s ease-out forwards;}' +
+    '@keyframes pfxShow{0%{transform:translate(-50%,-50%) scale(0.3);opacity:0}18%{transform:translate(-50%,-50%) scale(1.12);opacity:1}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1.05)}}' +
+    '#pflx-fx-layer .pfx-tint{position:absolute;inset:0;opacity:0;}' +
+    '#pflx-fx-layer .pfx-tint.go{animation:pfxFlashY 1.2s ease-out;}' +
+    '#pflx-fx-layer .pfx-sweep{position:absolute;top:0;bottom:0;width:40vw;left:-45vw;background:linear-gradient(90deg,transparent,rgba(0,240,255,0.35),rgba(255,255,255,0.5),rgba(255,0,200,0.3),transparent);transform:skewX(-18deg);}' +
+    '#pflx-fx-layer .pfx-sweep.go{animation:pfxSweep 1.1s ease-in-out;}' +
+    '@keyframes pfxSweep{to{left:110vw}}' +
+    '#pflx-fx-layer .pfx-bit{position:absolute;top:-4vh;width:10px;height:16px;border-radius:2px;opacity:0.95;animation:pfxFall linear forwards;}' +
+    '@keyframes pfxFall{to{transform:translateY(112vh) rotate(720deg);opacity:0.9}}' +
+    '.pfx-shaking{animation:pfxShake 0.09s linear infinite !important;}' +
+    '.pfx-bump{animation:pfxShake 0.07s linear 5 !important;}' +
+    '.pfx-glitching{animation:pfxGlitch 0.12s steps(2) 8 !important;}' +
+    '@keyframes pfxShake{0%{translate:0 0}20%{translate:-9px 4px}40%{translate:8px -6px}60%{translate:-6px -3px}80%{translate:7px 5px}100%{translate:0 0}}' +
+    '@keyframes pfxGlitch{0%{translate:-6px 0;filter:hue-rotate(80deg) saturate(2)}100%{translate:6px 0;filter:none}}' +
+    '@media (prefers-reduced-motion:reduce){#pflx-fx-layer .pfx-flash.r.go{animation:none;opacity:0.6}.pfx-shaking,.pfx-bump,.pfx-glitching{animation:none !important}#pflx-fx-layer.pfx-final .pfx-scan{display:none}}';
+
+  function ensureLayer() {
+    if (typeof document === 'undefined') return null;
+    if (layer && layer.isConnected) return layer;
+    if (!document.getElementById('pflx-fx-style')) {
+      var st = document.createElement('style'); st.id = 'pflx-fx-style'; st.textContent = CSS;
+      (document.head || document.documentElement).appendChild(st);
+    }
+    layer = document.getElementById('pflx-fx-layer');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'pflx-fx-layer';
+      layer.setAttribute('aria-live', 'polite');
+      layer.innerHTML =
+        '<div class="pfx-flash y"></div><div class="pfx-flash r"></div><div class="pfx-tint"></div><div class="pfx-scan"></div>' +
+        '<div class="pfx-sweep"></div><div class="pfx-wave"></div>' +
+        '<div class="pfx-big"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="45"/><circle class="tk" cx="50" cy="50" r="40"/><circle class="fg" cx="50" cy="50" r="45" stroke-dasharray="282.74" stroke-dashoffset="0"/></svg><div class="pfx-num"></div><div class="pfx-lab"></div></div>' +
+        '<div class="pfx-slam">TIME’S UP<small></small></div><div class="pfx-show"></div>' +
+        '<div class="pfx-pill" style="top:' + CFG.pillTop + '"><i></i><span class="pfx-pl"></span><b class="pfx-pt"></b></div>';
+      // Outside <body> on purpose: the shake moves <body>, never this layer.
+      document.documentElement.appendChild(layer);
+    }
+    return layer;
+  }
+  function q(sel) { var l = ensureLayer(); return l ? l.querySelector(sel) : null; }
+  function retrigger(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  }
+  function shakeTargets() {
+    try { return Array.prototype.slice.call(document.querySelectorAll(CFG.shakeSelector)); } catch (e) { return []; }
+  }
+  function setShake(on, cls) {
+    cls = cls || 'pfx-shaking';
+    if (on && reducedMotion()) return;
+    shakeTargets().forEach(function (el) { el.classList.toggle(cls, !!on); });
+  }
+  function bump(cls, ms) {
+    if (reducedMotion()) return;
+    var t = shakeTargets();
+    t.forEach(function (el) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); });
+    setTimeout(function () { t.forEach(function (el) { el.classList.remove(cls); }); }, ms);
+  }
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+  }
+  function duck(on) {
+    if (on === ducked) return;
+    ducked = on;
+    if (typeof CFG.onDuck === 'function') { try { CFG.onDuck(on); } catch (e) {} }
+  }
+
+  // ── core loop ──
+  function primary(now) {
+    var best = null;
+    Object.keys(live).forEach(function (id) {
+      var cd = live[id];
+      if (cd.done) return;
+      if (!best || cd.endsAt < best.endsAt) best = cd;
+    });
+    return best;
+  }
+  function beat(cd, sec) {
+    var hot = sec <= 3;
+    play('countdown/count_' + sec + '.mp3', 1, 0, cd);
+    play(sec % 2 ? FILES.tickHi : FILES.tickLo, GAIN[sec % 2 ? 'tickHi' : 'tickLo'], 0, cd);
+    if (sec === 10) play(FILES.alert, GAIN.alert, 0, cd);
+    if (hot) play(FILES.heart, GAIN.heart, 0, cd);
+    var f = q('.pfx-flash.y'); if (f) { f.classList.toggle('hot', hot); retrigger(f, 'go'); }
+    retrigger(q('.pfx-wave'), 'go');
+    var n = q('.pfx-num');
+    if (n) { n.textContent = String(sec); n.classList.toggle('hot', hot); retrigger(n, 'pop'); }
+    if (hot) bump('pfx-bump', 380);
+  }
+  function finale(cd) {
+    cd.done = true;
+    finished[cd.id] = cd.endsAt;
+    play(FILES.drop, GAIN.drop, 0, cd);
+    play(FILES.timesup, 1, 0, cd);
+    // The alarm rings alarmRepeats times back to back; the shake and red
+    // strobe last exactly as long as the alarm does.
+    var rings = Math.max(1, Math.min(12, CFG.alarmRepeats | 0));
+    cd.ringTimers = [];
+    for (var r = 0; r < rings; r++) {
+      cd.ringTimers.push(setTimeout(function () { if (live[cd.id] === cd) play(FILES.ring, GAIN.ring, 0, cd); }, 350 + r * RING_MS));
+    }
+    var big = q('.pfx-big'); if (big) big.classList.remove('on');
+    var l = ensureLayer(); if (l) l.classList.remove('pfx-final');
+    var slam = q('.pfx-slam');
+    if (slam) { slam.querySelector('small').textContent = cd.label || ''; retrigger(slam, 'on'); }
+    var r = q('.pfx-flash.r'); if (r) r.classList.add('go');
+    setShake(true);
+    var dur = finaleMs();
+    finaleUntil = Date.now() + dur;
+    cd.finaleTimer = setTimeout(function () { endFinale(cd); }, dur);
+    if (typeof CFG.onFinale === 'function') { try { CFG.onFinale(cd.id); } catch (e) {} }
+  }
+  function endFinale(cd) {
+    if (cd.finaleTimer) { clearTimeout(cd.finaleTimer); cd.finaleTimer = null; }
+    (cd.ringTimers || []).forEach(function (t) { clearTimeout(t); });
+    cd.ringTimers = [];
+    if (live[cd.id] === cd) delete live[cd.id];
+    if (finaleUntil && Date.now() >= finaleUntil - 50) finaleUntil = 0;
+    var anyFinale = Object.keys(live).some(function (id) { return live[id].finaleTimer; });
+    if (!anyFinale) {
+      finaleUntil = 0;
+      var slam = q('.pfx-slam'); if (slam) slam.classList.remove('on');
+      var r = q('.pfx-flash.r'); if (r) r.classList.remove('go');
+      setShake(false);
+    }
+    stopSounds(cd);
+    tick();
+  }
+  function tick() {
+    var now = Date.now();
+    var l = ensureLayer();
+    var p = primary(now);
+    var pill = q('.pfx-pill'), big = q('.pfx-big');
+    var anyFinal = false;
+    Object.keys(live).forEach(function (id) {
+      var cd = live[id];
+      if (cd.done) return;
+      var rem = (cd.endsAt - now) / 1000;
+      if (rem <= 0) {
+        if (now - cd.endsAt <= 3000) finale(cd);
+        else { cd.done = true; delete live[id]; }
+        return;
+      }
+      if (rem <= 10) anyFinal = true;
+      var sec = Math.ceil(rem);
+      if (sec <= 10 && sec !== cd.lastBeat) {
+        cd.lastBeat = sec;
+        // Fresh boundary only (<=600ms late); a stale load just shows the number.
+        if (sec - rem <= 0.6) { if (cd === p) beat(cd, sec); }
+        else if (cd === p) { var n = q('.pfx-num'); if (n) n.textContent = String(sec); }
+      }
+      if (!cd.riserFired && rem <= RISER_LEN && rem > 2.5 && cd === p) {
+        cd.riserFired = true;
+        play(FILES.riser, GAIN.riser, Math.max(0, RISER_LEN - rem), cd);
+      }
+    });
+    p = primary(now);
+    if (p && pill) {
+      var rem = (p.endsAt - now) / 1000;
+      pill.classList.add('on');
+      pill.querySelector('.pfx-pl').textContent = '⏱ ' + (p.label || 'TIMER').toUpperCase();
+      pill.querySelector('.pfx-pt').textContent = fmt(rem);
+      if (big) {
+        var show = rem <= 10 && rem > 0;
+        big.classList.toggle('on', show);
+        if (show) {
+          var fg = big.querySelector('.fg');
+          if (fg) {
+            fg.setAttribute('stroke-dashoffset', String((282.74 * (1 - rem / 10)).toFixed(2)));
+            fg.style.stroke = rem <= 3 ? '#ff4d1a' : '#ffd600';
+          }
+          var lab = big.querySelector('.pfx-lab'); if (lab) lab.textContent = (p.label || '').toUpperCase();
+          var num = big.querySelector('.pfx-num'); if (num && !num.textContent) num.textContent = String(Math.ceil(rem));
+        } else {
+          var num2 = big.querySelector('.pfx-num'); if (num2) num2.textContent = '';
+        }
+      }
+    } else {
+      if (pill) pill.classList.remove('on');
+      if (big) big.classList.remove('on');
+    }
+    if (l) l.classList.toggle('pfx-final', anyFinal);
+    duck(anyFinal || !!finaleUntil);
+    var busy = Object.keys(live).length > 0;
+    if (!busy && ivl) { clearInterval(ivl); ivl = null; }
+    if (busy && !ivl) ivl = setInterval(tick, 100);
+  }
+
+  function startCountdown(o) {
+    if (!o || !o.id || !isFinite(+o.endsAt)) return false;
+    var endsAt = +o.endsAt, now = Date.now();
+    // One finale per timer id: the same timer re-announced from a second
+    // source (with a slightly different clock) never plays it again.
+    if (finished[o.id] != null && Math.abs(finished[o.id] - endsAt) < 10000) return false;
+    if (endsAt - now <= -3000) return false;
+    // A timer the host just stopped is not revived by a lagging re-render.
+    if (o.soft && cancelled[o.id] && now - cancelled[o.id] < 8000) return false;
+    var cd = live[o.id];
+    if (cd && !cd.done) {
+      // Already running: a soft start (a re-render re-announcing the same
+      // timer) never moves it; a hard start (host action / relay) re-times
+      // it in place so beats that already played are not replayed.
+      if (o.label) cd.label = o.label;
+      if (o.soft || Math.abs(cd.endsAt - endsAt) < 400) return true;
+      cd.endsAt = endsAt;
+      var remUpd = (endsAt - now) / 1000;
+      if (cd.lastBeat !== null && Math.ceil(remUpd) > cd.lastBeat) cd.lastBeat = null;
+      if (remUpd > RISER_LEN) { cd.riserFired = false; stopSounds(cd); }
+      tick();
+      return true;
+    }
+    if (cd) endFinale(cd);
+    preload();
+    live[o.id] = { id: String(o.id), endsAt: endsAt, label: o.label || '', lastBeat: null, riserFired: false, done: false, sounds: [], silent: !!o.silent };
+    var remNow = (endsAt - now) / 1000;
+    if (remNow < RISER_LEN - 0.4) live[o.id].riserFired = true; // too late to line it up
+    if (o.announce && remNow > 10.5) play(FILES.go, 1, 0, live[o.id]);
+    tick();
+    return true;
+  }
+  function cancel(id) {
+    cancelled[id] = Date.now();
+    var cd = live[id]; if (!cd) return false;
+    if (cd.finaleTimer) { endFinale(cd); return true; }
+    stopSounds(cd); delete live[id];
+    var n = q('.pfx-num'); if (n) n.textContent = '';
+    tick();
+    return true;
+  }
+  function cancelAll() { Object.keys(live).forEach(cancel); }
+  function playShow(name) {
+    var s = SHOWS[name]; if (!s) return false;
+    var l = ensureLayer();
+    play(s.file, name === 'drumroll' ? 0.85 : 1, 0, null);
+    var box = q('.pfx-show');
+    if (box && name !== 'drumroll' && name !== 'glitch') { box.textContent = s.icon + ' ' + (name === 'go' ? 'GO!' : s.label.toUpperCase()); retrigger(box, 'on'); }
+    var tint = q('.pfx-tint');
+    var colors = { cyan: 'rgba(0,240,255,0.28)', win: 'rgba(255,214,0,0.3)', fail: 'rgba(255,0,60,0.3)', boom: 'rgba(255,255,255,0.35)', go: 'rgba(60,255,160,0.3)', pulse: 'rgba(168,85,247,0.22)', alarm: 'rgba(255,0,40,0.4)', sweep: 'rgba(0,240,255,0.15)', glitch: 'rgba(255,0,200,0.18)' };
+    if (tint) { tint.style.background = colors[s.vis] || colors.cyan; retrigger(tint, 'go'); }
+    if (s.vis === 'sweep') retrigger(q('.pfx-sweep'), 'go');
+    if (s.vis === 'boom') bump('pfx-bump', 400);
+    if (s.vis === 'glitch') bump('pfx-glitching', 1000);
+    if (s.vis === 'alarm') { var r = q('.pfx-flash.r'); if (r) { r.classList.add('go'); setShake(true); setTimeout(function () { if (!finaleUntil) { r.classList.remove('go'); setShake(false); } }, 2600); } }
+    if (s.vis === 'win' && l && !reducedMotion()) {
+      var pal = ['#ffd600', '#00f0ff', '#ff2e97', '#7dffb8', '#a855f7'];
+      for (var i = 0; i < 70; i++) {
+        var b = document.createElement('div');
+        b.className = 'pfx-bit';
+        b.style.left = (Math.random() * 100) + 'vw';
+        b.style.background = pal[i % pal.length];
+        b.style.animationDuration = (1.6 + Math.random() * 1.6) + 's';
+        b.style.animationDelay = (Math.random() * 0.4) + 's';
+        l.appendChild(b);
+        setTimeout((function (el) { return function () { if (el.parentNode) el.parentNode.removeChild(el); }; })(b), 3800);
+      }
+    }
+    return true;
+  }
+  function configure(o) {
+    o = o || {};
+    Object.keys(o).forEach(function (k) { if (o[k] !== undefined) CFG[k] = o[k]; });
+    if (layer && o.pillTop) { var pl = layer.querySelector('.pfx-pill'); if (pl) pl.style.top = o.pillTop; }
+  }
+  function active() {
+    return Object.keys(live).map(function (id) { var c = live[id]; return { id: c.id, endsAt: c.endsAt, label: c.label, done: c.done }; });
+  }
+  root.PflxFx = {
+    version: 1, configure: configure, startCountdown: startCountdown, cancel: cancel, cancelAll: cancelAll,
+    playShow: playShow, shows: SHOWS, files: FILES, active: active, preload: preload,
+    isRunning: function (id) { return !!(live[id] && !live[id].done); },
+    _tick: tick
+  };
+})(typeof window !== 'undefined' ? window : this);
+/* ═══ /PflxFx ═══ */
+
+// ═══ PATCH X-LIVE v0.35 -- Gameshow mode ══════════════════════════════
+// Ennis: "I want X-Live to feel like a futuristic live streaming
+// gameshow" -- SFX from the PFLX Sound Library pack, arcade music in the
+// right places, a dramatic synced 10-second countdown (voice, yellow
+// flashes, TIME'S UP shake + red strobe) and a host SHOW FX pad.
+//  · Sounds + music are PFLX Sound Library clips served by the Platform
+//    (XL_SOUND_ROOT); nothing new is hosted here.
+//  · Timers are DATA on the session (s.showTimer, per-slide seconds,
+//    X-Rush startedAt), so every device computes the same clock. Inside
+//    the Platform the countdown effect is handed to the Platform
+//    (postMessage) so it covers ALL of PFLX; standalone, PflxFx runs here.
+//  · The host's own action is what broadcasts (once); re-renders only
+//    ever "soft" re-announce, so polling never re-triggers anything.
+//  · Music defaults ON for hosts (the projector is the room's speaker)
+//    and OFF for players (30 devices playing music at once is noise);
+//    everyone can flip 🎵 / 🔊 in the header.
+const XL_SOUND_ROOT = 'https://www.prototypeflx.com/public/sounds/';
+const XL_SFX = {
+  golive: 'pflx-library/09_Music_Stingers/sting_intro_orbit_arcade.mp3',
+  next: 'pflx-library/07_Transitions_Swells/transition_004.mp3',
+  reveal: 'pflx-library/09_Music_Stingers/sting_hit_clocktower_run.mp3',
+  submit: 'pflx-library/01_UI_Clicks/click_005.mp3',
+  lock: 'pflx-library/01_UI_Clicks/click_018.mp3',
+  freeze: 'pflx-library/03_Glitch_Data_Pulses/glitch_001.mp3',
+  pause: 'pflx-library/06_Power_Downs/powerdown_002.mp3',
+  resume: 'pflx-library/05_Risers/riser_002.mp3',
+  pickSpin: 'pflx-library/05_Risers/riser_003.mp3',
+  pickLand: 'pflx-library/04_Impacts_Hits/impact_016.mp3',
+  groups: 'pflx-library/07_Transitions_Swells/transition_012.mp3',
+  award: 'pflx-library/09_Music_Stingers/sting_hit_orbit_drift.mp3',
+  fine: 'pflx-library/06_Power_Downs/powerdown_005.mp3',
+  end: 'pflx-library/09_Music_Stingers/sting_outro_clocktower_run.mp3',
+  wheelSpin: 'pflx-library/05_Risers/riser_017.mp3',
+  wheelLand: 'pflx-library/04_Impacts_Hits/impact_017.mp3',
+  correct: 'pflx-library/09_Music_Stingers/sting_hit_orbit_arcade.mp3',
+  wrong: 'pflx-library/06_Power_Downs/powerdown_005.mp3',
+  blip: 'pflx-library/02_UI_Blips/blip_010.mp3',
+  go: 'countdown/count_go.mp3'
+};
+const XL_MUSIC = {
+  arcade: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_orbit_arcade_134bpm.mp3', vol: 0.32, label: 'Orbit Arcade' },
+  rush:   { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_midnight_mission_run_131bpm.mp3', vol: 0.36, label: 'Midnight Mission Run' },
+  lobby:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_glass_interface_drift_95bpm.mp3', vol: 0.28, label: 'Glass Interface Drift' },
+  boards: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_clocktower_run_132bpm.mp3', vol: 0.3, label: 'Clocktower Run' },
+  think:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_event_horizon_111bpm.mp3', vol: 0.24, label: 'Event Horizon' }
+};
+const XL_FX_PAD = ['intro', 'drumroll', 'hit', 'boom', 'glitch', 'win', 'fail', 'alarm', 'go'];
+const XL_QUICK_TIMERS = [[10, '10s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m']];
+
+function xlPref(key, dflt) {
+  try { const v = localStorage.getItem(key); return v === null ? dflt : v === '1'; } catch (e) { return dflt; }
+}
+function xlSetPref(key, on) { try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {} }
+function xlSfxOn() { return xlPref('xl_sfx_on', true); }
+function xlMusicOn() { return xlPref('xl_music_on', !!L.isHost); }
+function xlPostParent(msg) {
+  try { if (inPlatform) window.parent.postMessage(JSON.stringify(msg), '*'); } catch (e) {}
+}
+let xlAudioUnlocked = false;
+function xlSfx(name, gain) {
+  const path = XL_SFX[name];
+  if (!path || !xlSfxOn() || typeof Audio === 'undefined') return null;
+  try {
+    const a = new Audio(XL_SOUND_ROOT + path);
+    a.volume = Math.max(0, Math.min(1, 0.8 * (gain == null ? 1 : gain)));
+    const p = a.play(); if (p && p.catch) p.catch(function () {});
+    return a;
+  } catch (e) { return null; }
+}
+window.xlSfx = xlSfx;
+
+// ── music: one looping <audio>, cross-faded between zones ──
+const xlMusic = {
+  el: null, zone: null, ducks: {}, visible: true, playing: false, fadeIv: null,
+  target() {
+    const z = XL_MUSIC[this.zone];
+    if (!z || !xlMusicOn() || !this.visible || !xlAudioUnlocked) return 0;
+    return z.vol * (Object.keys(this.ducks).length ? 0.2 : 1);
+  },
+  fadeTo(vol, ms, done) {
+    const el = this.el; if (!el) { if (done) done(); return; }
+    clearInterval(this.fadeIv);
+    const from = el.volume, steps = Math.max(1, Math.round(ms / 40));
+    let i = 0;
+    this.fadeIv = setInterval(() => {
+      i++;
+      try { el.volume = Math.max(0, Math.min(1, from + (vol - from) * (i / steps))); } catch (e) {}
+      if (i >= steps) { clearInterval(this.fadeIv); this.fadeIv = null; if (done) done(); }
+    }, 40);
+  },
+  setPlaying(on) {
+    if (on === this.playing) return;
+    this.playing = on;
+    xlPostParent({ type: 'pflx_subapp_music', app: 'x-live', playing: on });
+  },
+  apply() {
+    const want = this.target();
+    const z = XL_MUSIC[this.zone];
+    if (typeof Audio === 'undefined') return;
+    if (!want || !z) {
+      if (this.el && !this.el.paused) this.fadeTo(0, 450, () => { try { this.el.pause(); } catch (e) {} this.setPlaying(false); });
+      else this.setPlaying(false);
+      return;
+    }
+    const src = XL_SOUND_ROOT + z.file;
+    if (!this.el) { this.el = new Audio(); this.el.loop = true; this.el.volume = 0; }
+    if (this.el.getAttribute('data-src') !== src) {
+      const swap = () => {
+        this.el.setAttribute('data-src', src);
+        this.el.src = src;
+        this.el.volume = 0;
+        const p = this.el.play(); if (p && p.catch) p.catch(() => {});
+        this.fadeTo(this.target(), 700);
+        this.setPlaying(true);
+      };
+      if (!this.el.paused && this.el.volume > 0.01) this.fadeTo(0, 350, swap); else swap();
+      return;
+    }
+    if (this.el.paused) { const p = this.el.play(); if (p && p.catch) p.catch(() => {}); }
+    this.fadeTo(want, 500);
+    this.setPlaying(true);
+  },
+  set(zone) { if (zone === this.zone) return; this.zone = zone; this.apply(); },
+  duck(reason, on) { if (on) this.ducks[reason] = 1; else delete this.ducks[reason]; this.apply(); }
+};
+window.xlMusic = xlMusic;
+function xlToggleMusic() { xlSetPref('xl_music_on', !xlMusicOn()); xlAudioUnlocked = true; xlMusic.apply(); render(); }
+function xlToggleSfx() { const on = !xlSfxOn(); xlSetPref('xl_sfx_on', on); if (on) xlSfx('blip'); render(); }
+window.xlToggleMusic = xlToggleMusic; window.xlToggleSfx = xlToggleSfx;
+function xlAudioButtonsHtml() {
+  const m = xlMusicOn(), s = xlSfxOn();
+  const z = XL_MUSIC[xlMusic.zone];
+  return '<button class="xl-audio-btn' + (m ? ' on' : '') + '" onclick="xlToggleMusic()" title="' + (m ? 'Music on' + (z ? ' — ' + esc(z.label) : '') : 'Music off') + '">' + (m ? '\u{1F3B5}' : '\u{1F507}') + '<span>MUSIC</span></button>' +
+    '<button class="xl-audio-btn' + (s ? ' on' : '') + '" onclick="xlToggleSfx()" title="' + (s ? 'Sound effects on' : 'Sound effects off') + '">' + (s ? '\u{1F50A}' : '\u{1F508}') + '<span>SFX</span></button>';
+}
+// Which music fits what is on screen right now (pure: returns a zone key or null).
+function xlMusicZone() {
+  const proj = document.getElementById('proj');
+  if (proj && proj.classList.contains('on')) {
+    if (typeof projIv !== 'undefined' && projIv) return 'boards';
+    if (L.projTimerOn) return 'think';
+    return null;
+  }
+  let s = null;
+  if (L.isHost) {
+    if (L.screen === 'live' && L.liveRunningSessionId) s = (L.sessions || []).find(x => x.id === L.liveRunningSessionId) || null;
+  } else if (L.screen === 'livenative') {
+    s = nativeSessionAppliesToMe();
+  }
+  if (s && s.status === 'active') return xlSessionZone(s, Date.now());
+  if (L.screen === 'play') return 'arcade';
+  if (L.screen === 'boards') return 'boards';
+  return null;
+}
+function xlSessionZone(s, now) {
+  const hc = s.hostControls || {};
+  if (hc.slideFrozen) return null;
+  if (hc.paused) return 'lobby';
+  const sl = (s.slides || [])[s.currentSlideIndex || 0];
+  if (!sl) return 'lobby';
+  if (sl.type === 'quiz_race' && !sl.revealed) return 'rush';
+  const t = xlTimerInfo(s.showTimer, now);
+  if (t && t.running) return 'think';
+  if (['poll', 'mc', 'quiz', 'open_response', 'exit'].indexOf(sl.type) !== -1 && !sl.revealed) return 'think';
+  return null;
+}
+window.xlMusicZone = xlMusicZone; window.xlSessionZone = xlSessionZone;
+
+// ── synced timers ──
+// t = { id, seconds, startedAt, stoppedAt, slideId, label, updatedAt }
+function xlTimerInfo(t, now) {
+  if (!t || !t.startedAt || !(t.seconds > 0)) return null;
+  const endsAt = t.startedAt + t.seconds * 1000;
+  const n = now || Date.now();
+  const remaining = Math.max(0, (endsAt - n) / 1000);
+  const stopped = !!t.stoppedAt;
+  const left = stopped ? Math.max(0, (endsAt - t.stoppedAt) / 1000) : remaining;
+  return { endsAt: endsAt, remaining: left, total: t.seconds, running: !stopped && remaining > 0, expired: !stopped && remaining <= 0, stopped: stopped };
+}
+window.xlTimerInfo = xlTimerInfo;
+function xlFmt(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+}
+// A countdown the HOST just started/stopped: broadcast it once.
+function xlCastCountdown(id, endsAt, label, cohorts) {
+  if (inPlatform) xlPostParent({ type: 'pflx_countdown', action: 'start', id: id, endsAt: endsAt, label: label, announce: true, broadcast: true, cohorts: cohorts || [] });
+  else if (window.PflxFx) window.PflxFx.startCountdown({ id: id, endsAt: endsAt, label: label, announce: true });
+  L.fxStarted[id] = { endsAt: endsAt, at: Date.now() };
+}
+function xlCastCancel(id, cohorts) {
+  if (inPlatform) xlPostParent({ type: 'pflx_countdown', action: 'cancel', id: id, broadcast: true, cohorts: cohorts || [] });
+  else if (window.PflxFx) window.PflxFx.cancel(id);
+  delete L.fxStarted[id];
+}
+function xlRunningSession() { return (L.sessions || []).find(x => x.id === L.liveRunningSessionId) || null; }
+function xlSessionCohorts(s) { return (s && !s.allCohorts && Array.isArray(s.cohorts)) ? s.cohorts : []; }
+function xlTimerId(s, t) { return 'xl:' + s.id + ':' + t.id; }
+async function xlShowTimerStart(seconds, opts) {
+  const s = xlRunningSession(); if (!s || !(seconds > 0)) return;
+  opts = opts || {};
+  const prev = s.showTimer;
+  if (prev && xlTimerInfo(prev) && !prev.stoppedAt) xlCastCancel(xlTimerId(s, prev), xlSessionCohorts(s));
+  const now = Date.now();
+  s.showTimer = { id: 't' + now.toString(36), seconds: seconds, startedAt: now, stoppedAt: null, slideId: opts.slideId || null, label: opts.label || 'Timer', updatedAt: now };
+  xlCastCountdown(xlTimerId(s, s.showTimer), now + seconds * 1000, s.showTimer.label, xlSessionCohorts(s));
+  render();
+  await saveSession(s);
+}
+async function xlShowTimerStop() {
+  const s = xlRunningSession(); if (!s || !s.showTimer) return;
+  const t = s.showTimer;
+  if (!t.stoppedAt) t.stoppedAt = Date.now();
+  t.updatedAt = Date.now();
+  xlCastCancel(xlTimerId(s, t), xlSessionCohorts(s));
+  xlSfx('lock');
+  render();
+  await saveSession(s);
+}
+async function xlShowTimerAdd(sec) {
+  const s = xlRunningSession(); if (!s || !s.showTimer) return;
+  const info = xlTimerInfo(s.showTimer);
+  if (!info || !info.running) { await xlShowTimerStart(sec, { label: s.showTimer.label }); return; }
+  s.showTimer.seconds += sec;
+  s.showTimer.updatedAt = Date.now();
+  xlCastCountdown(xlTimerId(s, s.showTimer), s.showTimer.startedAt + s.showTimer.seconds * 1000, s.showTimer.label, xlSessionCohorts(s));
+  xlSfx('blip');
+  render();
+  await saveSession(s);
+}
+window.xlShowTimerStart = xlShowTimerStart; window.xlShowTimerStop = xlShowTimerStop; window.xlShowTimerAdd = xlShowTimerAdd;
+// Slide-bound timer: a slide with a time limit starts its clock when the
+// host moves to it (X-Rush keeps its own startedAt clock; the Timer slide
+// waits for START). Leaving the slide ends its clock.
+function xlSlideAutoTimer(s, i) {
+  const sl = (s.slides || [])[i];
+  const now = Date.now();
+  const t = s.showTimer;
+  if (t && t.slideId && (!sl || t.slideId !== sl.id) && !t.stoppedAt) {
+    xlCastCancel(xlTimerId(s, t), xlSessionCohorts(s));
+    t.stoppedAt = now; t.updatedAt = now;
+  }
+  if (!sl || !(sl.seconds > 0) || sl.type === 'quiz_race' || sl.type === 'timer') return;
+  if (t && t.slideId === sl.id && !t.stoppedAt && xlTimerInfo(t, now) && xlTimerInfo(t, now).running) return;
+  s.showTimer = { id: 't' + now.toString(36), seconds: sl.seconds, startedAt: now, stoppedAt: null, slideId: sl.id, label: sl.title || slideTypeMeta(sl.type).label, updatedAt: now };
+  xlCastCountdown(xlTimerId(s, s.showTimer), now + sl.seconds * 1000, s.showTimer.label, xlSessionCohorts(s));
+}
+window.xlSlideAutoTimer = xlSlideAutoTimer;
+// True once a slide-bound timer for THIS slide has run out -> answers lock.
+function xlSlideTimerExpired(s, sl, now) {
+  const t = s && s.showTimer;
+  if (!t || !sl || t.slideId !== sl.id) return false;
+  const info = xlTimerInfo(t, now);
+  return !!(info && (info.expired || (info.stopped && info.remaining <= 0)));
+}
+window.xlSlideTimerExpired = xlSlideTimerExpired;
+
+// Ring timer widget (host panel, player view, projector).
+function xlRingHtml(info, size, big) {
+  const r = 45, c = 2 * Math.PI * r;
+  const frac = info ? Math.max(0, Math.min(1, info.remaining / Math.max(1, info.total))) : 0;
+  const hot = info && info.remaining <= 10 && (info.running);
+  const col = !info ? '#3a4470' : (info.remaining <= 3 && info.running ? '#ff4d1a' : (hot ? '#ffd166' : '#39c0ff'));
+  return '<div class="xl-ring' + (hot ? ' hot' : '') + (big ? ' big' : '') + '" style="width:' + size + 'px;height:' + size + 'px" data-xl-ring="1">' +
+    '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="' + r + '" class="bg"/><circle cx="50" cy="50" r="' + r + '" class="fg" style="stroke:' + col + '" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + (c * (1 - frac)).toFixed(2) + '"/></svg>' +
+    '<div class="xl-ring-t"' + (big ? '' : ' style="font-size:' + Math.max(11, Math.round(size * 0.21)) + 'px"') + '>' + (info ? (info.expired ? '0:00' : xlFmt(info.remaining)) : '--:--') + '</div>' +
+    (size < 100 ? '' : (info && info.expired ? '<div class="xl-ring-s">TIME’S UP</div>' : (info && info.stopped ? '<div class="xl-ring-s">STOPPED</div>' : ''))) +
+    '</div>';
+}
+// Live-update every ring on screen without a full re-render.
+let xlRingIv = null;
+function xlEnsureRingTicker() {
+  if (xlRingIv) return;
+  xlRingIv = setInterval(() => {
+    const rings = document.querySelectorAll('[data-xl-timer]');
+    if (!rings.length) { clearInterval(xlRingIv); xlRingIv = null; return; }
+    rings.forEach(el => {
+      const src = el.getAttribute('data-xl-timer');
+      const info = xlTimerFromSource(src);
+      const size = +el.getAttribute('data-size') || 120;
+      const wasExpired = el.getAttribute('data-exp') === '1';
+      el.innerHTML = xlRingHtml(info, size, el.getAttribute('data-big') === '1');
+      if (info && info.expired && !wasExpired) { el.setAttribute('data-exp', '1'); if (src.indexOf('slide') !== -1 || src === 'session') render(); }
+    });
+  }, 250);
+}
+function xlTimerFromSource(src) {
+  if (src === 'tool') {
+    const t = L.toolTimer; if (!t) return null;
+    return xlTimerInfo({ startedAt: t.startedAt, seconds: t.seconds, stoppedAt: t.stoppedAt }, Date.now());
+  }
+  if (src === 'session') {
+    const s = L.isHost ? xlRunningSession() : nativeSessionAppliesToMe();
+    return s ? xlTimerInfo(s.showTimer, Date.now()) : null;
+  }
+  return null;
+}
+function xlTimerBox(src, size, big) {
+  xlEnsureRingTicker();
+  return '<div data-xl-timer="' + src + '" data-size="' + size + '" data-big="' + (big ? 1 : 0) + '">' + xlRingHtml(xlTimerFromSource(src), size, big) + '</div>';
+}
+
+// ── host SHOW FX pad ──
+function xlShowFx(name) {
+  if (!window.PflxFx || !window.PflxFx.shows[name]) return;
+  const s = L.liveRunningSessionId ? xlRunningSession() : null;
+  const ev = { id: 'fx_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6), fx: name, at: Date.now() };
+  L.fxSeen[ev.id] = true;
+  const cohorts = s ? xlSessionCohorts(s) : ((L.cfg && L.cfg.cohorts) || []);
+  if (inPlatform) xlPostParent({ type: 'pflx_show_fx', fx: name, eventId: ev.id, broadcast: true, cohorts: cohorts });
+  else window.PflxFx.playShow(name);
+  if (s) {
+    s.fxEvents = (s.fxEvents || []).concat([ev]).slice(-30);
+    saveSession(s);
+  }
+}
+window.xlShowFx = xlShowFx;
+function xlFxPadHtml() {
+  const shows = (window.PflxFx && window.PflxFx.shows) || {};
+  return '<div class="xl-fxpad">' + XL_FX_PAD.filter(k => shows[k]).map(k =>
+    '<button class="xl-fxbtn xl-fx-' + k + '" onclick="xlShowFx(\'' + k + '\')"><span>' + shows[k].icon + '</span>' + esc(shows[k].label) + '</button>').join('') + '</div>';
+}
+function xlShowControlHtml(s) {
+  const idx = s.currentSlideIndex || 0;
+  const sl = (s.slides || [])[idx];
+  const info = xlTimerInfo(s.showTimer);
+  const onThisSlide = s.showTimer && (!s.showTimer.slideId || (sl && s.showTimer.slideId === sl.id));
+  const zone = XL_MUSIC[xlSessionZone(s, Date.now())];
+  const timerSlide = sl && sl.type === 'timer' && sl.seconds > 0;
+  return '<div class="card xl-showctl">' +
+    '<div class="cardT xl-showctl-h"><span class="xl-onair">● ON AIR</span> SHOW CONTROL' +
+    '<span class="xl-showctl-music">' + (xlMusicOn() ? (zone ? '\u{1F3B5} ' + esc(zone.label) : '\u{1F3B5} quiet here') : '\u{1F507} music off') + '</span></div>' +
+    '<div class="xl-showctl-grid">' +
+      '<div class="xl-showctl-timer">' + xlTimerBox('session', 118, false) +
+        '<div class="xl-timer-btns">' +
+          (timerSlide ? '<button class="bigbtn gold xl-sm" onclick="xlShowTimerStart(' + sl.seconds + ',{slideId:\'' + esc(sl.id) + '\',label:\'' + esc(String(sl.title || 'Timer').replace(/'/g, '')) + '\'})">▶ START ' + xlFmt(sl.seconds) + '</button>' : '') +
+          XL_QUICK_TIMERS.map(q => '<button class="bigbtn ghost xl-sm" onclick="xlShowTimerStart(' + q[0] + ')">' + q[1] + '</button>').join('') +
+        '</div>' +
+        (info && info.running && onThisSlide ? '<div class="xl-timer-btns"><button class="bigbtn ghost xl-sm" onclick="xlShowTimerAdd(30)">+30s</button><button class="bigbtn red xl-sm" onclick="xlShowTimerStop()">■ STOP</button><button class="bigbtn ghost xl-sm" onclick="xlProjectTimer()">\u{1F4FD}️ PROJECT</button></div>' : '') +
+        '<div class="xl-hint">The last 10 seconds count down out loud and flash every PFLX screen in this class.</div>' +
+      '</div>' +
+      '<div class="xl-showctl-fx"><div class="xl-hint" style="margin:0 0 6px">SHOW FX — plays for everyone in the session</div>' + xlFxPadHtml() + '</div>' +
+    '</div></div>';
+}
+
+// ── projector timer (tools timer + synced session timer) ──
+function xlProjectTimer() {
+  const proj = document.getElementById('proj');
+  proj.classList.add('on');
+  clearInterval(projIv); projIv = null;
+  L.projTimerOn = 'session';
+  proj.innerHTML = xlProjTimerHtml('session', 'SESSION TIMER');
+  xlMusic.set(xlMusicZone());
+}
+window.xlProjectTimer = xlProjectTimer;
+function xlProjTimerHtml(src, title) {
+  const size = Math.round(Math.min(window.innerWidth * 0.62, window.innerHeight * 0.62, 560));
+  return '<div class="projTitle">⏱️ ' + esc(title) + '</div>' + xlTimerBox(src, size, true) +
+    '<div style="display:flex;gap:10px;margin-top:22px">' +
+    (src === 'tool' ? '<button class="bigbtn ghost" onclick="xlToolTimerAdd(30)">+30s</button><button class="bigbtn red" onclick="xlToolTimerStop()">■ STOP</button>'
+      : '<button class="bigbtn ghost" onclick="xlShowTimerAdd(30)">+30s</button><button class="bigbtn red" onclick="xlShowTimerStop()">■ STOP</button>') +
+    '<button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
+    '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" style="height:34px;width:auto;opacity:0.9"/></div>';
+}
+function xlToolTimerStart(seconds) {
+  // Inside a running session the Tools timer IS the session timer, so
+  // every player sees it; otherwise it is a class timer for this host's
+  // cohorts (broadcast by the Platform when X-Live runs inside PFLX).
+  if (L.liveRunningSessionId && xlRunningSession()) { xlShowTimerStart(seconds, { label: 'Timer' }); xlProjectTimer(); return; }
+  if (L.toolTimer && !L.toolTimer.stoppedAt) xlCastCancel(L.toolTimer.fxId, (L.cfg && L.cfg.cohorts) || []);
+  const now = Date.now();
+  L.toolTimer = { startedAt: now, seconds: seconds, stoppedAt: null, fxId: 'xl-tool:' + now.toString(36) };
+  xlCastCountdown(L.toolTimer.fxId, now + seconds * 1000, 'Timer', (L.cfg && L.cfg.cohorts) || []);
+  const proj = document.getElementById('proj');
+  proj.classList.add('on');
+  clearInterval(projIv); projIv = null;
+  L.projTimerOn = 'tool';
+  proj.innerHTML = xlProjTimerHtml('tool', 'TIMER');
+  xlMusic.set(xlMusicZone());
+}
+function xlToolTimerStop() {
+  const t = L.toolTimer; if (!t) return;
+  if (!t.stoppedAt) t.stoppedAt = Date.now();
+  xlCastCancel(t.fxId, (L.cfg && L.cfg.cohorts) || []);
+  projClose();
+}
+function xlToolTimerAdd(sec) {
+  const t = L.toolTimer; if (!t) return;
+  const info = xlTimerInfo(t);
+  if (!info || !info.running) { xlToolTimerStart(sec); return; }
+  t.seconds += sec;
+  xlCastCountdown(t.fxId, t.startedAt + t.seconds * 1000, 'Timer', (L.cfg && L.cfg.cohorts) || []);
+}
+window.xlToolTimerStart = xlToolTimerStart; window.xlToolTimerStop = xlToolTimerStop; window.xlToolTimerAdd = xlToolTimerAdd;
+
+// ── data -> effects (runs after every render / sessions refresh) ──
+function xlFxStartSoft(id, endsAt, label) {
+  if (inPlatform) xlPostParent({ type: 'pflx_countdown', action: 'start', id: id, endsAt: endsAt, label: label, soft: true });
+  else if (window.PflxFx) window.PflxFx.startCountdown({ id: id, endsAt: endsAt, label: label, soft: true });
+}
+function xlFxCancelLocal(id) {
+  if (inPlatform) xlPostParent({ type: 'pflx_countdown', action: 'cancel', id: id });
+  else if (window.PflxFx) window.PflxFx.cancel(id);
+}
+// Pure: which countdowns this viewer should be running right now.
+function xlWantedCountdowns(s, now, extra) {
+  const want = {};
+  if (s && s.status === 'active') {
+    const t = s.showTimer;
+    const info = xlTimerInfo(t, now);
+    if (info && !info.stopped && info.endsAt > now - 3000) want[xlTimerId(s, t)] = { endsAt: info.endsAt, label: t.label || 'Timer' };
+    const hc = s.hostControls || {};
+    const sl = (s.slides || [])[s.currentSlideIndex || 0];
+    if (sl && sl.type === 'quiz_race' && !sl.revealed && sl.seconds > 0 && sl.startedAt && !hc.paused) {
+      const endsAt = sl.startedAt + sl.seconds * 1000;
+      if (endsAt > now - 3000) want['xl-race:' + sl.id] = { endsAt: endsAt, label: 'X-Rush' };
+    }
+  }
+  (extra || []).forEach(e => { if (e && e.id && e.endsAt > now - 3000) want[e.id] = { endsAt: e.endsAt, label: e.label || 'Timer' }; });
+  return want;
+}
+window.xlWantedCountdowns = xlWantedCountdowns;
+function xlViewerSession() {
+  if (L.isHost) return xlRunningSession();
+  return nativeSessionAppliesToMe();
+}
+function xlFxSync() {
+  const now = Date.now();
+  const s = xlViewerSession();
+  const extra = [];
+  if (L.toolTimer && !L.toolTimer.stoppedAt) extra.push({ id: L.toolTimer.fxId, endsAt: L.toolTimer.startedAt + L.toolTimer.seconds * 1000, label: 'Timer' });
+  if (L.agendaFx) extra.push(L.agendaFx);
+  const want = xlWantedCountdowns(s, now, extra);
+  // Soft re-announce every few seconds while wanted: idempotent, and it
+  // heals a start that raced with a cancel.
+  Object.keys(want).forEach(id => {
+    const rec = L.fxStarted[id];
+    if (rec && rec.endsAt === want[id].endsAt && now - rec.at < 3000) return;
+    L.fxStarted[id] = { endsAt: want[id].endsAt, at: now };
+    xlFxStartSoft(id, want[id].endsAt, want[id].label);
+  });
+  Object.keys(L.fxStarted).forEach(id => {
+    if (want[id]) return;
+    const rec = L.fxStarted[id];
+    delete L.fxStarted[id];
+    // A host with no run panel on screen: the host's own buttons send
+    // their cancels, so nothing is cancelled from here.
+    if (!s && L.isHost) return;
+    // A timer that simply ran out keeps its TIME'S UP finale.
+    if (rec && rec.endsAt <= now + 500) return;
+    xlFxCancelLocal(id);
+  });
+  if (s) xlWatchSession(s, now);
+  xlMusic.set(xlMusicZone());
+}
+window.xlFxSync = xlFxSync;
+
+// Players: turn host moves into gameshow moments.
+function xlWatchSession(s, now) {
+  const myId = (L.me && L.me.id) || '';
+  const idx = s.currentSlideIndex || 0;
+  const sl = (s.slides || [])[idx];
+  const hc = s.hostControls || {};
+  const snap = { idx: idx, slideId: sl && sl.id, revealed: !!(sl && sl.revealed), paused: !!hc.paused, frozen: !!hc.slideFrozen, locked: !!hc.responsesLocked, pickAt: s.lastRandomPickAt || 0, status: s.status };
+  const prev = L.fxSnap[s.id];
+  L.fxSnap[s.id] = snap;
+  // Show FX: first sight of a session only records history, never replays it.
+  const evs = s.fxEvents || [];
+  if (!L.fxSeenInit[s.id]) {
+    L.fxSeenInit[s.id] = true;
+    evs.forEach(e => { L.fxSeen[e.id] = true; });
+  } else {
+    evs.forEach(e => {
+      if (!e || L.fxSeen[e.id]) return;
+      L.fxSeen[e.id] = true;
+      if (Math.abs(now - (+e.at || 0)) > 20000) return;
+      if (inPlatform) xlPostParent({ type: 'pflx_show_fx', fx: e.fx, eventId: e.id });
+      else if (window.PflxFx) window.PflxFx.playShow(e.fx);
+    });
+  }
+  if (!prev || L.isHost) return;
+  if (prev.slideId !== snap.slideId) { xlSfx('next'); L.fxSlideAnim = snap.slideId; }
+  else if (!prev.revealed && snap.revealed && sl) {
+    const meta = slideTypeMeta(sl.type);
+    const mine = sl.responses && sl.responses[myId];
+    if (meta.graded && mine) {
+      const right = mine.value === sl.correctIndex;
+      xlSfx(right ? 'correct' : 'wrong');
+      xlFlashBanner(right ? '✅ CORRECT!' : '❌ NOT QUITE', right ? 'good' : 'bad');
+    } else xlSfx('reveal');
+  }
+  if (!prev.paused && snap.paused) xlSfx('pause');
+  if (prev.paused && !snap.paused) xlSfx('resume');
+  if (!prev.frozen && snap.frozen) xlSfx('freeze');
+  if (!prev.locked && snap.locked) xlSfx('lock');
+  if (snap.pickAt && snap.pickAt !== prev.pickAt && now - snap.pickAt < 30000) {
+    if (s.lastRandomPickId && s.lastRandomPickId === myId) { xlSfx('pickLand'); xlSfx('award', 0.9); xlFlashBanner('\u{1F31F} YOU’RE UP! \u{1F31F}', 'gold'); }
+    else xlSfx('blip');
+  }
+  if (prev.status === 'active' && snap.status !== 'active') xlSfx('end');
+}
+function xlFlashBanner(text, kind) {
+  let b = document.getElementById('xlBanner');
+  if (!b) { b = document.createElement('div'); b.id = 'xlBanner'; document.body.appendChild(b); }
+  b.className = 'xl-banner ' + (kind || '');
+  b.textContent = text;
+  void b.offsetWidth;
+  b.classList.add('on');
+  clearTimeout(xlFlashBanner._t);
+  xlFlashBanner._t = setTimeout(() => b.classList.remove('on'), 2200);
+}
+window.xlFlashBanner = xlFlashBanner;
+
+// Player gameshow strip above the slide.
+function xlPlayerStripHtml(s) {
+  const idx = s.currentSlideIndex || 0;
+  const info = xlTimerInfo(s.showTimer);
+  const sl = (s.slides || [])[idx];
+  const bound = info && s.showTimer && (!s.showTimer.slideId || (sl && s.showTimer.slideId === sl.id));
+  return '<div class="xl-strip"><span class="xl-onair">● LIVE</span>' +
+    '<b>' + esc(s.title || 'Live Session') + '</b>' +
+    '<span class="xl-strip-q">' + (idx + 1) + ' / ' + (s.slides || []).length + '</span>' +
+    '<span class="xl-strip-n">\u{1F465} ' + (s.liveParticipants || []).length + '</span>' +
+    '<span style="flex:1"></span>' +
+    (bound && (info.running || info.expired) ? xlTimerBox('session', 64, false) : '') +
+    '</div>';
+}
+
+// ── realtime: instant session updates ──
+let xlRtClient = null;
+function xlRealtimeInit() {
+  if (inPlatform) return; // the Platform forwards a nudge (pflx_xlive_sessions_changed)
+  const start = () => {
+    try {
+      if (!window.supabase || !window.supabase.createClient) return;
+      xlRtClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      xlRtClient.channel('xlive-sessions')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_data', filter: 'key=eq.sessions' }, function (payload) {
+          const row = payload && (payload.new || payload.record);
+          if (row && Array.isArray(row.data)) { L.sessions = mergeSessionList(L.sessions, row.data); render(); }
+          else xlNudgeSessions();
+        })
+        .subscribe();
+    } catch (e) {}
+  };
+  if (window.supabase) { start(); return; }
+  const sc = document.createElement('script');
+  sc.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+  sc.async = true; sc.onload = start;
+  document.head.appendChild(sc);
+}
+let xlNudgeT = null;
+function xlNudgeSessions() {
+  if (xlNudgeT) return;
+  xlNudgeT = setTimeout(async function () { xlNudgeT = null; await loadSessions(); }, 150);
+}
+window.addEventListener('message', function (e) {
+  let m = e.data; if (typeof m === 'string') { if (m.indexOf('pflx_') === -1) return; try { m = JSON.parse(m); } catch (er) { return; } }
+  if (!m || !m.type) return;
+  if (m.type === 'pflx_xlive_sessions_changed') xlNudgeSessions();
+  if (m.type === 'pflx_fx_duck') xlMusic.duck('countdown', !!m.on);
+});
+
+// ── audio unlock + visibility (an app hidden inside PFLX goes quiet) ──
+function xlAudioBoot() {
+  L.fxStarted = L.fxStarted || {};
+  if (window.PflxFx) {
+    window.PflxFx.configure({
+      soundRoot: XL_SOUND_ROOT,
+      shakeSelector: '#app, #proj, #tray',
+      pillTop: '10px',
+      isMuted: () => !xlSfxOn(),
+      volume: () => 0.95,
+      onDuck: on => xlMusic.duck('countdown', on)
+    });
+  }
+  const unlock = () => { if (xlAudioUnlocked) return; xlAudioUnlocked = true; if (window.PflxFx) window.PflxFx.preload(); xlMusic.apply(); };
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, unlock, { passive: true }));
+  document.addEventListener('visibilitychange', () => { xlMusic.visible = !document.hidden && xlMusic._inView !== false; xlMusic.apply(); });
+  try {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;pointer-events:none;opacity:0';
+    document.body.appendChild(probe);
+    if (typeof IntersectionObserver !== 'undefined') {
+      new IntersectionObserver(entries => {
+        const on = entries.some(en => en.isIntersecting);
+        xlMusic._inView = on;
+        xlMusic.visible = on && !document.hidden;
+        xlMusic.apply();
+      }).observe(probe);
+    }
+  } catch (e) {}
+  xlRealtimeInit();
+  setInterval(xlFxSync, 1000);
+}
+// ═══ /PATCH X-LIVE v0.35 ═══
+// ── Live Theater card (the Platform owns the synced player) ──
+let xlTheaterLoadAt = 0;
+function xlOpenLiveTheater() { xlPostParent({ type: 'pflx_theater_open' }); }
+window.xlOpenLiveTheater = xlOpenLiveTheater;
+function xlTheaterLiveCard() {
+  if (Date.now() - xlTheaterLoadAt > 15000) {
+    xlTheaterLoadAt = Date.now();
+    kvLoad('pflx_theater_live').then(function (d) {
+      const before = JSON.stringify(L.theaterLive || null);
+      L.theaterLive = d || null;
+      if (JSON.stringify(L.theaterLive) !== before && L.screen === 'theater') render();
+    });
+  }
+  const st = L.theaterLive;
+  if (!st || !st.active || !Array.isArray(st.playlist) || !st.playlist.length) return '';
+  const idx = Math.max(0, Math.min(st.playlist.length - 1, st.index | 0));
+  const item = st.playlist[idx] || {};
+  return '<div class="card xl-theater-live"><div class="cardT" style="display:flex;align-items:center;gap:10px"><span class="xl-onair">● LIVE THEATER</span> PLAYING FOR EVERYONE</div>' +
+    '<div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:4px">' + esc(item.title || item.videoId || '') + '</div>' +
+    '<div style="font-size:11px;color:#8a93b8;margin-bottom:10px">' + (st.playlist.length > 1 ? 'Video ' + (idx + 1) + ' of ' + st.playlist.length + ' · ' : '') +
+      (st.loop === 'one' ? '\u{1F502} looping this video' : (st.loop === 'all' ? '\u{1F501} looping the playlist' : 'plays through once')) + (st.paused ? ' · ⏸ paused' : '') + '</div>' +
+    (inPlatform
+      ? '<button class="bigbtn gold" onclick="xlOpenLiveTheater()">\u{1F4FA} WATCH IN SYNC</button>' +
+        (L.isHost ? '<div style="font-size:11px;color:#8a93b8;margin-top:8px">Host controls (pause, skip, loop, stop) are in X-Bot → \u{1F534} Live → Theater.</div>' : '')
+      : '<div style="font-size:11px;color:#8a93b8">Open X-Live inside PFLX to watch in sync with the class.</div>') +
+    '</div>';
+}
+
 // ── BOOT ──
 adoptFromParams();
 render();
 loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers(); loadSessions();
+xlAudioBoot(); // PATCH X-LIVE v0.35
 setInterval(loadActivity, 60000);
 bcGetLastSeenAt(); // baseline on first-ever load so old broadcast history never replays
 setInterval(loadBroadcasts, 20000); // Patch X-LIVE v0.16 -- Post a Link + QR
