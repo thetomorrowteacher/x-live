@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.37, Sept 16 2026 — PATCH X-LIVE v0.37: live production mode.
+     Strict run-of-show timer (per session: auto-advance / lock + alert /
+     manual, HOLD), a BACKSTAGE presenter view (segment clock, wall + show
+     clock, pace, NOW / UP NEXT, speaker notes, run of show with planned vs
+     actual) and a pop-out stage display (?stage=<id>), co-hosts + booth,
+     PUSH that pulls joined players onto the live screen (and opens the
+     X-Bot PiP inside PFLX; ?pip=1), auto-rejoin, fixed cohort matching,
+     and screen share (direct P2P / YouTube Live / LiveKit). See HANDOFF.md.
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.36, Sept 16 2026 — PATCH X-LIVE v0.36: host-owned session
      fields (current slide, pause/lock/freeze, reveal, settings) now merge
      on their own clock, s.hostUpdatedAt, which only a host's save moves.
@@ -374,6 +385,81 @@
   @keyframes xlBanner { 0% { opacity:0; transform:translate(-50%,-50%) scale(0.4); } 14% { opacity:1; transform:translate(-50%,-50%) scale(1.08); } 24% { transform:translate(-50%,-50%) scale(1); } 82% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-62%) scale(1); } }
   .xl-theater-live { border-color:rgba(255,77,109,0.4); background:rgba(255,77,109,0.06); margin-bottom:10px; }
   @media (prefers-reduced-motion:reduce) { .xl-strip::after, .xl-onair, .xl-ring.hot .xl-ring-t, .xl-slide-in { animation:none !important; } }
+  /* PATCH X-LIVE v0.37 -- live production mode */
+  .xl-seg-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  .xl-seg-opt { cursor:pointer; padding:7px 11px; border-radius:9px; font-family:'Audiowide'; font-size:9.5px; letter-spacing:0.06em; color:#aeb6d8;
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.14); }
+  .xl-seg-opt.on { color:#1a1300; background:linear-gradient(135deg,#ffd166,#ffb020); border-color:#ffd166; box-shadow:0 0 12px rgba(255,209,102,0.35); }
+  .xl-bs-chk { display:flex !important; gap:6px; align-items:center; text-transform:none !important; font-family:inherit !important; font-size:12px !important; color:#c7cdec; }
+  .xl-bs-chk input { width:auto !important; }
+  .xl-bs { position:relative; min-height:calc(100vh - 20px); padding:14px; border-radius:16px; background:radial-gradient(circle at 20% 0%, rgba(57,192,255,0.08), transparent 55%), #05070f;
+    border:1px solid rgba(255,255,255,0.08); color:#e8ecff; }
+  .xl-bs.over { box-shadow:inset 0 0 0 3px rgba(255,59,59,0.65), inset 0 0 60px rgba(255,59,59,0.25); animation:xlBsOver 1s ease-in-out infinite; }
+  @keyframes xlBsOver { 50% { box-shadow:inset 0 0 0 3px rgba(255,59,59,0.25), inset 0 0 30px rgba(255,59,59,0.1); } }
+  .xl-bs-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .xl-bs-title { font-family:'Audiowide'; font-size:16px; letter-spacing:0.04em; color:#fff; }
+  .xl-bs-chip { font-family:'Audiowide'; font-size:9px; letter-spacing:0.08em; padding:4px 9px; border-radius:20px; border:1px solid rgba(255,209,102,0.45); color:#ffd166; }
+  .xl-bs-chip.live { border-color:rgba(255,77,109,0.6); color:#ff8aa0; }
+  .xl-bs-stat { display:flex; flex-direction:column; align-items:flex-end; line-height:1.05; }
+  .xl-bs-stat i { font-style:normal; font-family:'Audiowide'; font-size:8px; letter-spacing:0.18em; color:#6f789c; }
+  .xl-bs-stat b { font-family:'Audiowide'; font-size:19px; color:#fff; font-variant-numeric:tabular-nums; }
+  .xl-bs-stat em { font-style:normal; font-size:10px; color:#6f789c; }
+  .xl-bs-stat.bad b { color:#ff6b6b; } .xl-bs-stat.good b { color:#7dffb8; }
+  .xl-booth { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; font-size:11px; color:#8a93b8; }
+  .xl-booth-h { padding:3px 9px; border-radius:20px; border:1px solid rgba(255,255,255,0.12); color:#8a93b8; }
+  .xl-booth-h.on { border-color:rgba(125,255,184,0.5); color:#7dffb8; }
+  .xl-bs-grid { display:grid; grid-template-columns:minmax(230px,0.9fr) minmax(280px,1.4fr) minmax(240px,1fr); gap:12px; margin-top:12px; align-items:start; }
+  @media (max-width:980px) { .xl-bs-grid { grid-template-columns:1fr; } }
+  .xl-bs-col { display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .xl-bs-k { font-family:'Audiowide'; font-size:9px; letter-spacing:0.16em; color:#6f789c; margin-bottom:6px; }
+  .xl-bs-clock { text-align:center; padding:18px 10px; border-radius:16px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); }
+  .xl-bs-digits { font-family:'Audiowide'; font-size:clamp(46px,7vw,92px); line-height:1; color:#7dffb8; font-variant-numeric:tabular-nums; text-shadow:0 0 24px currentColor; }
+  .xl-bs-clock.warn .xl-bs-digits { color:#ffd166; }
+  .xl-bs-clock.hot .xl-bs-digits { color:#ff8a3d; animation:xlOnAir .8s ease-in-out infinite; }
+  .xl-bs-clock.over .xl-bs-digits { color:#ff3b3b; }
+  .xl-bs-clock.open .xl-bs-digits { color:#9aa3c8; }
+  .xl-bs-clock.hold { border-color:rgba(255,209,102,0.6); }
+  .xl-bs-sub { font-family:'Audiowide'; font-size:10px; letter-spacing:0.14em; color:#aeb6d8; margin-top:8px; }
+  .xl-bs-resp { font-size:12px; color:#7dffb8; margin-top:8px; }
+  .xl-bs-card { padding:14px; border-radius:14px; background:rgba(255,255,255,0.035); border:1px solid rgba(255,255,255,0.1); min-width:0; }
+  .xl-bs-card.now { border-color:rgba(255,77,109,0.5); background:linear-gradient(135deg,rgba(255,77,109,0.08),rgba(255,255,255,0.02)); }
+  .xl-bs-card.next { border-color:rgba(57,192,255,0.35); }
+  .xl-bs-card.empty .xl-bs-t { color:#5c6488; }
+  .xl-bs-card video { width:100%; aspect-ratio:16/9; background:#000; border-radius:10px; display:block; }
+  .xl-bs-t { font-family:'Audiowide'; font-size:17px; color:#fff; line-height:1.25; }
+  .xl-bs-card.now .xl-bs-t { font-size:22px; }
+  .xl-bs-p { font-size:13px; color:#c7cdec; margin-top:6px; line-height:1.45; }
+  .xl-bs-o { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .xl-bs-o span { font-size:11px; padding:3px 8px; border-radius:8px; background:rgba(255,255,255,0.06); color:#c7cdec; }
+  .xl-bs-o span.ok { background:rgba(125,255,184,0.14); color:#7dffb8; }
+  .xl-bs-notes { padding:14px; border-radius:14px; background:rgba(255,209,102,0.05); border:1px solid rgba(255,209,102,0.25); }
+  .xl-bs-notes-t { font-size:clamp(15px,1.6vw,20px); line-height:1.5; color:#fff6dc; white-space:normal; }
+  .xl-bs-notes-t.dim { color:#6f789c; font-size:13px; }
+  .xl-bs-ros { padding:10px; border-radius:14px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); max-height:46vh; overflow-y:auto; }
+  .xl-bs-row { display:grid; grid-template-columns:18px 20px 1fr auto auto auto 54px; gap:6px; align-items:center; padding:6px 6px; border-radius:8px; font-size:11px; color:#aeb6d8; cursor:default; }
+  .xl-bs-row[onclick] { cursor:pointer; }
+  .xl-bs-row:hover[onclick] { background:rgba(255,255,255,0.05); }
+  .xl-bs-row .n { font-family:'Audiowide'; font-size:9px; color:#5c6488; text-align:center; }
+  .xl-bs-row .tt { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .xl-bs-row .at, .xl-bs-row .pl, .xl-bs-row .ac, .xl-bs-row .dl { font-family:'Audiowide'; font-size:9.5px; font-variant-numeric:tabular-nums; color:#6f789c; text-align:right; }
+  .xl-bs-row .ac { color:#c7cdec; }
+  .xl-bs-row .dl.bad { color:#ff6b6b; } .xl-bs-row .dl.good { color:#7dffb8; }
+  .xl-bs-row.done { opacity:0.55; }
+  .xl-bs-row.live { background:rgba(255,77,109,0.12); color:#fff; box-shadow:inset 3px 0 0 #ff4d6d; }
+  .xl-bs-ctl, .xl-bs-ctl2 { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  .xl-bs-ctl .bigbtn { padding:12px 16px; }
+  .xl-bs-ctl2 { padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); }
+  .xl-bs-ctl2 .xl-bs-k { margin:0 4px 0 0; }
+  .xl-bs-fx .xl-fxpad { grid-template-columns:repeat(3,1fr); }
+  .xl-share-h { display:flex; align-items:center; gap:10px; padding:8px 12px; }
+  .xl-share-v video { width:100%; aspect-ratio:16/9; background:#000; display:block; }
+  .xl-pip .card { margin-bottom:8px; }
+  .xl-pip-h { display:flex; align-items:center; gap:8px; padding:6px 4px 8px; }
+  .xl-pip-h b { font-size:12px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  body.xl-pip-mode { padding:6px !important; }
+  body.xl-pip-mode #app { max-width:none !important; }
+  body.xl-stage-mode { padding:0 !important; background:#02030a; }
+  body.xl-stage-mode #app { max-width:none !important; }
 </style>
 </head>
 <body>
@@ -445,6 +531,8 @@ const L = {
   // PATCH X-LIVE v0.35 -- gameshow mode state (see xlFxSync)
   fxStarted: {}, fxSeen: {}, fxSeenInit: {}, fxSnap: {}, fxSlideAnim: null,
   toolTimer: null, agendaFx: null, projTimerOn: null, theaterLive: null,
+  // PATCH X-LIVE v0.37 -- live production mode
+  stageMode: null, pipMode: false, pipSession: null, autoRejoinDone: false, pushSeen: {}, hostRoster: [], mySessionId: null,
   loaded: { roster: false, cfg: false, activity: false, badges: false, modifiers: false, sessions: false },
   xliveOnly: false // v0.17 -- true when this session arrived via the Platform's /xlive restricted door
 };
@@ -524,6 +612,8 @@ window.pflxTryOpenPendingSession = pflxTryOpenPendingSession;
 // semantics rather than failing open.
 function pflxSessionInCohortScope(session, managedCohorts) {
   if (!session) return false;
+  // PATCH X-LIVE v0.37 -- a named co-host can always run that show.
+  try { if (typeof L !== 'undefined' && L.me && typeof xlIsCoHost === 'function' && xlIsCoHost(session, L.me.id)) return true; } catch (e) {}
   if (session.allCohorts) return false;
   var mine = (managedCohorts || []).map(function (c) { return String(c).toLowerCase(); });
   if (!mine.length) return false;
@@ -649,7 +739,7 @@ function pflxSyncScreenForRoleChange(nextIsHost, currentScreen, hasRunningSessio
     ? ['class', 'live', 'theater', 'teams', 'boards', 'tools', 'play', 'feed', 'setup']
     : ['me', 'theater', 'boards', 'shop', 'play'];
   if (tabs.indexOf(currentScreen) !== -1) return currentScreen;
-  if (!nextIsHost && currentScreen === 'live' && hasRunningSession) return 'livenative';
+  if (!nextIsHost && (currentScreen === 'live' || currentScreen === 'backstage') && hasRunningSession) return 'livenative'; // v0.37 backstage
   return nextIsHost ? 'class' : 'me';
 }
 window.pflxSyncScreenForRoleChange = pflxSyncScreenForRoleChange;
@@ -751,6 +841,7 @@ async function loadRoster() {
     const items = (live && Array.isArray(live.items)) ? live.items : null;
     if (items && items.length) {
       L.roster = items.filter(u => (u.role || 'player') === 'player').map(mapRosterUser);
+      L.hostRoster = items.filter(u => (u.role || 'player') !== 'player' || u.hostTier || u.isHost).map(mapRosterUser); // PATCH X-LIVE v0.37
     }
   } catch (e) {}
   // FALLBACK: static X-Coin seed snapshot (only reached if the live read
@@ -940,6 +1031,11 @@ function mergeSession(local, incoming) {
   merged.fxEvents = Object.keys(fxById).map(function (k) { return fxById[k]; })
     .sort(function (a, b) { return (a.at || 0) - (b.at || 0); }).slice(-30);
 
+  // PATCH X-LIVE v0.37 -- booth presence: union, latest action per host.
+  const seenMerged = Object.assign({}, incoming.hostsSeen || {});
+  Object.keys(local.hostsSeen || {}).forEach(function (k) { seenMerged[k] = Math.max(seenMerged[k] || 0, local.hostsSeen[k] || 0); });
+  if (Object.keys(seenMerged).length) merged.hostsSeen = seenMerged;
+
   // status — a terminal (ended/archived) status always wins over a
   // non-terminal one, from EITHER side, so a stale poll can never
   // resurrect a session another client already ended.
@@ -972,6 +1068,7 @@ async function saveSession(sess) {
   // with our possibly-stale local copy), then write the merged array back.
   sess.updatedAt = Date.now();
   if (L.isHost) sess.hostUpdatedAt = sess.updatedAt; // PATCH X-LIVE v0.36 -- only hosts move the host clock
+  if (L.isHost && sess.status === 'active' && typeof xlTouchHost === 'function') xlTouchHost(sess); // PATCH X-LIVE v0.37
   let cloud = [];
   try {
     const c = await kvLoad('sessions');
@@ -1312,6 +1409,13 @@ function rLiveAgenda() {
 
 function render() {
   const app = document.getElementById('app');
+  // PATCH X-LIVE v0.37 -- pop-out stage display / X-Bot PiP / Backstage
+  if (L.stageMode) { document.body.classList.add('xl-stage-mode'); app.innerHTML = rStageDisplay(); return; }
+  if (L.pipMode && L.cfg) { document.body.classList.add('xl-pip-mode'); app.innerHTML = rPip(); pflxSyncEmbedPortal(); xlAfterRender(); return; }
+  if (L.screen === 'backstage' && L.isHost && L.cfg) {
+    const bs = rBackstage();
+    if (bs !== null) { app.innerHTML = bs; renderTray(); pflxSyncEmbedPortal(); xlAfterRender(); return; }
+  }
   if (!L.cfg) { app.innerHTML = '<div style="padding:60px;text-align:center"><img src="' + XLIVE_LOGO_STACKED + '" alt="X-Live" style="width:220px;max-width:70vw;display:inline-block"/><div style="margin-top:14px;font-family:Audiowide;color:#7de9ff;letter-spacing:0.2em;font-size:13px">LOADING…</div></div>'; return; }
   if (L.screen === 'liveagenda' && L.liveSession && L.liveSession.agenda && L.liveSession.agenda.length) {
     app.innerHTML = rLiveAgenda();
@@ -1342,7 +1446,11 @@ function render() {
   xlAfterRender();
 }
 // PATCH X-LIVE v0.35 -- data -> countdowns/SFX/music after every render.
-function xlAfterRender() { try { if (typeof xlFxSync === 'function' && L.fxStarted) xlFxSync(); } catch (e) {} }
+function xlAfterRender() {
+  try { if (typeof xlFxSync === 'function' && L.fxStarted) xlFxSync(); } catch (e) {}
+  // PATCH X-LIVE v0.37 -- players watch whatever screen the host shares
+  try { if (!L.isHost && (L.screen === 'livenative' || L.pipMode) && typeof xlShareSync === 'function') xlShareSync(nativeSessionAppliesToMe()); } catch (e) {}
+}
 function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
 
 // PATCH X-LIVE -- Theater tab. Lists every currently-streaming session
@@ -1585,6 +1693,8 @@ const SLIDE_TYPES = [
   // iframe technique as the embeds above. Picks the app from
   // PFLX_SUBAPPS (sl.subApp), not a pasted URL/prompt.
   { key: 'sub_app', label: 'PFLX Sub-App', icon: '🧭', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true },
+  // PATCH X-LIVE v0.37 -- the host's screen, live (direct / YouTube / LiveKit)
+  { key: 'screenshare', label: 'Screen Share', icon: '🖥️', hasOptions: false, hasTimer: false, timerOnly: false },
   // PATCH X-LIVE v0.22 -- inspired by the Daily Lesson Guide reference app.
   { key: 'mindful', label: 'Mindful Moment', icon: '🧘', hasOptions: false, hasTimer: true, timerOnly: false },
   { key: 'social', label: 'Social Sprint', icon: '🤝', hasOptions: false, hasTimer: true, timerOnly: false, hasGroupSize: true },
@@ -1598,7 +1708,7 @@ function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.ke
 // External map (not a field on SLIDE_TYPES) so every existing reader
 // of SLIDE_TYPES/slideTypeMeta is untouched.
 var PFLX_SLIDE_CATEGORIES = [
-  { label: 'Content', keys: ['text', 'media', 'google_slides', 'google_doc', 'html_embed', 'sub_app'] },
+  { label: 'Content', keys: ['text', 'media', 'screenshare', 'google_slides', 'google_doc', 'html_embed', 'sub_app'] },
   { label: 'Questions & Polls', keys: ['poll', 'mc', 'quiz', 'quiz_race', 'open_response', 'discussion'] },
   { label: 'Timed Activities', keys: ['timer', 'challenge', 'mindful', 'social', 'project'] },
   { label: 'Tasks & Wrap-Up', keys: ['push_task', 'exit'] }
@@ -2801,6 +2911,7 @@ function newLiveSession() {
   return {
     id: 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
     title: '', cohorts: [], allCohorts: true, slides: [],
+    strictTimer: 'auto', coHosts: [], shareProvider: 'p2p', pullOnAdvance: false, // PATCH X-LIVE v0.37
     scheduledStart: '', scheduledEnd: '', // PATCH X-LIVE -- session scheduling; informational only, see comment above
     rewards: { attendanceXc: 0, attendanceBadgeId: '', completionXc: 0, completionBadgeId: '' },
     status: 'scheduled', liveParticipants: [], awardedTo: [],
@@ -2996,7 +3107,10 @@ function renderSlideModal() {
     }).join('') +
     '<button class="bigbtn ghost" style="margin-top:6px;padding:6px 12px;font-size:9px" onclick="liveSlideOptionAdd()">+ ADD OPTION</button>'
   ) : '';
-  const timerHtml = meta.hasTimer ? ('<label style="margin-top:10px">Time Limit (seconds, 0 = no limit)</label><input type="number" value="' + (sl.seconds || 0) + '" onchange="L.liveEditingSlide.slide.seconds=parseInt(this.value)||0"/>') : '';
+  const timerHtml = (meta.hasTimer ? ('<label style="margin-top:10px">Time Limit (seconds, 0 = no limit) — also this segment’s length in the run of show</label><input type="number" value="' + (sl.seconds || 0) + '" onchange="L.liveEditingSlide.slide.seconds=parseInt(this.value)||0"/>')
+    : ('<label style="margin-top:10px">Segment length (seconds, 0 = open-ended)</label><input type="number" min="0" value="' + (sl.duration || 0) + '" onchange="L.liveEditingSlide.slide.duration=parseInt(this.value)||0"/>')) + // PATCH X-LIVE v0.37
+    '<label style="margin-top:10px">🗒 Speaker notes (only hosts see these, in Backstage)</label><textarea rows="3" onchange="L.liveEditingSlide.slide.notes=this.value" placeholder="What to say, cues, reminders…">' + esc(sl.notes || '') + '</textarea>' +
+    (sl.type === 'screenshare' ? '<div class="xl-hint" style="text-align:left;margin-top:6px">When this segment is live, press 🖥 SHARE SCREEN in Backstage. Players are pulled onto your screen automatically. The session’s Live Production card picks Direct / YouTube / LiveKit.</div>' : '');
   // PATCH X-LIVE v0.22 -- Social Sprint grouping + Exit Ticket sub-type
   // pickers, inserted between the prompt and the options/timer/reward
   // fields (same visual slot DLG uses for its type-specific fields).
@@ -3035,7 +3149,7 @@ function slideRowHtml(sl, i) {
   const meta = slideTypeMeta(sl.type);
   return '<div class="feedrow" style="align-items:center">' +
     '<div style="flex:1;min-width:0;cursor:pointer" onclick="liveEditSlide(' + i + ')">' + meta.icon + ' <b>' + esc(sl.title || '(untitled)') + '</b>' +
-    '<div style="font-size:10px;color:#8a93b8">' + esc(meta.label) + (sl.rewardXc ? ' · +' + sl.rewardXc + ' XC' : '') + '</div></div>' +
+    '<div style="font-size:10px;color:#8a93b8">' + esc(meta.label) + (typeof xlSegSeconds === 'function' && xlSegSeconds(sl) ? ' · ⏱ ' + xlClock(xlSegSeconds(sl) * 1000) : ' · open-ended') + (sl.notes ? ' · 🗒' : '') + (sl.rewardXc ? ' · +' + sl.rewardXc + ' XC' : '') + '</div></div>' +
     '<span class="t" style="display:flex;gap:4px">' +
     '<button class="bigbtn ghost" style="padding:5px 8px;font-size:9px" onclick="liveMoveSlide(' + i + ',-1)">↑</button>' +
     '<button class="bigbtn ghost" style="padding:5px 8px;font-size:9px" onclick="liveMoveSlide(' + i + ',1)">↓</button>' +
@@ -3068,6 +3182,7 @@ function rLiveList() {
       '<span class="t" style="display:flex;gap:6px;flex-wrap:wrap">' +
       (s.status === 'scheduled' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveGoLiveSession(\'' + esc(s.id) + '\')">🔴 GO LIVE</button>' : '') +
       (s.status === 'active' ? '<button class="bigbtn gold" style="padding:6px 10px;font-size:9px" onclick="liveManageSession(\'' + esc(s.id) + '\')">▶ MANAGE</button>' : '') +
+      (s.status === 'active' ? '<button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="xlOpenBackstage(\'' + esc(s.id) + '\')">🎛 BACKSTAGE</button>' : '') + // PATCH X-LIVE v0.37
       '<button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="liveEditSession(\'' + esc(s.id) + '\')">EDIT</button>' +
       ((L.hostCapabilities && L.hostCapabilities.deleteSessions) ? '<button class="bigbtn red" style="padding:6px 10px;font-size:9px" onclick="liveDeleteSessionPrompt(\'' + esc(s.id) + '\')">DELETE</button>' : '') +
       '</span></div>';
@@ -3114,6 +3229,7 @@ function rLiveBuilder() {
     '<label style="margin-top:8px">Completion Badge</label>' + badgeSelectHtml(s.rewards.completionBadgeId, 'L.liveEditingSession.rewards.completionBadgeId') +
     '</div>'
     ) : '') +
+    (typeof xlProductionCardHtml === 'function' ? xlProductionCardHtml(s) : '') + // PATCH X-LIVE v0.37
     '<div class="card" style="margin-top:14px"><div class="cardT" style="display:flex;align-items:center;gap:10px">Activities (' + s.slides.length + ')' +
     '<button class="bigbtn green" style="margin-left:auto;padding:7px 12px;font-size:9px" onclick="liveAddSlide()">+ ADD ACTIVITY</button></div>' +
     (s.slides.length ? s.slides.map(function (sl, i) { return slideRowHtml(sl, i); }).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No activities yet.</div>') +
@@ -3151,6 +3267,8 @@ function pflxActivateSession(s) {
   s.liveStartedAt = Date.now(); // PATCH X-LIVE -- anchor for the prominent Session Timer's elapsed-time mode
   liveMarkSlideStarted(s, 0); // PATCH X-LIVE v0.28 -- Quiz Race needs a start timestamp per slide
   if (typeof xlSlideAutoTimer === 'function') xlSlideAutoTimer(s, 0); // PATCH X-LIVE v0.35
+  if (typeof xlSegmentMark === 'function') { s.segmentLog = {}; xlSegmentMark(s, -1, 0); } // PATCH X-LIVE v0.37
+  if (typeof xlStampPush === 'function') xlStampPush(s, 'The show is starting'); // PATCH X-LIVE v0.37 -- joined players come straight in
 }
 window.pflxActivateSession = pflxActivateSession;
 async function liveGoLiveSession(id) {
@@ -3161,6 +3279,7 @@ async function liveGoLiveSession(id) {
   await saveSession(s);
   L.liveRunningSessionId = s.id;
   L.liveEditingSession = null;
+  L.screen = 'backstage'; // PATCH X-LIVE v0.37
   render();
   toast('🔴 Session is LIVE' + (L.demo ? ' (demo)' : ''));
   if (typeof xlShowFx === 'function') xlShowFx('intro'); // PATCH X-LIVE v0.35 -- the show opens for everyone
@@ -3175,7 +3294,9 @@ function liveMoveCurrentSlide(dir) {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
   const j = (s.currentSlideIndex || 0) + dir;
   if (j < 0 || j >= s.slides.length) return;
+  if (typeof xlSegmentMark === 'function') xlSegmentMark(s, s.currentSlideIndex || 0, j); // PATCH X-LIVE v0.37
   s.currentSlideIndex = j;
+  if (s.pullOnAdvance && typeof xlStampPush === 'function') xlStampPush(s, s.slides[j].title || slideTypeMeta(s.slides[j].type).label);
   liveMarkSlideStarted(s, j); // PATCH X-LIVE v0.28
   if (typeof xlSlideAutoTimer === 'function') { xlSlideAutoTimer(s, j); xlSfx('next'); } // PATCH X-LIVE v0.35
   saveSession(s); render();
@@ -3185,7 +3306,10 @@ function liveMoveCurrentSlide(dir) {
 function liveJumpToSlide(i) {
   const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
   if (i < 0 || i >= s.slides.length) return;
+  if (i === (s.currentSlideIndex || 0)) return; // PATCH X-LIVE v0.37 -- re-clicking the live row must not restart its clock
+  if (typeof xlSegmentMark === 'function') xlSegmentMark(s, s.currentSlideIndex || 0, i); // PATCH X-LIVE v0.37
   s.currentSlideIndex = i;
+  if (s.pullOnAdvance && typeof xlStampPush === 'function') xlStampPush(s, s.slides[i].title || slideTypeMeta(s.slides[i].type).label);
   liveMarkSlideStarted(s, i); // PATCH X-LIVE v0.28
   if (typeof xlSlideAutoTimer === 'function') { xlSlideAutoTimer(s, i); xlSfx('next'); } // PATCH X-LIVE v0.35
   saveSession(s); render();
@@ -3253,8 +3377,12 @@ async function liveEndSession() {
     s.showTimer.stoppedAt = Date.now(); s.showTimer.updatedAt = Date.now();
   }
   if (typeof xlSfx === 'function') xlSfx('end');
+  if (s.screenShare && s.screenShare.active) { s.screenShare = Object.assign({}, s.screenShare, { active: false, endedAt: Date.now() }); } // PATCH X-LIVE v0.37
+  if (typeof xlShareCleanup === 'function') xlShareCleanup();
+  if (typeof xlSegmentMark === 'function') xlSegmentMark(s, s.currentSlideIndex || 0, -1);
   pflxGrantCompletionRewards(s);
   await saveSession(s);
+  if (L.screen === 'backstage') L.screen = 'live';
   L.liveRunningSessionId = null;
   pflxStopSessionTimer();
   render();
@@ -3694,7 +3822,9 @@ function rLiveRun(s) {
   return '<div class="card">' +
     '<div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 ' + esc(s.title || 'Live Session') +
     '<span id="pflxSessionTimerVal" style="font-family:Audiowide;font-size:20px;color:#7dffb8;letter-spacing:0.5px"></span>' +
-    '<button class="bigbtn ghost" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="liveExitRun()">← BACK</button></div>' +
+    '<button class="bigbtn gold" style="margin-left:auto;padding:6px 12px;font-size:9px" onclick="xlOpenBackstage()">🎛 BACKSTAGE</button>' + // PATCH X-LIVE v0.37
+    '<button class="bigbtn green" style="padding:6px 12px;font-size:9px" onclick="xlPush()">📣 PUSH</button>' +
+    '<button class="bigbtn ghost" style="padding:6px 12px;font-size:9px" onclick="liveExitRun()">← BACK</button></div>' +
     '<div style="font-size:11px;color:#8a93b8;margin-bottom:10px">' + (s.liveParticipants || []).length + ' joined · slide ' + (idx + 1) + ' of ' + s.slides.length + '</div>' +
     '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">' + rail + '<div style="flex:1;min-width:260px">' + stage + '</div></div>' +
     '</div>';
@@ -3703,41 +3833,24 @@ function rLiveRun(s) {
 // cohort scope — same matching logic as the old sessionAppliesToMe(), just
 // against L.sessions instead of the Mission-Control-driven L.liveSession.
 function nativeSessionAppliesToMe() {
-  const myId = (L.me && L.me.id) || '';
-  // PATCH X-LIVE -- Host/Player parallel (Sept 10, Ennis): a REAL host
-  // previewing Player Mode is very often not enrolled as a player
-  // anywhere at all (masters/admins especially) -- without this, an
-  // honest live-session preview would wrongly show "session ended" just
-  // because the host's own account has no roster/cohort entry. A
-  // previewing host instead sees whatever their own host scope already
-  // covers: an unscoped tier (admin/master, or a non-cohort-scoped
-  // guest) sees any active session, a cohort-scoped tier sees only
-  // sessions inside their own managed cohorts -- reusing the exact same
-  // pflxSessionInCohortScope primitive the Host Dashboard's own session
-  // list already uses, not a separate rule.
-  const previewingAsHost = L.realIsHost && !L.isHost;
-  return (L.sessions || []).find(function (s) {
-    if (s.status !== 'active') return false;
-    if (s.allCohorts || !s.cohorts || !s.cohorts.length) return true;
-    if (previewingAsHost) {
-      if (!L.hostCapabilities || !L.hostCapabilities.scopedToCohorts) return true;
-      return pflxSessionInCohortScope(s, L.me && L.me.managedCohorts);
-    }
-    const mine = (L.roster.find(function (r) { return r.id === myId; }) || {}).cohort || '';
-    return s.cohorts.indexOf(mine) !== -1;
-  }) || null;
+  // PATCH X-LIVE v0.37 -- see nativeSessionsForMe (case-insensitive,
+  // comma-split cohorts, every applicable session; joined / PiP first).
+  return nativeSessionsForMe()[0] || null;
 }
 function nativeLiveSessionBanner() {
   if (L.isHost) return '';
-  const s = nativeSessionAppliesToMe(); if (!s) return '';
+  const list = nativeSessionsForMe(); if (!list.length) return '';
   const myId = (L.me && L.me.id) || '';
-  const joined = (s.liveParticipants || []).some(function (p) { return p.id === myId; });
-  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.35);border-radius:12px;padding:10px 14px;margin-bottom:12px;">' +
-    '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">🔴 LIVE</span>' +
-    '<span style="font-size:13px;font-weight:700;color:#f0f0ff;">' + esc(s.title || 'Session') + '</span>' +
-    '<span style="flex:1"></span>' +
-    '<button class="bigbtn gold" style="padding:7px 14px;font-size:10px" onclick="liveJoinSession(\'' + esc(s.id) + '\')">' + (joined ? 'REJOIN' : 'JOIN') + '</button>' +
-    '</div>';
+  return list.map(function (s) {
+    const joined = (s.liveParticipants || []).some(function (p) { return p.id === myId; });
+    return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.35);border-radius:12px;padding:10px 14px;margin-bottom:12px;">' +
+      '<span style="font-family:Audiowide;font-size:10px;font-weight:800;letter-spacing:0.14em;color:#ff5d7a;">🔴 LIVE</span>' +
+      '<span style="font-size:13px;font-weight:700;color:#f0f0ff;">' + esc(s.title || 'Session') + '</span>' +
+      (joined ? '<span style="font-size:10px;color:#7dffb8;font-family:Audiowide">JOINED</span>' : '') +
+      '<span style="flex:1"></span>' +
+      '<button class="bigbtn gold" style="padding:7px 14px;font-size:10px" onclick="liveJoinSession(\'' + esc(s.id) + '\')">' + (joined ? 'BACK TO THE SHOW' : 'JOIN') + '</button>' +
+      '</div>';
+  }).join('');
 }
 async function liveJoinSession(id) {
   const s = L.sessions.find(function (x) { return x.id === id; }); if (!s) return;
@@ -3751,6 +3864,8 @@ async function liveJoinSession(id) {
     grantSessionReward(myId, s.rewards.attendanceXc, s.rewards.attendanceBadgeId, 'xlive-session:' + s.id + ':attend');
   }
   if (typeof xlSfx === 'function') xlSfx('golive', 0.8); // PATCH X-LIVE v0.35
+  L.mySessionId = s.id; L.autoRejoinDone = true; // PATCH X-LIVE v0.37
+  if (typeof xlMarkPushSeen === 'function') xlMarkPushSeen(s);
   await saveSession(s);
   go('livenative');
 }
@@ -3786,7 +3901,9 @@ function rLiveNative() {
   const s = nativeSessionAppliesToMe();
   if (!s) return '<div class="card"><div class="cardT">Session ended</div><div style="font-size:12px;color:#8a93b8">This live session is no longer active.</div><button class="bigbtn ghost" style="margin-top:10px" onclick="go(\'me\')">← BACK</button></div>';
   let hc = s.hostControls || {};
-  const ytEmbed = s.youtubeEmbedId ? ('<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(s.youtubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>') : '';
+  let ytEmbed = s.youtubeEmbedId ? ('<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/' + esc(s.youtubeEmbedId) + '?autoplay=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div></div>') : '';
+  const shareHtml = (typeof xlSharePlayerHtml === 'function') ? xlSharePlayerHtml(s) : ''; // PATCH X-LIVE v0.37
+  if (shareHtml) ytEmbed = ytEmbed + shareHtml;
   if (hc.slideFrozen) return ytEmbed + xlPlayerStripHtml(s) + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">❄️</div><div class="cardT" style="margin-top:10px">Screens frozen by host</div></div>';
   if (hc.paused) return ytEmbed + xlPlayerStripHtml(s) + '<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:40px">⏸</div><div class="cardT" style="margin-top:10px">Session paused</div></div>';
   const idx = s.currentSlideIndex || 0;
@@ -3858,6 +3975,8 @@ function rLiveNative() {
     }
   } else if (meta.isEmbed) {
     body = pflxSlideEmbedHtml(sl);
+  } else if (sl.type === 'screenshare') { // PATCH X-LIVE v0.37
+    body = (s.screenShare && s.screenShare.active) ? '<div class="xl-hint">🖥 The host’s screen is above.</div>' : '<div class="xl-hint" style="padding:18px 0">🖥 Waiting for the host to share their screen…</div>';
   }
   return ytEmbed + xlPlayerStripHtml(s) + '<div class="card' + (slideAnim ? ' xl-slide-in' : '') + '">' +
     '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '') + '</div>' +
@@ -4403,6 +4522,7 @@ function rSetup() {
     '<label style="margin-top:10px">Avatar style</label>' +
     '<select onchange="L.cfg.avatarMode=this.value;saveCfg();render()"><option value="photo"' + ((L.cfg.avatarMode || 'photo') === 'photo' ? ' selected' : '') + '>Real photos (EXO/initials if none)</option><option value="exo"' + (L.cfg.avatarMode === 'exo' ? ' selected' : '') + '>EXO mascots (photo/initials if none built)</option></select>' +
     '</div>' +
+    (typeof xlLiveKitSetupHtml === 'function' ? xlLiveKitSetupHtml() : '') + // PATCH X-LIVE v0.37
     '<div class="card"><div class="cardT">Quick Buttons</div>' + presetEditor('awards') + presetEditor('fines') +
     '<div class="cardT" style="margin-top:14px">Upgrades Shop</div>' +
     L.cfg.upgrades.map((u, i) => '<div class="feedrow">' + u.icon + ' <b>' + esc(u.label) + '</b> · ' + u.cost + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.upgrades.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
@@ -5111,10 +5231,11 @@ function xlSlideAutoTimer(s, i) {
     xlCastCancel(xlTimerId(s, t), xlSessionCohorts(s));
     t.stoppedAt = now; t.updatedAt = now;
   }
-  if (!sl || !(sl.seconds > 0) || sl.type === 'quiz_race' || sl.type === 'timer') return;
+  const segSec = (typeof xlSegSeconds === 'function') ? xlSegSeconds(sl) : (sl && sl.seconds); // PATCH X-LIVE v0.37
+  if (!sl || !(segSec > 0) || sl.type === 'quiz_race' || sl.type === 'timer') return;
   if (t && t.slideId === sl.id && !t.stoppedAt && xlTimerInfo(t, now) && xlTimerInfo(t, now).running) return;
-  s.showTimer = { id: 't' + now.toString(36), seconds: sl.seconds, startedAt: now, stoppedAt: null, slideId: sl.id, label: sl.title || slideTypeMeta(sl.type).label, updatedAt: now };
-  xlCastCountdown(xlTimerId(s, s.showTimer), now + sl.seconds * 1000, s.showTimer.label, xlSessionCohorts(s));
+  s.showTimer = { id: 't' + now.toString(36), seconds: segSec, startedAt: now, stoppedAt: null, slideId: sl.id, label: sl.title || slideTypeMeta(sl.type).label, updatedAt: now };
+  xlCastCountdown(xlTimerId(s, s.showTimer), now + segSec * 1000, s.showTimer.label, xlSessionCohorts(s));
 }
 window.xlSlideAutoTimer = xlSlideAutoTimer;
 // True once a slide-bound timer for THIS slide has run out -> answers lock.
@@ -5296,6 +5417,7 @@ function xlViewerSession() {
   return nativeSessionAppliesToMe();
 }
 function xlFxSync() {
+  if (L.stageMode) return; // PATCH X-LIVE v0.37
   const now = Date.now();
   const s = xlViewerSession();
   const extra = [];
@@ -5493,7 +5615,787 @@ function xlTheaterLiveCard() {
     '</div>';
 }
 
+// ═══ PATCH X-LIVE v0.37 -- live production mode ═══
+// Ennis (Sep 16): "The host should be able to host the session on a strict
+// timer. This mimics a Live Production ... the host should see a backstage
+// like timer and control much like a presenter mode ... There should be
+// able to be multiple hosts ... When the host pushes a manual game,
+// activity, screenshare, etc... it will automatically pull the players in
+// ... Then X-Live should become active in PIP in X-Bot."
+// Decisions (Ennis): strict timer mode is a per-session choice (auto-
+// advance / lock + alert / manual); screenshare offers direct (P2P),
+// YouTube Live and LiveKit; the X-Bot PiP opens automatically.
+//
+// Session fields added (all optional; older sessions keep working):
+//   strictTimer   'auto' | 'alert' | 'manual'   (undefined = 'alert')
+//   coHosts       [{ id, name }]
+//   hostsSeen     { hostId: lastActionAt }       (unioned, max)
+//   segmentLog    { slideId: { startedAt, endedAt, spentMs } }  (host-owned)
+//   push          { seq, at, slideId, label, by }                (host-owned)
+//   pullOnAdvance boolean -- every slide change also pulls players in
+//   shareProvider 'p2p' | 'youtube' | 'livekit'
+//   screenShare   { active, provider, hostId, startedAt, room }  (host-owned)
+//   hostControls.hold  boolean -- holds strict auto-advance
+// Slide fields: duration (segment seconds for types without a time
+// limit), notes (speaker notes, host-only).
+
+const XL_STRICT_MODES = [
+  ['auto', '⏭ Auto-advance', 'At zero: answers lock, TIME’S UP plays, and the show moves to the next segment on its own. HOLD stops it.'],
+  ['alert', '🚨 Lock + alert', 'At zero: answers lock and Backstage flashes OVER TIME. You move on yourself.'],
+  ['manual', '🎛 Manual', 'Timers only lock answers (the pre-v0.37 behaviour).']
+];
+const XL_SHARE_PROVIDERS = [
+  ['p2p', '🖥 Direct', 'Your screen goes straight to every joined player. Free; best for a class-sized group (about 25).'],
+  ['youtube', '📺 YouTube Live', 'Share through OBS to the session’s YouTube stream (set it in the run panel).'],
+  ['livekit', '🛰 LiveKit', 'For big audiences. Needs your LiveKit server URL and token endpoint in Setup.']
+];
+function xlStrictMode(s) { const m = s && s.strictTimer; return (m === 'auto' || m === 'manual') ? m : 'alert'; }
+window.xlStrictMode = xlStrictMode;
+
+// ── segment length: one clock per slide ──
+function xlSegSeconds(sl) {
+  if (!sl) return 0;
+  if (sl.duration > 0) return sl.duration | 0;
+  const meta = slideTypeMeta(sl.type);
+  return (meta.hasTimer && sl.seconds > 0) ? (sl.seconds | 0) : 0;
+}
+window.xlSegSeconds = xlSegSeconds;
+// When does the CURRENT segment end? (null = open-ended)
+function xlSegmentEndsAt(s, now) {
+  const sl = (s.slides || [])[s.currentSlideIndex || 0];
+  if (!sl) return null;
+  if (sl.type === 'quiz_race') return (sl.seconds > 0 && sl.startedAt) ? sl.startedAt + sl.seconds * 1000 : null;
+  const t = s.showTimer;
+  if (t && t.slideId === sl.id && t.startedAt && t.seconds > 0) {
+    if (t.stoppedAt) return null; // host stopped the clock -> open-ended
+    return t.startedAt + t.seconds * 1000;
+  }
+  return null;
+}
+window.xlSegmentEndsAt = xlSegmentEndsAt;
+
+// ── run of show (pure) ──
+// Planned start/length of every segment from liveStartedAt, the actual
+// time spent (segmentLog + the live segment), and how far ahead/behind.
+function xlRunOfShow(s, now) {
+  now = now || Date.now();
+  const slides = s.slides || [];
+  const idx = s.currentSlideIndex || 0;
+  const log = s.segmentLog || {};
+  let planned = 0;
+  const rows = slides.map(function (sl, i) {
+    const seg = xlSegSeconds(sl) * 1000;
+    const rec = log[sl.id] || null;
+    let spent = rec ? (rec.spentMs || 0) : 0;
+    if (i === idx && rec && rec.startedAt && !rec.endedAt && s.status === 'active') spent += Math.max(0, now - rec.startedAt);
+    const row = { i: i, id: sl.id, title: sl.title || slideTypeMeta(sl.type).label, icon: slideTypeMeta(sl.type).icon,
+      plannedStartMs: planned, plannedMs: seg, spentMs: spent,
+      state: i < idx ? 'done' : (i === idx ? 'live' : 'next'),
+      deltaMs: seg ? spent - seg : 0 };
+    planned += seg;
+    return row;
+  });
+  const totalPlannedMs = planned;
+  const elapsedMs = s.liveStartedAt ? Math.max(0, now - s.liveStartedAt) : 0;
+  // Where the plan says we should be by now vs where we are: plan position
+  // = planned start of the live segment + its planned length (capped at the
+  // time actually spent in it, so being early in a segment is not "ahead").
+  const live = rows[idx];
+  let planPos = 0;
+  if (live) planPos = live.plannedStartMs + Math.min(live.plannedMs || 0, live.spentMs);
+  const driftMs = s.liveStartedAt ? elapsedMs - planPos : 0; // + behind, - ahead
+  return { rows: rows, totalPlannedMs: totalPlannedMs, elapsedMs: elapsedMs, driftMs: driftMs };
+}
+window.xlRunOfShow = xlRunOfShow;
+function xlClock(ms, signed) {
+  const neg = ms < 0; let t = Math.round(Math.abs(ms) / 1000);
+  const h = Math.floor(t / 3600); t -= h * 3600;
+  const m = Math.floor(t / 60), sec = t % 60;
+  const body = (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+  return (signed ? (neg ? '−' : '+') : (neg ? '−' : '')) + body;
+}
+window.xlClock = xlClock;
+
+// ── segment bookkeeping (host) ──
+function xlSegmentMark(s, fromIdx, toIdx, now) {
+  now = now || Date.now();
+  s.segmentLog = Object.assign({}, s.segmentLog || {});
+  const from = (s.slides || [])[fromIdx], to = (s.slides || [])[toIdx];
+  if (from && s.segmentLog[from.id] && s.segmentLog[from.id].startedAt && !s.segmentLog[from.id].endedAt) {
+    const r = Object.assign({}, s.segmentLog[from.id]);
+    r.spentMs = (r.spentMs || 0) + Math.max(0, now - r.startedAt);
+    r.endedAt = now;
+    s.segmentLog[from.id] = r;
+  }
+  if (to) {
+    const r = Object.assign({ spentMs: 0 }, s.segmentLog[to.id] || {});
+    r.startedAt = now; r.endedAt = null;
+    s.segmentLog[to.id] = r;
+  }
+  if (s.hostControls) s.hostControls.hold = false;
+  L.xlAdvancedFor = null;
+}
+window.xlSegmentMark = xlSegmentMark;
+function xlTouchHost(s) {
+  if (!L.isHost || !L.me || !L.me.id) return;
+  s.hostsSeen = Object.assign({}, s.hostsSeen || {});
+  s.hostsSeen[L.me.id] = Date.now();
+}
+
+// ── push: pull joined players onto the live screen ──
+async function xlPush(label) {
+  const s = xlRunningSession(); if (!s) return;
+  const sl = (s.slides || [])[s.currentSlideIndex || 0];
+  xlStampPush(s, label || (sl ? (sl.title || slideTypeMeta(sl.type).label) : 'Live'));
+  if (typeof xlSfx === 'function') xlSfx('golive', 0.7);
+  toast('📣 Pushed to every joined player');
+  render();
+  await saveSession(s);
+}
+window.xlPush = xlPush;
+function xlStampPush(s, label) {
+  const sl = (s.slides || [])[s.currentSlideIndex || 0];
+  const prev = s.push || {};
+  s.push = { seq: (prev.seq | 0) + 1, at: Date.now(), slideId: sl ? sl.id : null, label: String(label || '').slice(0, 80), by: (L.me && (L.me.brand || L.me.id)) || 'Host' };
+  if (inPlatform) xlPostParent({ type: 'pflx_xlive_push', sessionId: s.id, seq: s.push.seq, label: s.push.label });
+}
+window.xlStampPush = xlStampPush;
+// Player side: should this push pull me in? (pure)
+function xlShouldPull(s, myId, seenSeq, now) {
+  if (!s || s.status !== 'active' || !s.push || !myId) return false;
+  const joined = (s.liveParticipants || []).some(function (p) { return p && p.id === myId; });
+  if (!joined) return false;
+  if ((s.push.seq | 0) <= (seenSeq | 0)) return false;
+  return (now || Date.now()) - (s.push.at || 0) < 120000;
+}
+window.xlShouldPull = xlShouldPull;
+function xlPushSeenKey(s) { return 'xl_push_seen_' + s.id; }
+function xlPushSeen(s) { try { return parseInt(sessionStorage.getItem(xlPushSeenKey(s)) || '0', 10) || 0; } catch (e) { return (L.pushSeen || {})[s.id] || 0; } }
+function xlMarkPushSeen(s) {
+  const q = (s.push && s.push.seq) | 0;
+  L.pushSeen = L.pushSeen || {}; L.pushSeen[s.id] = q;
+  try { sessionStorage.setItem(xlPushSeenKey(s), String(q)); } catch (e) {}
+}
+function xlPlayerAutoPull() {
+  if (L.isHost || L.stageMode) return;
+  const s = nativeSessionAppliesToMe(); if (!s) return;
+  const myId = (L.me && L.me.id) || '';
+  const joined = (s.liveParticipants || []).some(function (p) { return p && p.id === myId; });
+  // Joined players stay signed in: a reload lands straight back in the show.
+  if (joined && !L.autoRejoinDone && L.loaded.sessions) {
+    L.autoRejoinDone = true;
+    if (L.screen !== 'livenative') { xlMarkPushSeen(s); go('livenative'); return; }
+  }
+  if (xlShouldPull(s, myId, xlPushSeen(s), Date.now())) {
+    xlMarkPushSeen(s);
+    if (L.screen !== 'livenative') go('livenative');
+    if (typeof xlFlashBanner === 'function') xlFlashBanner('📣 ' + (s.push.label || 'The host pulled you in'), 'gold');
+    if (typeof xlSfx === 'function') xlSfx('golive', 0.8);
+  }
+}
+window.xlPlayerAutoPull = xlPlayerAutoPull;
+
+// ── strict timer engine (host) ──
+// Runs every second on host clients that have the show open. Only acts
+// once per segment; re-reads the cloud copy before moving so two hosts in
+// the booth never double-skip.
+async function xlStrictTick() {
+  if (!L.isHost || !L.liveRunningSessionId) return;
+  const s = xlRunningSession(); if (!s || s.status !== 'active') return;
+  if (xlStrictMode(s) !== 'auto') return;
+  const hc = s.hostControls || {};
+  if (hc.paused || hc.hold || hc.slideFrozen) return;
+  const idx = s.currentSlideIndex || 0;
+  const sl = (s.slides || [])[idx]; if (!sl) return;
+  const endsAt = xlSegmentEndsAt(s, Date.now());
+  if (!endsAt || Date.now() < endsAt + 1800) return; // let TIME'S UP land first
+  const key = s.id + ':' + sl.id + ':' + endsAt;
+  if (L.xlAdvancedFor === key || L.xlAdvancing) return;
+  L.xlAdvancing = true;
+  try {
+    await loadSessions();
+    const fresh = xlRunningSession();
+    if (!fresh || fresh.status !== 'active' || (fresh.currentSlideIndex || 0) !== idx) return;
+    const fhc = fresh.hostControls || {};
+    if (fhc.hold || fhc.paused || xlStrictMode(fresh) !== 'auto') return;
+    const fEnds = xlSegmentEndsAt(fresh, Date.now());
+    if (!fEnds || Date.now() < fEnds + 1800) return;
+    L.xlAdvancedFor = key;
+    if (idx >= fresh.slides.length - 1) {
+      if (!L.xlShowDoneToast) { L.xlShowDoneToast = key; toast('🏁 Last segment finished — END SESSION when you are ready'); }
+      return;
+    }
+    liveMoveCurrentSlide(1);
+    L.xlAdvancedFor = key;
+  } finally { L.xlAdvancing = false; }
+}
+window.xlStrictTick = xlStrictTick;
+async function xlToggleHold() {
+  const s = xlRunningSession(); if (!s) return;
+  s.hostControls = s.hostControls || {};
+  s.hostControls.hold = !s.hostControls.hold;
+  xlTouchHost(s);
+  if (typeof xlSfx === 'function') xlSfx(s.hostControls.hold ? 'pause' : 'resume');
+  render();
+  await saveSession(s);
+}
+window.xlToggleHold = xlToggleHold;
+async function xlSetStrictMode(mode) {
+  const s = xlRunningSession() || L.liveEditingSession; if (!s) return;
+  s.strictTimer = mode;
+  if (s === L.liveEditingSession) { render(); return; }
+  xlTouchHost(s); render(); await saveSession(s);
+}
+window.xlSetStrictMode = xlSetStrictMode;
+async function xlSetPullOnAdvance(on) {
+  const s = xlRunningSession() || L.liveEditingSession; if (!s) return;
+  s.pullOnAdvance = !!on;
+  if (s === L.liveEditingSession) return;
+  await saveSession(s);
+}
+window.xlSetPullOnAdvance = xlSetPullOnAdvance;
+
+// ── co-hosts ──
+function xlIsCoHost(s, id) { return !!(s && id && (s.coHosts || []).some(function (h) { return h && h.id === id; })); }
+window.xlIsCoHost = xlIsCoHost;
+function xlToggleCoHost(id, name, on) {
+  const s = L.liveEditingSession; if (!s) return;
+  s.coHosts = (s.coHosts || []).filter(function (h) { return h && h.id !== id; });
+  if (on) s.coHosts.push({ id: id, name: name });
+}
+window.xlToggleCoHost = xlToggleCoHost;
+function xlBoothHtml(s) {
+  const now = Date.now();
+  const seen = s.hostsSeen || {};
+  const ids = {};
+  (s.coHosts || []).forEach(function (h) { if (h && h.id) ids[h.id] = h.name || h.id; });
+  Object.keys(seen).forEach(function (id) {
+    if (ids[id]) return;
+    if (L.me && id === L.me.id && L.me.brand) { ids[id] = L.me.brand; return; }
+    const r = (L.hostRoster || []).find(function (x) { return x.id === id; });
+    ids[id] = r ? (r.brand || r.name) : id;
+  });
+  const keys = Object.keys(ids);
+  if (!keys.length) return '';
+  return '<div class="xl-booth">🎧 ' + keys.map(function (id) {
+    const t = seen[id] || 0;
+    const live = t && now - t < 120000;
+    return '<span class="xl-booth-h' + (live ? ' on' : '') + '" title="' + (t ? 'last action ' + Math.round((now - t) / 1000) + 's ago' : 'not in the booth yet') + '">' + esc(ids[id]) + (xlIsCoHost(s, id) ? '' : ' ★') + '</span>';
+  }).join('') + '</div>';
+}
+
+// ── BACKSTAGE (presenter / stage display) ──
+function xlOpenBackstage(id) {
+  if (id) L.liveRunningSessionId = id;
+  if (!xlRunningSession()) return;
+  L.screen = 'backstage';
+  render();
+}
+window.xlOpenBackstage = xlOpenBackstage;
+function xlCloseBackstage() { L.screen = 'live'; render(); }
+window.xlCloseBackstage = xlCloseBackstage;
+function xlPopOutStage() {
+  const s = xlRunningSession(); if (!s) return;
+  const base = location.href.split('?')[0].split('#')[0];
+  const w = window.open(base + '?stage=' + encodeURIComponent(s.id), 'xlive-stage-' + s.id, 'width=1280,height=760');
+  if (!w) toast('Allow pop-ups to open the stage display on a second screen');
+}
+window.xlPopOutStage = xlPopOutStage;
+function xlSlidePreviewHtml(sl, label, cls) {
+  if (!sl) return '<div class="xl-bs-card ' + (cls || '') + ' empty"><div class="xl-bs-k">' + label + '</div><div class="xl-bs-t">— end of show —</div></div>';
+  const meta = slideTypeMeta(sl.type);
+  const seg = xlSegSeconds(sl);
+  return '<div class="xl-bs-card ' + (cls || '') + '"><div class="xl-bs-k">' + label + ' · ' + meta.icon + ' ' + esc(meta.label) + (seg ? ' · ' + xlClock(seg * 1000) : ' · open') + '</div>' +
+    '<div class="xl-bs-t">' + esc(sl.title || meta.label) + '</div>' +
+    (sl.prompt && !meta.isEmbed ? '<div class="xl-bs-p">' + esc(String(sl.prompt).slice(0, 220)) + '</div>' : '') +
+    ((sl.options || []).length ? '<div class="xl-bs-o">' + sl.options.map(function (o, i) { return '<span' + (meta.graded && i === sl.correctIndex ? ' class="ok"' : '') + '>' + esc(o) + '</span>'; }).join('') + '</div>' : '') +
+    '</div>';
+}
+// Big segment clock state (pure-ish; used by Backstage + stage display).
+function xlSegClockState(s, now) {
+  now = now || Date.now();
+  const endsAt = xlSegmentEndsAt(s, now);
+  const sl = (s.slides || [])[s.currentSlideIndex || 0];
+  const hc = s.hostControls || {};
+  if (!sl) return { text: '--:--', cls: 'idle', sub: 'NO SEGMENT' };
+  if (!endsAt) {
+    const rec = (s.segmentLog || {})[sl.id];
+    const since = rec && rec.startedAt && !rec.endedAt ? now - rec.startedAt : 0;
+    return { text: xlClock(since), cls: 'open', sub: 'OPEN SEGMENT · ELAPSED' };
+  }
+  const left = endsAt - now;
+  const mode = xlStrictMode(s);
+  if (left > 0) return { text: xlClock(left), cls: left <= 10000 ? 'hot' : (left <= 30000 ? 'warn' : 'ok'), sub: hc.hold ? 'HOLDING — AUTO-ADVANCE OFF' : (mode === 'auto' ? 'AUTO-ADVANCES AT ZERO' : (mode === 'alert' ? 'LOCKS AT ZERO' : 'TIME LIMIT')) };
+  return { text: xlClock(-left, true), cls: 'over', sub: hc.hold ? 'HOLDING — OVER TIME' : (mode === 'auto' ? 'TIME’S UP — ADVANCING' : 'OVER TIME') };
+}
+window.xlSegClockState = xlSegClockState;
+function xlBackstageInner(s, controls) {
+  const now = Date.now();
+  const idx = s.currentSlideIndex || 0;
+  const sl = (s.slides || [])[idx];
+  const next = (s.slides || [])[idx + 1];
+  const ros = xlRunOfShow(s, now);
+  const clock = xlSegClockState(s, now);
+  const hc = s.hostControls || {};
+  const mode = xlStrictMode(s);
+  const respCount = sl ? Object.keys(sl.responses || {}).length : 0;
+  const joined = (s.liveParticipants || []).length;
+  const drift = ros.driftMs;
+  const driftTxt = !s.liveStartedAt ? '' : (Math.abs(drift) < 5000 ? 'ON TIME' : (drift > 0 ? 'BEHIND ' + xlClock(drift) : 'AHEAD ' + xlClock(-drift)));
+  const share = s.screenShare && s.screenShare.active ? s.screenShare : null;
+  const wall = new Date(now);
+  const wallTxt = wall.getHours() % 12 === 0 ? 12 : wall.getHours() % 12;
+  const head =
+    '<div class="xl-bs-top">' +
+      '<span class="xl-onair">● ON AIR</span>' +
+      '<b class="xl-bs-title">' + esc(s.title || 'Live Session') + '</b>' +
+      '<span class="xl-bs-chip">' + (XL_STRICT_MODES.find(function (m) { return m[0] === mode; }) || XL_STRICT_MODES[1])[1] + '</span>' +
+      (share ? '<span class="xl-bs-chip live">🖥 SHARING · ' + esc(share.provider) + '</span>' : '') +
+      '<span style="flex:1"></span>' +
+      '<span class="xl-bs-stat"><i>WALL</i><b data-xl-bs="wall">' + wallTxt + ':' + String(wall.getMinutes()).padStart(2, '0') + ':' + String(wall.getSeconds()).padStart(2, '0') + '</b></span>' +
+      '<span class="xl-bs-stat"><i>SHOW</i><b data-xl-bs="elapsed">' + xlClock(ros.elapsedMs) + '</b><em>/ ' + xlClock(ros.totalPlannedMs) + '</em></span>' +
+      (driftTxt ? '<span class="xl-bs-stat ' + (drift > 5000 ? 'bad' : (drift < -5000 ? 'good' : '')) + '"><i>PACE</i><b data-xl-bs="drift">' + driftTxt + '</b></span>' : '') +
+      '<span class="xl-bs-stat"><i>JOINED</i><b>' + joined + '</b></span>' +
+    '</div>' + xlBoothHtml(s);
+  const bigClock =
+    '<div class="xl-bs-clock ' + clock.cls + (hc.hold ? ' hold' : '') + '">' +
+      '<div class="xl-bs-k">SEGMENT ' + (sl ? (idx + 1) + ' / ' + s.slides.length : '') + '</div>' +
+      '<div class="xl-bs-digits" data-xl-bs="seg">' + clock.text + '</div>' +
+      '<div class="xl-bs-sub" data-xl-bs="segsub">' + clock.sub + '</div>' +
+      (controls && sl && sl.type === 'timer' && sl.seconds > 0 && !(s.showTimer && s.showTimer.slideId === sl.id && !s.showTimer.stoppedAt)
+        ? '<button class="bigbtn gold" style="margin-top:10px" onclick="xlShowTimerStart(' + (sl.seconds | 0) + ',{slideId:\'' + esc(sl.id) + '\',label:\'' + esc(String(sl.title || 'Timer').replace(/'/g, '')) + '\'})">▶ START ' + xlClock(sl.seconds * 1000) + '</button>' : '') +
+      (sl ? '<div class="xl-bs-resp">' + respCount + ' response' + (respCount === 1 ? '' : 's') + (sl.revealed ? ' · revealed' : '') + (hc.paused ? ' · PAUSED' : '') + (hc.responsesLocked ? ' · LOCKED' : '') + '</div>' : '') +
+    '</div>';
+  const notes = '<div class="xl-bs-notes"><div class="xl-bs-k">🗒 SPEAKER NOTES</div>' +
+    (sl && sl.notes ? '<div class="xl-bs-notes-t">' + esc(sl.notes).replace(/\n/g, '<br>') + '</div>' : '<div class="xl-bs-notes-t dim">No notes for this segment. Add them in the activity editor.</div>') + '</div>';
+  const rail = '<div class="xl-bs-ros"><div class="xl-bs-k">RUN OF SHOW</div>' + ros.rows.map(function (r) {
+    const d = r.plannedMs ? (r.state === 'next' ? '' : xlClock(r.deltaMs, true)) : '';
+    const dcls = !r.plannedMs || r.state === 'next' ? '' : (r.deltaMs > 5000 ? 'bad' : (r.deltaMs < -5000 ? 'good' : ''));
+    return '<div class="xl-bs-row ' + r.state + '"' + (controls ? ' onclick="liveJumpToSlide(' + r.i + ')"' : '') + '>' +
+      '<span class="n">' + (r.i + 1) + '</span><span class="ic">' + r.icon + '</span>' +
+      '<span class="tt">' + esc(r.title) + '</span>' +
+      '<span class="at">' + (s.liveStartedAt ? xlClock(r.plannedStartMs) : '') + '</span>' +
+      '<span class="pl">' + (r.plannedMs ? xlClock(r.plannedMs) : 'open') + '</span>' +
+      '<span class="ac">' + (r.spentMs ? xlClock(r.spentMs) : '') + '</span>' +
+      '<span class="dl ' + dcls + '">' + d + '</span></div>';
+  }).join('') + '</div>';
+  const ctl = !controls ? '' :
+    '<div class="xl-bs-ctl">' +
+      '<button class="bigbtn ghost" ' + (idx <= 0 ? 'disabled style="opacity:.35"' : '') + ' onclick="liveMoveCurrentSlide(-1)">⏮ PREV</button>' +
+      '<button class="bigbtn gold" ' + (!next ? 'disabled style="opacity:.35"' : '') + ' onclick="liveMoveCurrentSlide(1)">NEXT ⏭</button>' +
+      '<button class="bigbtn ' + (hc.hold ? 'red' : 'ghost') + '" onclick="xlToggleHold()">' + (hc.hold ? '▶ RELEASE HOLD' : '✋ HOLD') + '</button>' +
+      '<button class="bigbtn ghost" onclick="xlShowTimerAdd(30)">+30s</button>' +
+      '<button class="bigbtn ghost" onclick="xlShowTimerStop()">⏹ STOP CLOCK</button>' +
+      (sl && pflxSlideHasResults(sl, slideTypeMeta(sl.type)) && !sl.revealed ? '<button class="bigbtn gold" onclick="liveRevealSlide()">✨ REVEAL</button>' : '') +
+      '<button class="bigbtn ' + (hc.paused ? 'red' : 'ghost') + '" onclick="liveToggleControl(\'paused\')">' + (hc.paused ? '▶ RESUME' : '⏸ PAUSE') + '</button>' +
+      '<button class="bigbtn ' + (hc.responsesLocked ? 'red' : 'ghost') + '" onclick="liveToggleControl(\'responsesLocked\')">' + (hc.responsesLocked ? '🔓 UNLOCK' : '🔒 LOCK') + '</button>' +
+      '<button class="bigbtn green" onclick="xlPush()">📣 PUSH TO PLAYERS</button>' +
+      (share && share.hostId === ((L.me && L.me.id) || '')
+        ? '<button class="bigbtn red" onclick="xlShareStop()">⏹ STOP SHARING</button>'
+        : '<button class="bigbtn ghost" onclick="xlShareStart()">🖥 SHARE SCREEN</button>') +
+    '</div>' +
+    '<div class="xl-bs-ctl2">' +
+      '<span class="xl-bs-k">AT ZERO</span>' + XL_STRICT_MODES.map(function (m) {
+        return '<button class="xl-seg-opt' + (mode === m[0] ? ' on' : '') + '" title="' + esc(m[2]) + '" onclick="xlSetStrictMode(\'' + m[0] + '\')">' + m[1] + '</button>';
+      }).join('') +
+      '<label class="xl-bs-chk"><input type="checkbox" ' + (s.pullOnAdvance ? 'checked' : '') + ' onchange="xlSetPullOnAdvance(this.checked)"> pull players in on every move</label>' +
+      '<span style="flex:1"></span>' +
+      '<button class="bigbtn ghost xl-sm" onclick="projOpen()">📽 PROJECT</button>' +
+      '<button class="bigbtn ghost xl-sm" onclick="xlPopOutStage()">⧉ POP-OUT STAGE DISPLAY</button>' +
+      '<button class="bigbtn ghost xl-sm" onclick="xlCloseBackstage()">🎛 RUN PANEL</button>' +
+      '<button class="bigbtn red xl-sm" onclick="liveEndSessionPrompt()">🏁 END</button>' +
+    '</div>';
+  const shareBox = share ? xlShareHostBoxHtml(s) : '';
+  return '<div class="xl-bs' + (clock.cls === 'over' ? ' over' : '') + '">' + head +
+    '<div class="xl-bs-grid">' +
+      '<div class="xl-bs-col">' + bigClock + (controls && typeof xlFxPadHtml === 'function' ? '<div class="xl-bs-fx"><div class="xl-bs-k">SHOW FX</div>' + xlFxPadHtml() + '</div>' : '') + '</div>' +
+      '<div class="xl-bs-col wide">' + xlSlidePreviewHtml(sl, 'NOW', 'now') + shareBox + notes + '</div>' +
+      '<div class="xl-bs-col">' + xlSlidePreviewHtml(next, 'UP NEXT', 'next') + rail + '</div>' +
+    '</div>' + ctl + '</div>';
+}
+function rBackstage() {
+  const s = xlRunningSession();
+  if (!s || s.status !== 'active') { L.screen = 'live'; return null; }
+  xlEnsureBackstageTicker();
+  return xlBackstageInner(s, true);
+}
+window.rBackstage = rBackstage;
+function rStageDisplay() {
+  const s = (L.sessions || []).find(function (x) { return x.id === L.stageMode; });
+  xlEnsureBackstageTicker();
+  if (!s) return '<div class="xl-bs"><div class="xl-bs-top"><b class="xl-bs-title">Stage display</b></div><div class="xl-hint" style="padding:40px">Waiting for the session…</div></div>';
+  if (s.status !== 'active') return '<div class="xl-bs"><div class="xl-bs-top"><b class="xl-bs-title">' + esc(s.title || 'Session') + '</b></div><div class="xl-hint" style="padding:40px;font-size:18px">' + (s.status === 'ended' ? '🏁 Show ended' : 'Not live yet') + '</div></div>';
+  return xlBackstageInner(s, false);
+}
+window.rStageDisplay = rStageDisplay;
+// Cheap 1s refresh of the clocks without a full render.
+let xlBsIv = null;
+function xlEnsureBackstageTicker() {
+  if (xlBsIv) return;
+  xlBsIv = setInterval(function () {
+    if (L.screen !== 'backstage' && !L.stageMode) { clearInterval(xlBsIv); xlBsIv = null; return; }
+    const s = L.stageMode ? (L.sessions || []).find(function (x) { return x.id === L.stageMode; }) : xlRunningSession();
+    if (!s || s.status !== 'active') return;
+    const now = Date.now();
+    const c = xlSegClockState(s, now);
+    const ros = xlRunOfShow(s, now);
+    const set = function (k, v) { const el = document.querySelector('[data-xl-bs="' + k + '"]'); if (el && el.textContent !== v) el.textContent = v; };
+    set('seg', c.text); set('segsub', c.sub); set('elapsed', xlClock(ros.elapsedMs));
+    if (XL_RTC.role === 'host' && s.screenShare && s.screenShare.provider === 'p2p') { const n = Object.keys(XL_RTC.peers).length; set('peers', n + ' player' + (n === 1 ? '' : 's') + ' connected'); }
+    const w = new Date(now); set('wall', (w.getHours() % 12 || 12) + ':' + String(w.getMinutes()).padStart(2, '0') + ':' + String(w.getSeconds()).padStart(2, '0'));
+    const box = document.querySelector('.xl-bs-clock');
+    if (box) { ['ok', 'warn', 'hot', 'over', 'open', 'idle'].forEach(function (k) { box.classList.toggle(k, k === c.cls); }); }
+    const root = document.querySelector('.xl-bs'); if (root) root.classList.toggle('over', c.cls === 'over');
+    // cross into a new state (e.g. over time) -> full refresh once
+    if (L.xlBsLastCls !== c.cls) { L.xlBsLastCls = c.cls; if (c.cls === 'over') render(); }
+  }, 1000);
+}
+
+// ── session builder card ──
+function xlProductionCardHtml(s) {
+  const mode = xlStrictMode(s);
+  const hosts = (L.hostRoster || []).filter(function (h) { return !L.me || h.id !== L.me.id; });
+  const prov = s.shareProvider || 'p2p';
+  return '<div class="card" style="margin-top:14px"><div class="cardT">🎬 Live Production</div>' +
+    '<label>When a segment’s time runs out</label>' +
+    '<div class="xl-seg-row">' + XL_STRICT_MODES.map(function (m) {
+      return '<button type="button" class="xl-seg-opt' + (mode === m[0] ? ' on' : '') + '" onclick="xlSetStrictMode(\'' + m[0] + '\')">' + m[1] + '</button>';
+    }).join('') + '</div>' +
+    '<div class="xl-hint" style="text-align:left;margin-top:4px">' + esc((XL_STRICT_MODES.find(function (m) { return m[0] === mode; }) || [])[2] || '') + ' Give every activity a length in its editor to build the run of show.</div>' +
+    '<label class="xl-bs-chk" style="margin-top:8px"><input type="checkbox" ' + (s.pullOnAdvance ? 'checked' : '') + ' onchange="L.liveEditingSession.pullOnAdvance=this.checked"> Pull joined players onto the live screen every time the show moves</label>' +
+    '<label style="margin-top:10px">Screen share goes out through</label>' +
+    '<div class="xl-seg-row">' + XL_SHARE_PROVIDERS.map(function (p) {
+      return '<button type="button" class="xl-seg-opt' + (prov === p[0] ? ' on' : '') + '" title="' + esc(p[2]) + '" onclick="L.liveEditingSession.shareProvider=\'' + p[0] + '\';render()">' + p[1] + '</button>';
+    }).join('') + '</div>' +
+    '<div class="xl-hint" style="text-align:left;margin-top:4px">' + esc((XL_SHARE_PROVIDERS.find(function (p) { return p[0] === prov; }) || [])[2] || '') + (prov === 'livekit' && !xlLiveKitCfg() ? ' ⚠ Not set up yet.' : '') + '</div>' +
+    '<label style="margin-top:10px">Co-hosts (can run this show with you)</label>' +
+    (hosts.length ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">' + hosts.map(function (h) {
+      return '<label style="display:flex;gap:5px;align-items:center;font-size:12px;text-transform:none;font-family:inherit"><input type="checkbox" style="width:auto" ' + (xlIsCoHost(s, h.id) ? 'checked' : '') +
+        ' onchange="xlToggleCoHost(\'' + esc(h.id) + '\', \'' + esc(String(h.brand || h.name || h.id).replace(/'/g, '')) + '\', this.checked)"/> ' + esc(h.brand || h.name || h.id) + '</label>';
+    }).join('') + '</div>' : '<div class="xl-hint" style="text-align:left">No other host accounts found.</div>') +
+    '<div class="xl-hint" style="text-align:left;margin-top:4px">Every host in scope can already run a live show; co-hosts are shown in the Backstage booth and can run this show even outside their own cohorts.</div>' +
+    '</div>';
+}
+window.xlProductionCardHtml = xlProductionCardHtml;
+
+// ── SCREENSHARE ──
+function xlLiveKitCfg() {
+  const c = L.cfg && L.cfg.livekit;
+  return (c && c.url && c.tokenUrl) ? c : null;
+}
+window.xlLiveKitCfg = xlLiveKitCfg;
+const XL_RTC = { stream: null, peers: {}, channel: null, client: null, viewer: null, sessionId: null, role: null, video: null, lk: null };
+window.XL_RTC = XL_RTC;
+function xlRtcConfig() {
+  const extra = (L.cfg && Array.isArray(L.cfg.iceServers)) ? L.cfg.iceServers : [];
+  return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }].concat(extra) };
+}
+function xlLoadScript(src) {
+  return new Promise(function (res, rej) {
+    const sc = document.createElement('script'); sc.src = src; sc.async = true;
+    sc.onload = res; sc.onerror = rej; document.head.appendChild(sc);
+  });
+}
+async function xlSupa() {
+  if (XL_RTC.client) return XL_RTC.client;
+  if (!(window.supabase && window.supabase.createClient)) await xlLoadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
+  XL_RTC.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  return XL_RTC.client;
+}
+function xlShareChannelName(s) { return 'xlive-share-' + s.id; }
+async function xlShareStart() {
+  const s = xlRunningSession(); if (!s) return;
+  const prov = s.shareProvider || 'p2p';
+  if (prov === 'youtube') {
+    s.screenShare = { active: true, provider: 'youtube', hostId: (L.me && L.me.id) || '', startedAt: Date.now() };
+    xlStampPush(s, '🖥 Screen share');
+    xlTouchHost(s); render(); await saveSession(s);
+    toast(s.youtubeEmbedId ? '📺 Players are pulled onto the YouTube stream — share your screen in OBS' : '📺 Set the YouTube stream in the run panel, then share your screen in OBS');
+    return;
+  }
+  if (prov === 'livekit' && !xlLiveKitCfg()) { toast('LiveKit is not set up — add the server URL and token endpoint in Setup'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { toast('This browser cannot share its screen'); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: true }); }
+  catch (e) { toast(inPlatform ? 'Screen share was blocked (allow it, or open X-Live on its own)' : 'Screen share cancelled'); return; }
+  XL_RTC.stream = stream; XL_RTC.sessionId = s.id; XL_RTC.role = 'host';
+  stream.getVideoTracks().forEach(function (t) { t.onended = function () { xlShareStop(); }; });
+  s.screenShare = { active: true, provider: prov, hostId: (L.me && L.me.id) || '', startedAt: Date.now(), room: xlShareChannelName(s) };
+  xlStampPush(s, '🖥 Screen share');
+  xlTouchHost(s);
+  try {
+    if (prov === 'livekit') await xlLkPublish(s, stream);
+    else await xlP2pHost(s);
+  } catch (e) { console.warn('[xl-share]', e); toast('Screen share could not start: ' + (e && e.message || e)); xlShareCleanup(); return; }
+  render();
+  await saveSession(s);
+  toast('🖥 Sharing your screen with every joined player');
+}
+window.xlShareStart = xlShareStart;
+async function xlShareStop() {
+  const s = xlRunningSession();
+  xlShareCleanup();
+  if (s && s.screenShare) { s.screenShare = Object.assign({}, s.screenShare, { active: false, endedAt: Date.now() }); xlTouchHost(s); render(); await saveSession(s); }
+}
+window.xlShareStop = xlShareStop;
+function xlShareCleanup() {
+  try { if (XL_RTC.stream) XL_RTC.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  Object.keys(XL_RTC.peers).forEach(function (k) { try { XL_RTC.peers[k].close(); } catch (e) {} });
+  XL_RTC.peers = {};
+  try { if (XL_RTC.channel && XL_RTC.client) XL_RTC.client.removeChannel(XL_RTC.channel); } catch (e) {}
+  try { if (XL_RTC.lk) XL_RTC.lk.disconnect(); } catch (e) {}
+  XL_RTC.channel = null; XL_RTC.stream = null; XL_RTC.role = null; XL_RTC.sessionId = null; XL_RTC.lk = null; XL_RTC.video = null;
+}
+window.xlShareCleanup = xlShareCleanup;
+function xlSend(ev, payload) {
+  try { if (XL_RTC.channel) XL_RTC.channel.send({ type: 'broadcast', event: ev, payload: payload }); } catch (e) {}
+}
+// Host: one peer connection per viewer (mesh), signalled over a Supabase
+// realtime broadcast channel. Viewers announce themselves; the host offers.
+async function xlP2pHost(s) {
+  const c = await xlSupa();
+  const ch = c.channel(xlShareChannelName(s), { config: { broadcast: { self: false } } });
+  XL_RTC.channel = ch;
+  ch.on('broadcast', { event: 'viewer-hello' }, function (m) { const v = m.payload || {}; if (v.from) xlP2pOffer(v.from); })
+    .on('broadcast', { event: 'answer' }, async function (m) {
+      const p = m.payload || {}; if (p.to !== 'host') return;
+      const pc = XL_RTC.peers[p.from]; if (!pc) return;
+      try { await pc.setRemoteDescription(p.sdp); } catch (e) {}
+    })
+    .on('broadcast', { event: 'ice' }, async function (m) {
+      const p = m.payload || {}; if (p.to !== 'host') return;
+      const pc = XL_RTC.peers[p.from]; if (!pc || !p.candidate) return;
+      try { await pc.addIceCandidate(p.candidate); } catch (e) {}
+    })
+    .subscribe(function (st) { if (st === 'SUBSCRIBED') xlSend('host-live', { at: Date.now() }); });
+}
+async function xlP2pOffer(viewerId) {
+  if (!XL_RTC.stream) return;
+  if (Object.keys(XL_RTC.peers).length >= 40 && !XL_RTC.peers[viewerId]) return;
+  try { if (XL_RTC.peers[viewerId]) XL_RTC.peers[viewerId].close(); } catch (e) {}
+  const pc = new RTCPeerConnection(xlRtcConfig());
+  XL_RTC.peers[viewerId] = pc;
+  XL_RTC.stream.getTracks().forEach(function (t) { pc.addTrack(t, XL_RTC.stream); });
+  pc.onicecandidate = function (e) { if (e.candidate) xlSend('ice', { from: 'host', to: viewerId, candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate }); };
+  pc.onconnectionstatechange = function () { if (pc.connectionState === 'failed' || pc.connectionState === 'closed') { delete XL_RTC.peers[viewerId]; } };
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  xlSend('offer', { from: 'host', to: viewerId, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+}
+// Viewer: join the channel, say hello, answer the host's offer.
+async function xlP2pView(s) {
+  const myId = (L.me && L.me.id) || ('v' + Math.random().toString(36).slice(2, 8));
+  if (XL_RTC.role === 'viewer' && XL_RTC.sessionId === s.id && XL_RTC.channel) return;
+  xlShareCleanup();
+  XL_RTC.role = 'viewer'; XL_RTC.sessionId = s.id; XL_RTC.viewer = myId; XL_RTC.status = 'connecting';
+  const c = await xlSupa();
+  const ch = c.channel(xlShareChannelName(s), { config: { broadcast: { self: false } } });
+  XL_RTC.channel = ch;
+  const hello = function () { xlSend('viewer-hello', { from: myId }); };
+  ch.on('broadcast', { event: 'host-live' }, hello)
+    .on('broadcast', { event: 'offer' }, async function (m) {
+      const p = m.payload || {}; if (p.to !== myId) return;
+      try { if (XL_RTC.peers.host) XL_RTC.peers.host.close(); } catch (e) {}
+      const pc = new RTCPeerConnection(xlRtcConfig());
+      XL_RTC.peers.host = pc;
+      pc.ontrack = function (e) { XL_RTC.remote = e.streams[0]; XL_RTC.status = 'live'; xlAttachShareVideo(); };
+      pc.onicecandidate = function (e) { if (e.candidate) xlSend('ice', { from: myId, to: 'host', candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate }); };
+      pc.onconnectionstatechange = function () { if (pc.connectionState === 'failed') { XL_RTC.status = 'failed'; xlAttachShareVideo(); } };
+      await pc.setRemoteDescription(p.sdp);
+      const ans = await pc.createAnswer();
+      await pc.setLocalDescription(ans);
+      xlSend('answer', { from: myId, to: 'host', sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+    })
+    .on('broadcast', { event: 'ice' }, async function (m) {
+      const p = m.payload || {}; if (p.to !== myId || !XL_RTC.peers.host || !p.candidate) return;
+      try { await XL_RTC.peers.host.addIceCandidate(p.candidate); } catch (e) {}
+    })
+    .subscribe(function (st) { if (st === 'SUBSCRIBED') hello(); });
+}
+function xlAttachShareVideo() {
+  const v = document.getElementById('xlShareVideo');
+  const st = document.getElementById('xlShareStatus');
+  if (v && XL_RTC.remote && v.srcObject !== XL_RTC.remote) { v.srcObject = XL_RTC.remote; try { const p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+  if (st) st.textContent = XL_RTC.status === 'live' ? '' : (XL_RTC.status === 'failed' ? 'Could not connect to the host’s screen on this network — ask the host to switch to YouTube Live.' : 'Connecting to the host’s screen…');
+}
+window.xlAttachShareVideo = xlAttachShareVideo;
+// LiveKit (optional): host publishes, players subscribe. Token endpoint is
+// the host's own (GET tokenUrl?room=&identity=&publish=1 -> { token }).
+async function xlLkLoad() {
+  if (!window.LivekitClient) await xlLoadScript('https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js');
+  return window.LivekitClient;
+}
+async function xlLkToken(room, identity, publish) {
+  const cfg = xlLiveKitCfg(); if (!cfg) throw new Error('LiveKit not configured');
+  const u = cfg.tokenUrl + (cfg.tokenUrl.indexOf('?') === -1 ? '?' : '&') + 'room=' + encodeURIComponent(room) + '&identity=' + encodeURIComponent(identity) + '&publish=' + (publish ? 1 : 0);
+  const r = await fetch(u); if (!r.ok) throw new Error('token endpoint ' + r.status);
+  const d = await r.json(); return d.token || d.accessToken;
+}
+async function xlLkPublish(s, stream) {
+  const LK = await xlLkLoad();
+  const room = new LK.Room();
+  await room.connect(xlLiveKitCfg().url, await xlLkToken(xlShareChannelName(s), (L.me && L.me.id) || 'host', true));
+  for (const t of stream.getTracks()) await room.localParticipant.publishTrack(t, { source: t.kind === 'video' ? LK.Track.Source.ScreenShare : LK.Track.Source.ScreenShareAudio });
+  XL_RTC.lk = room;
+}
+async function xlLkView(s) {
+  if (XL_RTC.role === 'viewer' && XL_RTC.sessionId === s.id && XL_RTC.lk) return;
+  xlShareCleanup();
+  XL_RTC.role = 'viewer'; XL_RTC.sessionId = s.id; XL_RTC.status = 'connecting';
+  const LK = await xlLkLoad();
+  const room = new LK.Room();
+  XL_RTC.lk = room;
+  room.on(LK.RoomEvent.TrackSubscribed, function (track) {
+    if (track.kind !== 'video' && track.kind !== 'audio') return;
+    XL_RTC.remote = XL_RTC.remote || new MediaStream();
+    XL_RTC.remote.addTrack(track.mediaStreamTrack);
+    XL_RTC.status = 'live'; xlAttachShareVideo();
+  });
+  await room.connect(xlLiveKitCfg().url, await xlLkToken(xlShareChannelName(s), (L.me && L.me.id) || ('v' + Date.now()), false));
+}
+// Player: make sure we are watching (or not) whatever the host shares.
+function xlShareSync(s) {
+  const sh = s && s.screenShare;
+  const want = !!(sh && sh.active && sh.provider !== 'youtube' && !L.isHost);
+  if (!want) { if (XL_RTC.role === 'viewer') xlShareCleanup(); return; }
+  if (XL_RTC.role === 'viewer' && XL_RTC.sessionId === s.id) { xlAttachShareVideo(); return; }
+  const p = sh.provider === 'livekit' ? xlLkView(s) : xlP2pView(s);
+  Promise.resolve(p).catch(function (e) { XL_RTC.status = 'failed'; xlAttachShareVideo(); console.warn('[xl-share] view', e); });
+}
+window.xlShareSync = xlShareSync;
+function xlSharePlayerHtml(s) {
+  const sh = s && s.screenShare;
+  if (!sh || !sh.active) return '';
+  if (sh.provider === 'youtube') {
+    return s.youtubeEmbedId ? '' : '<div class="card xl-share"><div class="xl-onair">● HOST SCREEN</div><div class="xl-hint" style="margin-top:8px">The host is sharing through YouTube Live — the stream appears here in a moment.</div></div>';
+  }
+  return '<div class="card xl-share" style="padding:0;overflow:hidden"><div class="xl-share-h"><span class="xl-onair">● HOST SCREEN</span><span id="xlShareStatus" class="xl-hint"></span></div>' +
+    '<div class="xl-share-v"><video id="xlShareVideo" autoplay playsinline controls></video></div></div>';
+}
+window.xlSharePlayerHtml = xlSharePlayerHtml;
+function xlShareHostBoxHtml(s) {
+  const sh = s.screenShare || {};
+  const mine = sh.hostId === ((L.me && L.me.id) || '');
+  const n = Object.keys(XL_RTC.peers).length;
+  return '<div class="xl-bs-card share"><div class="xl-bs-k">🖥 SCREEN SHARE · ' + esc(sh.provider || 'p2p') + '</div>' +
+    (mine && XL_RTC.stream ? '<video id="xlSharePreview" autoplay muted playsinline></video><div class="xl-hint" data-xl-bs="peers">' + (sh.provider === 'p2p' ? n + ' player' + (n === 1 ? '' : 's') + ' connected' : 'Publishing') + '</div>'
+      : '<div class="xl-hint">' + (sh.provider === 'youtube' ? 'Players see the YouTube stream.' : 'Another host is sharing.') + '</div>') + '</div>';
+}
+function xlAttachSharePreview() {
+  const v = document.getElementById('xlSharePreview');
+  if (v && XL_RTC.stream && v.srcObject !== XL_RTC.stream) v.srcObject = XL_RTC.stream;
+}
+
+// ── player session matching (fixes: case, comma-split, many sessions) ──
+function xlNorm(c) { return String(c == null ? '' : c).trim().toLowerCase(); }
+function xlCohortsOf(entry) {
+  const out = [];
+  if (!entry) return out;
+  [entry.cohort].concat(Array.isArray(entry.cohorts) ? entry.cohorts : []).forEach(function (c) {
+    String(c == null ? '' : c).split(/[,;]/).forEach(function (p) { p = xlNorm(p); if (p && out.indexOf(p) === -1) out.push(p); });
+  });
+  return out;
+}
+window.xlCohortsOf = xlCohortsOf;
+// Pure: does this active session apply to a player in these cohorts?
+function xlSessionForCohorts(s, mine) {
+  if (!s || s.status !== 'active') return false;
+  if (s.allCohorts || !s.cohorts || !s.cohorts.length) return true;
+  const theirs = s.cohorts.map(xlNorm);
+  return (mine || []).some(function (c) { return theirs.indexOf(c) !== -1; });
+}
+window.xlSessionForCohorts = xlSessionForCohorts;
+function nativeSessionsForMe() {
+  const myId = (L.me && L.me.id) || '';
+  const previewingAsHost = L.realIsHost && !L.isHost;
+  const me = L.roster.find(function (r) { return r.id === myId; }) || {};
+  const mine = xlCohortsOf(me);
+  const list = (L.sessions || []).filter(function (s) {
+    if (s.status !== 'active') return false;
+    if (previewingAsHost) {
+      if (s.allCohorts || !s.cohorts || !s.cohorts.length) return true;
+      if (!L.hostCapabilities || !L.hostCapabilities.scopedToCohorts) return true;
+      return pflxSessionInCohortScope(s, L.me && L.me.managedCohorts) || xlIsCoHost(s, myId);
+    }
+    return xlSessionForCohorts(s, mine);
+  });
+  const joined = function (s) { return (s.liveParticipants || []).some(function (p) { return p && p.id === myId; }); };
+  return list.sort(function (a, b) {
+    if (L.pipSession && a.id === L.pipSession) return -1;
+    if (L.pipSession && b.id === L.pipSession) return 1;
+    const ja = joined(a) ? 1 : 0, jb = joined(b) ? 1 : 0;
+    if (ja !== jb) return jb - ja;
+    const la = a.id === L.mySessionId ? 1 : 0, lb = b.id === L.mySessionId ? 1 : 0;
+    if (la !== lb) return lb - la;
+    return (b.liveStartedAt || 0) - (a.liveStartedAt || 0);
+  });
+}
+window.nativeSessionsForMe = nativeSessionsForMe;
+
+// ── PiP mode (X-Bot window inside PFLX) ──
+function rPip() {
+  const s = nativeSessionAppliesToMe();
+  const expand = '<button class="bigbtn gold xl-sm" onclick="xlPipExpand()">⤢ OPEN X-LIVE</button>';
+  if (!s) return '<div class="xl-pip"><div class="xl-pip-h"><span class="xl-onair">● X-LIVE</span><span style="flex:1"></span>' + expand + '</div><div class="card"><div class="xl-hint">No live show right now.</div></div></div>';
+  const myId = (L.me && L.me.id) || '';
+  const joined = (s.liveParticipants || []).some(function (p) { return p && p.id === myId; });
+  if (!joined) {
+    return '<div class="xl-pip"><div class="xl-pip-h"><span class="xl-onair">● LIVE</span><b>' + esc(s.title || 'Live Session') + '</b><span style="flex:1"></span>' + expand + '</div>' +
+      '<div class="card" style="text-align:center"><button class="bigbtn gold" onclick="liveJoinSession(\'' + esc(s.id) + '\')">JOIN THE SHOW</button></div></div>';
+  }
+  return '<div class="xl-pip"><div class="xl-pip-h"><span class="xl-onair">● LIVE</span><b>' + esc(s.title || 'Live Session') + '</b><span style="flex:1"></span>' + expand + '</div>' + rLiveNative() + '</div>';
+}
+window.rPip = rPip;
+function xlPipExpand() {
+  const s = nativeSessionAppliesToMe();
+  xlPostParent({ type: 'pflx_xlive_expand', sessionId: s ? s.id : null });
+}
+window.xlPipExpand = xlPipExpand;
+
+// ── Setup: LiveKit + TURN (host) ──
+function xlLiveKitSetupHtml() {
+  const c = (L.cfg && L.cfg.livekit) || {};
+  return '<div class="card"><div class="cardT">🛰 Screen Share Services</div>' +
+    '<div class="xl-hint" style="text-align:left">Direct sharing works with no setup. For big audiences, connect a LiveKit server: paste its wss:// URL and a token endpoint you control (it must return {"token"} for ?room=&identity=&publish=).</div>' +
+    '<label style="margin-top:8px">LiveKit server URL</label><input id="xlLkUrl" value="' + esc(c.url || '') + '" placeholder="wss://your-project.livekit.cloud"/>' +
+    '<label style="margin-top:8px">Token endpoint</label><input id="xlLkTok" value="' + esc(c.tokenUrl || '') + '" placeholder="https://…/livekit-token"/>' +
+    '<label style="margin-top:8px">Extra TURN server (JSON, optional — helps direct sharing on strict school networks)</label><input id="xlTurn" value="' + esc(L.cfg && L.cfg.iceServers ? JSON.stringify(L.cfg.iceServers) : '') + '" placeholder=\'[{"urls":"turn:…","username":"…","credential":"…"}]\'/>' +
+    '<button class="bigbtn gold" style="margin-top:10px" onclick="xlSaveShareSetup()">SAVE</button></div>';
+}
+window.xlLiveKitSetupHtml = xlLiveKitSetupHtml;
+async function xlSaveShareSetup() {
+  const url = (document.getElementById('xlLkUrl') || {}).value || '';
+  const tok = (document.getElementById('xlLkTok') || {}).value || '';
+  const turnRaw = ((document.getElementById('xlTurn') || {}).value || '').trim();
+  let ice = null;
+  if (turnRaw) { try { ice = JSON.parse(turnRaw); if (!Array.isArray(ice)) throw 0; } catch (e) { toast('TURN must be a JSON list'); return; } }
+  L.cfg.livekit = (url.trim() && tok.trim()) ? { url: url.trim(), tokenUrl: tok.trim() } : null;
+  L.cfg.iceServers = ice;
+  if (typeof saveCfg === 'function') await saveCfg();
+  toast('💾 Screen share services saved');
+  render();
+}
+window.xlSaveShareSetup = xlSaveShareSetup;
+
+// ── boot ──
+function xlProductionBoot() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (p.get('stage')) { L.stageMode = p.get('stage'); L.cfg = L.cfg || null; }
+    if (p.get('pip') === '1') { L.pipMode = true; L.pipSession = p.get('session') || null; L.autoRejoinDone = true; L.screen = 'livenative'; }
+  } catch (e) {}
+  setInterval(function () {
+    try { xlStrictTick(); } catch (e) {}
+    try { if (L.loaded && L.loaded.sessions) xlPlayerAutoPull(); } catch (e) {}
+    try { xlAttachSharePreview(); } catch (e) {}
+  }, 1000);
+  window.addEventListener('beforeunload', function () { try { xlShareCleanup(); } catch (e) {} });
+}
+window.xlProductionBoot = xlProductionBoot;
+// ═══ /PATCH X-LIVE v0.37 ═══
+
 // ── BOOT ──
+xlProductionBoot(); // PATCH X-LIVE v0.37 (reads ?stage= / ?pip=)
 adoptFromParams();
 render();
 loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers(); loadSessions();
@@ -5502,7 +6404,7 @@ setInterval(loadActivity, 60000);
 bcGetLastSeenAt(); // baseline on first-ever load so old broadcast history never replays
 setInterval(loadBroadcasts, 20000); // Patch X-LIVE v0.16 -- Post a Link + QR
 function scheduleSessionsPoll() {
-  const hot = (L.isHost && L.liveRunningSessionId) || (!L.isHost && nativeSessionAppliesToMe());
+  const hot = (L.isHost && L.liveRunningSessionId) || (!L.isHost && nativeSessionAppliesToMe()) || L.stageMode || L.pipMode; // v0.37
   setTimeout(async function () { await loadSessions(); scheduleSessionsPoll(); }, hot ? 5000 : 60000);
 }
 scheduleSessionsPoll(); // C3: 5s while a session is actually live/relevant to this client, else the same 60s cadence as C1

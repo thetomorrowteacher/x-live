@@ -34,7 +34,14 @@ function makeSandbox() {
     'function nativeSessionAppliesToMe() {',
     '\n}',
   );
-  const full = helpers + '\n' + scope + '\n' + applies +
+  // v0.37 -- nativeSessionAppliesToMe delegates to nativeSessionsForMe
+  // (case-insensitive / comma-split cohorts, every applicable session).
+  let v037 = '';
+  if (src.indexOf('function nativeSessionsForMe() {') !== -1) {
+    v037 = extractBetween(src, 'function xlIsCoHost(s, id) {', 'window.xlIsCoHost = xlIsCoHost;\n') + '\n' +
+      extractBetween(src, 'function xlNorm(c) {', 'window.nativeSessionsForMe = nativeSessionsForMe;\n');
+  }
+  const full = helpers + '\n' + scope + '\n' + v037 + '\n' + applies +
     '\nsandbox.pflxResolveDisplayHost = pflxResolveDisplayHost;' +
     '\nsandbox.pflxSyncScreenForRoleChange = pflxSyncScreenForRoleChange;' +
     '\nsandbox.pflxSessionInCohortScope = pflxSessionInCohortScope;' +
