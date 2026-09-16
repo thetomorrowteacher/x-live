@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.37.3, Sept 16 2026 — PATCH X-LIVE v0.37.3: softer hover.
+     Hover now plays pflx-ui/ui_hover_soft.mp3 (blip_018 trimmed to 0.22s,
+     low-passed ~2.8 kHz, soft attack, -12 dB peak) at a lower gain; the old
+     blip_003 was one of the brightest clips in the library (Ennis: "too
+     aggressive").
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.37.2, Sept 16 2026 — PATCH X-LIVE v0.37.2: dashboard audio.
      MUSIC and SFX now default ON for everyone (fresh preference keys, so
      old "off" choices from the players-default-off era are reset once).
@@ -5048,7 +5056,7 @@ const XL_SFX = {
   wrong: 'pflx-library/06_Power_Downs/powerdown_005.mp3',
   blip: 'pflx-library/02_UI_Blips/blip_010.mp3',
   go: 'countdown/count_go.mp3',
-  uiHover: 'pflx-library/02_UI_Blips/blip_003.mp3', // PATCH X-LIVE v0.37.2
+  uiHover: 'pflx-ui/ui_hover_soft.mp3', // PATCH X-LIVE v0.37.3 (was blip_003 -- too harsh)
   uiClick: 'pflx-library/01_UI_Clicks/click_007.mp3'
 };
 const XL_MUSIC = {
@@ -5111,7 +5119,7 @@ function xlUiOnOver(e) {
   if (e.relatedTarget && t.contains(e.relatedTarget)) return;
   xlUiLastHover = t;
   const now = Date.now(); if (now - xlUiLastHoverAt < 70) return;
-  xlUiLastHoverAt = now; xlUiPlay('uiHover', 0.18);
+  xlUiLastHoverAt = now; xlUiPlay('uiHover', 0.35); // v0.37.3: file is already quiet + soft
 }
 function xlUiOnOut(e) { const t = xlUiTarget(e.target); if (t && t === xlUiLastHover && !(e.relatedTarget && t.contains(e.relatedTarget))) xlUiLastHover = null; }
 function xlUiOnDown(e) {
