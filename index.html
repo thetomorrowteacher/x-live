@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.37.2, Sept 16 2026 — PATCH X-LIVE v0.37.2: dashboard audio.
+     MUSIC and SFX now default ON for everyone (fresh preference keys, so
+     old "off" choices from the players-default-off era are reset once).
+     The player dashboard (MY EXO) plays "Glass Interface Drift" (full
+     track, platform public/sounds/pflx-music/). Every button / tab /
+     clickable card gets a soft hover blip (mouse only) and a click tick.
+     Music tries to start straight away (the platform iframe delegates
+     autoplay) and only reports "playing" to the platform once the
+     browser actually plays it.
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.37.1, Sept 16 2026 — PATCH X-LIVE v0.37.1: LiveKit Cloud.
      The token request sends the project's anon headers when the endpoint is
      this Supabase project's livekit-token function (verify_jwt), shows the
@@ -5035,14 +5047,17 @@ const XL_SFX = {
   correct: 'pflx-library/09_Music_Stingers/sting_hit_orbit_arcade.mp3',
   wrong: 'pflx-library/06_Power_Downs/powerdown_005.mp3',
   blip: 'pflx-library/02_UI_Blips/blip_010.mp3',
-  go: 'countdown/count_go.mp3'
+  go: 'countdown/count_go.mp3',
+  uiHover: 'pflx-library/02_UI_Blips/blip_003.mp3', // PATCH X-LIVE v0.37.2
+  uiClick: 'pflx-library/01_UI_Clicks/click_007.mp3'
 };
 const XL_MUSIC = {
   arcade: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_orbit_arcade_134bpm.mp3', vol: 0.32, label: 'Orbit Arcade' },
   rush:   { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_midnight_mission_run_131bpm.mp3', vol: 0.36, label: 'Midnight Mission Run' },
   lobby:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_glass_interface_drift_95bpm.mp3', vol: 0.28, label: 'Glass Interface Drift' },
   boards: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_clocktower_run_132bpm.mp3', vol: 0.3, label: 'Clocktower Run' },
-  think:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_event_horizon_111bpm.mp3', vol: 0.24, label: 'Event Horizon' }
+  think:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_event_horizon_111bpm.mp3', vol: 0.24, label: 'Event Horizon' },
+  dash:   { file: 'pflx-music/glass_interface_drift_full.mp3', vol: 0.3, label: 'Glass Interface Drift' } // PATCH X-LIVE v0.37.2
 };
 const XL_FX_PAD = ['intro', 'drumroll', 'hit', 'boom', 'glitch', 'win', 'fail', 'alarm', 'go'];
 const XL_QUICK_TIMERS = [[10, '10s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m']];
@@ -5051,8 +5066,10 @@ function xlPref(key, dflt) {
   try { const v = localStorage.getItem(key); return v === null ? dflt : v === '1'; } catch (e) { return dflt; }
 }
 function xlSetPref(key, on) { try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {} }
-function xlSfxOn() { return xlPref('xl_sfx_on', true); }
-function xlMusicOn() { return xlPref('xl_music_on', !!L.isHost); }
+// PATCH X-LIVE v0.37.2 -- ON by default for everyone; new keys reset old 'off' prefs once.
+const XL_SFX_PREF = 'xl_sfx_on_v2', XL_MUSIC_PREF = 'xl_music_on_v2';
+function xlSfxOn() { return xlPref(XL_SFX_PREF, true); }
+function xlMusicOn() { return xlPref(XL_MUSIC_PREF, true); }
 function xlPostParent(msg) {
   try { if (inPlatform) window.parent.postMessage(JSON.stringify(msg), '*'); } catch (e) {}
 }
@@ -5068,13 +5085,55 @@ function xlSfx(name, gain) {
   } catch (e) { return null; }
 }
 window.xlSfx = xlSfx;
+// PATCH X-LIVE v0.37.2 -- UI hover / click sounds. One small pool per sound so
+// hovering never refetches; hover is mouse-only and throttled.
+const XL_UI_SEL = 'button, a[href], [onclick], [role="button"], .tab, .xl-audio-btn, select, input[type="checkbox"], input[type="radio"], label.xl-seg-opt';
+const xlUiPool = {};
+function xlUiPlay(name, gain) {
+  if (!xlSfxOn() || typeof Audio === 'undefined') return false;
+  const path = XL_SFX[name]; if (!path) return false;
+  const pool = xlUiPool[name] || (xlUiPool[name] = []);
+  let a = pool.find(x => x.paused || x.ended);
+  if (!a) { if (pool.length >= 4) a = pool[0]; else { a = new Audio(XL_SOUND_ROOT + path); a.preload = 'auto'; pool.push(a); } }
+  try { a.volume = Math.max(0, Math.min(1, gain)); a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(function () {}); } catch (e) { return false; }
+  return true;
+}
+function xlUiTarget(el) {
+  if (!el || !el.closest) return null;
+  const t = el.closest(XL_UI_SEL);
+  if (!t || t.disabled || t.getAttribute('aria-disabled') === 'true' || t.hasAttribute('data-nosfx')) return null;
+  return t;
+}
+let xlUiLastHover = null, xlUiLastHoverAt = 0, xlUiLastClickAt = 0;
+function xlUiOnOver(e) {
+  if (e.pointerType && e.pointerType !== 'mouse') return;
+  const t = xlUiTarget(e.target); if (!t || t === xlUiLastHover) return;
+  if (e.relatedTarget && t.contains(e.relatedTarget)) return;
+  xlUiLastHover = t;
+  const now = Date.now(); if (now - xlUiLastHoverAt < 70) return;
+  xlUiLastHoverAt = now; xlUiPlay('uiHover', 0.18);
+}
+function xlUiOnOut(e) { const t = xlUiTarget(e.target); if (t && t === xlUiLastHover && !(e.relatedTarget && t.contains(e.relatedTarget))) xlUiLastHover = null; }
+function xlUiOnDown(e) {
+  if (e.button != null && e.button !== 0) return;
+  const t = xlUiTarget(e.target); if (!t) return;
+  const now = Date.now(); if (now - xlUiLastClickAt < 60) return;
+  xlUiLastClickAt = now; xlUiPlay('uiClick', 0.45);
+}
+function xlUiSfxInstall() {
+  if (window.__xlUiSfx) return; window.__xlUiSfx = true;
+  document.addEventListener('pointerover', xlUiOnOver, { passive: true });
+  document.addEventListener('pointerout', xlUiOnOut, { passive: true });
+  document.addEventListener('pointerdown', xlUiOnDown, { passive: true });
+}
+window.xlUiPlay = xlUiPlay; window.xlUiSfxInstall = xlUiSfxInstall;
 
 // ── music: one looping <audio>, cross-faded between zones ──
 const xlMusic = {
   el: null, zone: null, ducks: {}, visible: true, playing: false, fadeIv: null,
   target() {
     const z = XL_MUSIC[this.zone];
-    if (!z || !xlMusicOn() || !this.visible || !xlAudioUnlocked) return 0;
+    if (!z || !xlMusicOn() || !this.visible) return 0; // v0.37.2: autoplay is attempted; _play handles a block
     return z.vol * (Object.keys(this.ducks).length ? 0.2 : 1);
   },
   fadeTo(vol, ms, done) {
@@ -5087,6 +5146,15 @@ const xlMusic = {
       try { el.volume = Math.max(0, Math.min(1, from + (vol - from) * (i / steps))); } catch (e) {}
       if (i >= steps) { clearInterval(this.fadeIv); this.fadeIv = null; if (done) done(); }
     }, 40);
+  },
+  // PATCH X-LIVE v0.37.2 -- start playback; only claim "playing" once it really plays.
+  _play() {
+    const el = this.el; if (!el) return;
+    let p; try { p = el.play(); } catch (e) { p = null; }
+    if (p && p.then) {
+      p.then(() => { xlAudioUnlocked = true; this.blocked = false; if (this.target() > 0) this.setPlaying(true); },
+             () => { this.blocked = true; this.setPlaying(false); });
+    } else { this.setPlaying(true); }
   },
   setPlaying(on) {
     if (on === this.playing) return;
@@ -5109,23 +5177,21 @@ const xlMusic = {
         this.el.setAttribute('data-src', src);
         this.el.src = src;
         this.el.volume = 0;
-        const p = this.el.play(); if (p && p.catch) p.catch(() => {});
+        this._play();
         this.fadeTo(this.target(), 700);
-        this.setPlaying(true);
       };
       if (!this.el.paused && this.el.volume > 0.01) this.fadeTo(0, 350, swap); else swap();
       return;
     }
-    if (this.el.paused) { const p = this.el.play(); if (p && p.catch) p.catch(() => {}); }
+    if (this.el.paused) this._play(); else this.setPlaying(true);
     this.fadeTo(want, 500);
-    this.setPlaying(true);
   },
   set(zone) { if (zone === this.zone) return; this.zone = zone; this.apply(); },
   duck(reason, on) { if (on) this.ducks[reason] = 1; else delete this.ducks[reason]; this.apply(); }
 };
 window.xlMusic = xlMusic;
-function xlToggleMusic() { xlSetPref('xl_music_on', !xlMusicOn()); xlAudioUnlocked = true; xlMusic.apply(); render(); }
-function xlToggleSfx() { const on = !xlSfxOn(); xlSetPref('xl_sfx_on', on); if (on) xlSfx('blip'); render(); }
+function xlToggleMusic() { xlSetPref(XL_MUSIC_PREF, !xlMusicOn()); xlAudioUnlocked = true; xlMusic.apply(); render(); }
+function xlToggleSfx() { const on = !xlSfxOn(); xlSetPref(XL_SFX_PREF, on); if (on) xlSfx('blip'); render(); }
 window.xlToggleMusic = xlToggleMusic; window.xlToggleSfx = xlToggleSfx;
 function xlAudioButtonsHtml() {
   const m = xlMusicOn(), s = xlSfxOn();
@@ -5150,6 +5216,9 @@ function xlMusicZone() {
   if (s && s.status === 'active') return xlSessionZone(s, Date.now());
   if (L.screen === 'play') return 'arcade';
   if (L.screen === 'boards') return 'boards';
+  // PATCH X-LIVE v0.37.2 -- player dashboard (MY EXO). render() shows it for any
+  // screen that is not another player tab, so mirror that here.
+  if (!L.isHost && ['theater', 'boards', 'shop', 'play', 'livenative', 'liveagenda', 'backstage'].indexOf(L.screen) === -1) return 'dash';
   return null;
 }
 function xlSessionZone(s, now) {
@@ -5576,6 +5645,7 @@ function xlAudioBoot() {
       onDuck: on => xlMusic.duck('countdown', on)
     });
   }
+  xlUiSfxInstall(); // PATCH X-LIVE v0.37.2
   const unlock = () => { if (xlAudioUnlocked) return; xlAudioUnlocked = true; if (window.PflxFx) window.PflxFx.preload(); xlMusic.apply(); };
   ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, unlock, { passive: true }));
   document.addEventListener('visibilitychange', () => { xlMusic.visible = !document.hidden && xlMusic._inView !== false; xlMusic.apply(); });
