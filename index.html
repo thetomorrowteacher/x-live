@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.37.4, Sept 16 2026 — PATCH X-LIVE v0.37.4: projector paging.
+     Every projector page has big side arrows, swipe + trackpad side-scroll
+     and ←/→ keys. The rotation deck is This Week / Team Battle / The Teams
+     (when teams exist) / Class Goal, with page dots, PREV/NEXT and a
+     pause/play toggle; manual paging restarts the 12 s rotation. PRESENT
+     (teams) opens the deck on The Teams, paused. On the wheel and timer
+     screens the arrows step into the deck. Controls sit bottom-centre so
+     PFLX's X-Bot bubble no longer covers them.
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.37.3, Sept 16 2026 — PATCH X-LIVE v0.37.3: softer hover.
      Hover now plays pflx-ui/ui_hover_soft.mp3 (blip_018 trimmed to 0.22s,
      low-passed ~2.8 kHz, soft attack, -12 dB peak) at a lower gain; the old
@@ -414,6 +425,21 @@
   @keyframes xlBanner { 0% { opacity:0; transform:translate(-50%,-50%) scale(0.4); } 14% { opacity:1; transform:translate(-50%,-50%) scale(1.08); } 24% { transform:translate(-50%,-50%) scale(1); } 82% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-62%) scale(1); } }
   .xl-theater-live { border-color:rgba(255,77,109,0.4); background:rgba(255,77,109,0.06); margin-bottom:10px; }
   @media (prefers-reduced-motion:reduce) { .xl-strip::after, .xl-onair, .xl-ring.hot .xl-ring-t, .xl-slide-in { animation:none !important; } }
+  /* PATCH X-LIVE v0.37.4 -- projector paging */
+  .xl-pj-arrow { position:fixed; top:50%; transform:translateY(-50%); z-index:5; width:64px; height:120px; border-radius:18px; border:1px solid rgba(255,255,255,0.12);
+    background:rgba(8,12,30,0.35); color:#9fdcff; font-size:54px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .15s, color .15s, transform .15s; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
+  .xl-pj-arrow:hover { background:rgba(57,192,255,0.18); color:#fff; transform:translateY(-50%) scale(1.06); }
+  .xl-pj-arrow.l { left:18px; } .xl-pj-arrow.r { right:18px; }
+  .xl-pj-bar { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); display:flex; gap:10px; align-items:center; z-index:5; }
+  .xl-pj-dots { display:flex; gap:8px; padding:0 6px; }
+  .xl-pj-dot { width:10px; height:10px; border-radius:50%; border:none; padding:0; background:rgba(255,255,255,0.22); cursor:pointer; transition:width .2s; }
+  .xl-pj-dot.on { background:#39c0ff; box-shadow:0 0 10px rgba(57,192,255,0.8); width:26px; border-radius:6px; }
+  .xl-pj-page { display:flex; flex-direction:column; align-items:center; max-width:100%; }
+  .xl-pj-page.in-r { animation:xlPjInR .38s cubic-bezier(.2,.8,.2,1); } .xl-pj-page.in-l { animation:xlPjInL .38s cubic-bezier(.2,.8,.2,1); }
+  @keyframes xlPjInR { from { opacity:0; transform:translateX(60px); } to { opacity:1; transform:none; } }
+  @keyframes xlPjInL { from { opacity:0; transform:translateX(-60px); } to { opacity:1; transform:none; } }
+  @media (max-width:700px) { .xl-pj-arrow { width:44px; height:84px; font-size:38px; } .xl-pj-arrow.l { left:6px; } .xl-pj-arrow.r { right:6px; } .xl-pj-bar .bigbtn { padding:8px 10px; } }
   /* PATCH X-LIVE v0.37 -- live production mode */
   .xl-seg-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
   .xl-seg-opt { cursor:pointer; padding:7px 11px; border-radius:9px; font-family:'Audiowide'; font-size:9.5px; letter-spacing:0.06em; color:#aeb6d8;
@@ -4059,9 +4085,13 @@ function rTeams() {
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">' + cols + '</div>' +
     '<div style="font-size:10px;color:#5c6488;margin-top:12px">Tap a player to move them to the next team. Weekly XC per team feeds the TEAMS leaderboard and team games.</div>';
 }
+// PATCH X-LIVE v0.37.4 -- PRESENT opens the projector deck on The Teams (paused)
 function projTeams() {
   const names = (L.cfg.teams && L.cfg.teams.names) || []; if (!names.length) return;
-  const proj = document.getElementById('proj'); proj.classList.add('on');
+  projOpen('roster', { autoplay: false });
+}
+function projTeamsInner() {
+  const names = (L.cfg.teams && L.cfg.teams.names) || [];
   const cols = names.map(nm => {
     const members = classRoster().filter(p => L.cfg.teams.assign[p.id] === nm);
     const col = teamColor(nm);
@@ -4072,10 +4102,8 @@ function projTeams() {
         '<div style="font-family:Audiowide;font-size:clamp(9px,1.1vw,12px);font-weight:800;color:#fff">' + esc(p.brand) + '</div></div>').join('') +
       '</div>';
   }).join('');
-  proj.innerHTML = '<div class="projTitle">👥 THE TEAMS</div>' +
-    '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:94vw;max-height:70vh;overflow-y:auto">' + cols + '</div>' +
-    '<div style="position:fixed;bottom:18px;right:20px"><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
-    '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" style="height:34px;width:auto;opacity:0.9"/></div>';
+  return '<div class="projTitle">👥 THE TEAMS</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:84vw;max-height:66vh;overflow-y:auto">' + cols + '</div>';
 }
 
 // ── BOARDS ──
@@ -4396,12 +4424,14 @@ function wheelOpen() {
   const proj = document.getElementById('proj');
   proj.classList.add('on');
   clearInterval(projIv); projIv = null; L.projTimerOn = null; // PATCH X-LIVE v0.35
+  L.projDeck = false; xlProjGestures(proj); // v0.37.4
   const seg = 360 / wheelPlayers.length;
   const colors = wheelPlayers.map((p, i) => TEAM_COLORS[i % TEAM_COLORS.length] + ' ' + (i * seg) + 'deg ' + ((i + 1) * seg) + 'deg').join(',');
   proj.innerHTML = '<div class="projTitle">WHO\'S NEXT?</div>' +
     '<div id="wheelWrap"><div id="wheelPin">🔻</div><div id="wheel" style="background:conic-gradient(' + colors + ')"></div></div>' +
     '<div id="wheelName" style="font-family:Audiowide;font-weight:900;font-size:30px;color:#ffd166;margin-top:22px;min-height:40px"></div>' +
-    '<div style="display:flex;gap:10px;margin-top:16px"><button class="bigbtn gold" onclick="wheelSpin()">SPIN</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>';
+    '<div style="display:flex;gap:10px;margin-top:16px"><button class="bigbtn gold" onclick="wheelSpin()">SPIN</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
+    xlProjArrowsHtml(); // v0.37.4
 }
 function wheelSpin() {
   const n = wheelPlayers.length; if (!n) return;
@@ -4445,13 +4475,29 @@ function timerStart(mins) {
 }
 // projector rotation
 let projIv = null, projIdx = 0;
-function projOpen() {
+function xlProjViews() {
+  const v = ['weekly', 'teams'];
+  if (L.cfg && L.cfg.teams && (L.cfg.teams.names || []).length) v.push('roster');
+  v.push('goal');
+  return v;
+}
+function projOpen(start, opts) {
   const proj = document.getElementById('proj'); proj.classList.add('on');
-  const views = ['weekly', 'teams', 'goal'];
-  function draw() {
-    const v = views[projIdx % views.length];
+  opts = opts || {};
+  let views = xlProjViews();
+  if (typeof start === 'string' && views.indexOf(start) >= 0) projIdx = views.indexOf(start);
+  else if (typeof start === 'number') projIdx = start;
+  L.projDeck = true;
+  L.projAuto = opts.autoplay !== false;
+  xlProjGestures(proj);
+  function draw(dir) {
+    views = xlProjViews();
+    projIdx = ((projIdx % views.length) + views.length) % views.length;
+    const v = views[projIdx];
     let inner = '';
-    if (v === 'goal') {
+    if (v === 'roster') {
+      inner = projTeamsInner();
+    } else if (v === 'goal') {
       const R = classRoster(); const goal = L.cfg.goal; const w = weekStart(0);
       const earned = R.reduce((s, p) => s + sumActivity(p.id, w), 0);
       const pct = Math.min(100, Math.round(earned / Math.max(1, goal.target) * 100));
@@ -4464,16 +4510,88 @@ function projOpen() {
           : data.map((r, i) => '<div class="lbrow ' + (i === 0 ? 'top1' : '') + '" style="padding:12px 16px"><div class="pos" style="font-size:18px">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1) + '</div><div class="av">' + exoAvatarHTML(r.p.id, 40, r.p.brand, r.p.image) + '</div><div class="nm" style="font-size:15px">' + esc(r.p.brand) + '</div><div class="val" style="font-size:18px">' + r.v.toLocaleString() + '</div></div>').join('')) +
         '</div>';
     }
-    proj.innerHTML = inner + '<div style="position:fixed;bottom:18px;right:20px;display:flex;gap:8px"><button class="bigbtn ghost" onclick="projIdx++;projDrawNow()">NEXT ▸</button><button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
+    const dots = views.map(function (x, i) { return '<button class="xl-pj-dot' + (i === projIdx ? ' on' : '') + '" aria-label="Page ' + (i + 1) + '" onclick="projGo(' + i + ')"></button>'; }).join('');
+    proj.innerHTML = '<div class="xl-pj-page' + (dir > 0 ? ' in-r' : dir < 0 ? ' in-l' : '') + '">' + inner + '</div>' + xlProjArrowsHtml() +
+      '<div class="xl-pj-bar"><button class="bigbtn ghost" onclick="projNav(-1)">◂ PREV</button><div class="xl-pj-dots">' + dots + '</div>' +
+      '<button class="bigbtn ghost" onclick="projNav(1)">NEXT ▸</button>' +
+      '<button class="bigbtn ghost" title="' + (L.projAuto ? 'Pause auto-advance' : 'Auto-advance every 12 s') + '" onclick="projToggleAuto()">' + (L.projAuto ? '⏸' : '▶') + '</button>' +
+      '<button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
       '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" style="height:34px;width:auto;opacity:0.9"/></div>';
   }
   window.projDrawNow = draw;
   L.projTimerOn = null; // PATCH X-LIVE v0.35
+  window.xlProjDeckDraw = draw;
   draw();
-  clearInterval(projIv); projIv = setInterval(() => { projIdx++; draw(); }, 12000);
+  xlProjRestart();
   if (typeof xlMusic !== 'undefined') xlMusic.set(xlMusicZone());
 }
+// PATCH X-LIVE v0.37.4 -- paging shared by every projector page
+function xlProjArrowsHtml() {
+  return '<button class="xl-pj-arrow l" aria-label="Previous page" onclick="projNav(-1)">‹</button><button class="xl-pj-arrow r" aria-label="Next page" onclick="projNav(1)">›</button>';
+}
+function xlProjRestart() {
+  clearInterval(projIv); projIv = null;
+  if (L.projDeck && L.projAuto) projIv = setInterval(() => { projIdx++; if (window.xlProjDeckDraw) window.xlProjDeckDraw(1); }, 12000);
+}
+function projNav(d) {
+  const proj = document.getElementById('proj');
+  if (!proj || !proj.classList.contains('on')) return;
+  const dir = d < 0 ? -1 : 1;
+  if (typeof xlSfx === 'function') xlSfx('next', 0.5);
+  if (!L.projDeck) {
+    // wheel / timer screens: step into the deck (a running timer keeps running)
+    const n = xlProjViews().length;
+    projIdx = dir > 0 ? 0 : n - 1;
+    projOpen(projIdx, { autoplay: false });
+    const page = proj.querySelector('.xl-pj-page'); if (page) page.classList.add(dir > 0 ? 'in-r' : 'in-l');
+    return;
+  }
+  projIdx += dir;
+  if (window.xlProjDeckDraw) window.xlProjDeckDraw(dir);
+  xlProjRestart();
+}
+function projGo(i) {
+  if (!L.projDeck) return;
+  const d = i < projIdx ? -1 : 1;
+  projIdx = i;
+  if (window.xlProjDeckDraw) window.xlProjDeckDraw(d);
+  xlProjRestart();
+}
+function projToggleAuto() {
+  L.projAuto = !L.projAuto;
+  if (window.xlProjDeckDraw) window.xlProjDeckDraw(0);
+  xlProjRestart();
+}
+window.projNav = projNav; window.projGo = projGo; window.projToggleAuto = projToggleAuto; window.xlProjArrowsHtml = xlProjArrowsHtml;
+function xlProjGestures(proj) {
+  if (!proj || proj.__xlGestures) return; proj.__xlGestures = true;
+  const on = () => proj.classList.contains('on');
+  let sx = null, sy = 0, st = 0;
+  proj.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('button, input, select, textarea, a')) { sx = null; return; } sx = e.clientX; sy = e.clientY; st = Date.now(); }, { passive: true });
+  proj.addEventListener('pointerup', e => {
+    if (sx === null || !on()) { sx = null; return; }
+    const dx = e.clientX - sx, dy = e.clientY - sy; sx = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3 && Date.now() - st < 900) projNav(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  proj.addEventListener('pointercancel', () => { sx = null; }, { passive: true });
+  let acc = 0, lock = 0;
+  proj.addEventListener('wheel', e => {
+    if (!on() || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    if (Date.now() < lock) return;
+    acc += e.deltaX;
+    if (Math.abs(acc) > 70) { projNav(acc > 0 ? 1 : -1); acc = 0; lock = Date.now() + 650; }
+  }, { passive: false });
+  document.addEventListener('keydown', e => {
+    if (!on()) return;
+    const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); projNav(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); projNav(-1); }
+  });
+}
+window.xlProjGestures = xlProjGestures;
 function projClose() {
+  L.projDeck = false;
   clearInterval(projIv); projIv = null; clearInterval(L.timers.main);
   L.projTimerOn = null; // PATCH X-LIVE v0.35
   setTimeout(function () { if (typeof xlMusic !== 'undefined') xlMusic.set(xlMusicZone()); }, 0);
@@ -5211,7 +5329,7 @@ function xlAudioButtonsHtml() {
 function xlMusicZone() {
   const proj = document.getElementById('proj');
   if (proj && proj.classList.contains('on')) {
-    if (typeof projIv !== 'undefined' && projIv) return 'boards';
+    if ((typeof projIv !== 'undefined' && projIv) || L.projDeck) return 'boards'; // v0.37.4: paused deck keeps its music
     if (L.projTimerOn) return 'think';
     return null;
   }
@@ -5426,6 +5544,7 @@ function xlProjectTimer() {
   const proj = document.getElementById('proj');
   proj.classList.add('on');
   clearInterval(projIv); projIv = null;
+  L.projDeck = false; xlProjGestures(proj); // v0.37.4
   L.projTimerOn = 'session';
   proj.innerHTML = xlProjTimerHtml('session', 'SESSION TIMER');
   xlMusic.set(xlMusicZone());
@@ -5437,7 +5556,7 @@ function xlProjTimerHtml(src, title) {
     '<div style="display:flex;gap:10px;margin-top:22px">' +
     (src === 'tool' ? '<button class="bigbtn ghost" onclick="xlToolTimerAdd(30)">+30s</button><button class="bigbtn red" onclick="xlToolTimerStop()">■ STOP</button>'
       : '<button class="bigbtn ghost" onclick="xlShowTimerAdd(30)">+30s</button><button class="bigbtn red" onclick="xlShowTimerStop()">■ STOP</button>') +
-    '<button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' +
+    '<button class="bigbtn ghost" onclick="projClose()">CLOSE</button></div>' + xlProjArrowsHtml() + // v0.37.4
     '<div style="position:fixed;top:20px;left:22px;display:flex;align-items:center"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" style="height:34px;width:auto;opacity:0.9"/></div>';
 }
 function xlToolTimerStart(seconds) {
@@ -5452,6 +5571,7 @@ function xlToolTimerStart(seconds) {
   const proj = document.getElementById('proj');
   proj.classList.add('on');
   clearInterval(projIv); projIv = null;
+  L.projDeck = false; xlProjGestures(proj); // v0.37.4
   L.projTimerOn = 'tool';
   proj.innerHTML = xlProjTimerHtml('tool', 'TIMER');
   xlMusic.set(xlMusicZone());
