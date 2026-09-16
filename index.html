@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.37.1, Sept 16 2026 — PATCH X-LIVE v0.37.1: LiveKit Cloud.
+     The token request sends the project's anon headers when the endpoint is
+     this Supabase project's livekit-token function (verify_jwt), shows the
+     server's error text, a failed share no longer leaves a phantom
+     "sharing" flag on the session, and Setup has a one-tap
+     "Use PFLX Theater" button (wss://pflx-theater-igofuujw.livekit.cloud).
+     ═══════════════════════════════════════════════════════════════════
+-->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.37, Sept 16 2026 — PATCH X-LIVE v0.37: live production mode.
      Strict run-of-show timer (per session: auto-advance / lock + alert /
      manual, HOLD), a BACKSTAGE presenter view (segment clock, wall + show
@@ -6120,13 +6129,14 @@ async function xlShareStart() {
   catch (e) { toast(inPlatform ? 'Screen share was blocked (allow it, or open X-Live on its own)' : 'Screen share cancelled'); return; }
   XL_RTC.stream = stream; XL_RTC.sessionId = s.id; XL_RTC.role = 'host';
   stream.getVideoTracks().forEach(function (t) { t.onended = function () { xlShareStop(); }; });
+  const prevShare = s.screenShare || null, prevPush = s.push || null; // PATCH X-LIVE v0.37.1
   s.screenShare = { active: true, provider: prov, hostId: (L.me && L.me.id) || '', startedAt: Date.now(), room: xlShareChannelName(s) };
   xlStampPush(s, '🖥 Screen share');
   xlTouchHost(s);
   try {
     if (prov === 'livekit') await xlLkPublish(s, stream);
     else await xlP2pHost(s);
-  } catch (e) { console.warn('[xl-share]', e); toast('Screen share could not start: ' + (e && e.message || e)); xlShareCleanup(); return; }
+  } catch (e) { console.warn('[xl-share]', e); toast('Screen share could not start: ' + (e && e.message || e)); xlShareCleanup(); s.screenShare = prevShare; s.push = prevPush; render(); return; }
   render();
   await saveSession(s);
   toast('🖥 Sharing your screen with every joined player');
@@ -6225,11 +6235,22 @@ async function xlLkLoad() {
   if (!window.LivekitClient) await xlLoadScript('https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js');
   return window.LivekitClient;
 }
+// PATCH X-LIVE v0.37.1
+const XL_LK_DEFAULT = { url: 'wss://pflx-theater-igofuujw.livekit.cloud', tokenUrl: SUPABASE_URL + '/functions/v1/livekit-token' };
+window.XL_LK_DEFAULT = XL_LK_DEFAULT;
+function xlLkIsSupabase(u) { return typeof u === 'string' && (u.indexOf(SUPABASE_URL + '/functions/') === 0 || /^https:\/\/[a-z0-9]+\.supabase\.co\/functions\//.test(u)); }
+window.xlLkIsSupabase = xlLkIsSupabase;
 async function xlLkToken(room, identity, publish) {
   const cfg = xlLiveKitCfg(); if (!cfg) throw new Error('LiveKit not configured');
   const u = cfg.tokenUrl + (cfg.tokenUrl.indexOf('?') === -1 ? '?' : '&') + 'room=' + encodeURIComponent(room) + '&identity=' + encodeURIComponent(identity) + '&publish=' + (publish ? 1 : 0);
-  const r = await fetch(u); if (!r.ok) throw new Error('token endpoint ' + r.status);
-  const d = await r.json(); return d.token || d.accessToken;
+  // PATCH X-LIVE v0.37.1 -- Supabase functions need the anon headers (verify_jwt).
+  const opts = xlLkIsSupabase(cfg.tokenUrl) ? { headers: SB_HEADERS } : undefined;
+  const r = await fetch(u, opts);
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((d && d.error) || ('token endpoint ' + r.status));
+  const t = d && (d.token || d.accessToken);
+  if (!t) throw new Error('token endpoint returned no token');
+  return t;
 }
 async function xlLkPublish(s, stream) {
   const LK = await xlLkLoad();
@@ -6357,12 +6378,20 @@ function xlLiveKitSetupHtml() {
   const c = (L.cfg && L.cfg.livekit) || {};
   return '<div class="card"><div class="cardT">🛰 Screen Share Services</div>' +
     '<div class="xl-hint" style="text-align:left">Direct sharing works with no setup. For big audiences, connect a LiveKit server: paste its wss:// URL and a token endpoint you control (it must return {"token"} for ?room=&identity=&publish=).</div>' +
+    '<button class="bigbtn ghost" style="margin-top:8px" onclick="xlUseLkDefault()">⚡ USE PFLX THEATER (LIVEKIT CLOUD)</button>' + // PATCH X-LIVE v0.37.1
     '<label style="margin-top:8px">LiveKit server URL</label><input id="xlLkUrl" value="' + esc(c.url || '') + '" placeholder="wss://your-project.livekit.cloud"/>' +
     '<label style="margin-top:8px">Token endpoint</label><input id="xlLkTok" value="' + esc(c.tokenUrl || '') + '" placeholder="https://…/livekit-token"/>' +
     '<label style="margin-top:8px">Extra TURN server (JSON, optional — helps direct sharing on strict school networks)</label><input id="xlTurn" value="' + esc(L.cfg && L.cfg.iceServers ? JSON.stringify(L.cfg.iceServers) : '') + '" placeholder=\'[{"urls":"turn:…","username":"…","credential":"…"}]\'/>' +
     '<button class="bigbtn gold" style="margin-top:10px" onclick="xlSaveShareSetup()">SAVE</button></div>';
 }
 window.xlLiveKitSetupHtml = xlLiveKitSetupHtml;
+function xlUseLkDefault() { // PATCH X-LIVE v0.37.1 -- fills the fields; SAVE still required
+  const a = document.getElementById('xlLkUrl'), b = document.getElementById('xlLkTok');
+  if (a) a.value = XL_LK_DEFAULT.url;
+  if (b) b.value = XL_LK_DEFAULT.tokenUrl;
+  toast('Filled in PFLX Theater — tap SAVE');
+}
+window.xlUseLkDefault = xlUseLkDefault;
 async function xlSaveShareSetup() {
   const url = (document.getElementById('xlLkUrl') || {}).value || '';
   const tok = (document.getElementById('xlLkTok') || {}).value || '';
