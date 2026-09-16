@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     X-LIVE v0.37.4, Sept 16 2026 — PATCH X-LIVE v0.37.4: projector paging.
+     X-LIVE v0.37.5, Sept 16 2026 — PATCH X-LIVE v0.37.5: inside PFLX, X-Live's
+     music and sounds play only in the person's sound window (the Platform
+     sends 'pflx_audio_owner'); a click in X-Live asks for the sound
+     ('pflx_audio_use'), and X-Live asks for the state when it loads.
+     X-LIVE v0.37.4 — PATCH X-LIVE v0.37.4: projector paging.
      Every projector page has big side arrows, swipe + trackpad side-scroll
      and ←/→ keys. The rotation deck is This Week / Team Battle / The Teams
      (when teams exist) / Class Goal, with page dots, PREV/NEXT and a
@@ -5200,9 +5204,11 @@ function xlPostParent(msg) {
   try { if (inPlatform) window.parent.postMessage(JSON.stringify(msg), '*'); } catch (e) {}
 }
 let xlAudioUnlocked = false;
+// PATCH X-LIVE v0.37.5 -- PFLX tells each window whether it has the person's sound
+let xlAudioHere = true;
 function xlSfx(name, gain) {
   const path = XL_SFX[name];
-  if (!path || !xlSfxOn() || typeof Audio === 'undefined') return null;
+  if (!path || !xlSfxOn() || !xlAudioHere || typeof Audio === 'undefined') return null;
   try {
     const a = new Audio(XL_SOUND_ROOT + path);
     a.volume = Math.max(0, Math.min(1, 0.8 * (gain == null ? 1 : gain)));
@@ -5216,7 +5222,7 @@ window.xlSfx = xlSfx;
 const XL_UI_SEL = 'button, a[href], [onclick], [role="button"], .tab, .xl-audio-btn, select, input[type="checkbox"], input[type="radio"], label.xl-seg-opt';
 const xlUiPool = {};
 function xlUiPlay(name, gain) {
-  if (!xlSfxOn() || typeof Audio === 'undefined') return false;
+  if (!xlSfxOn() || !xlAudioHere || typeof Audio === 'undefined') return false;
   const path = XL_SFX[name]; if (!path) return false;
   const pool = xlUiPool[name] || (xlUiPool[name] = []);
   let a = pool.find(x => x.paused || x.ended);
@@ -5259,7 +5265,7 @@ const xlMusic = {
   el: null, zone: null, ducks: {}, visible: true, playing: false, fadeIv: null,
   target() {
     const z = XL_MUSIC[this.zone];
-    if (!z || !xlMusicOn() || !this.visible) return 0; // v0.37.2: autoplay is attempted; _play handles a block
+    if (!z || !xlMusicOn() || !this.visible || !xlAudioHere) return 0; // v0.37.2: autoplay is attempted; _play handles a block (v0.37.5: sound window only)
     return z.vol * (Object.keys(this.ducks).length ? 0.2 : 1);
   },
   fadeTo(vol, ms, done) {
@@ -5758,7 +5764,14 @@ window.addEventListener('message', function (e) {
   if (!m || !m.type) return;
   if (m.type === 'pflx_xlive_sessions_changed') xlNudgeSessions();
   if (m.type === 'pflx_fx_duck') xlMusic.duck('countdown', !!m.on);
+  if (m.type === 'pflx_audio_owner') { const h = m.here !== false; if (h !== xlAudioHere) { xlAudioHere = h; xlMusic.apply(); } }   // v0.37.5
 });
+// v0.37.5: using X-Live inside PFLX = wanting the sound in this window
+if (inPlatform) {
+  document.addEventListener('pointerdown', function () { if (!xlAudioHere) xlPostParent({ type: 'pflx_audio_use' }); }, true);
+  document.addEventListener('keydown', function () { if (!xlAudioHere) xlPostParent({ type: 'pflx_audio_use' }); }, true);
+  xlPostParent({ type: 'pflx_audio_query' });
+}
 
 // ── audio unlock + visibility (an app hidden inside PFLX goes quiet) ──
 function xlAudioBoot() {
