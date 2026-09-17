@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.38, Sept 17 2026 — PATCH X-LIVE v0.38: gameshow ANNOUNCER.
+     A voice calls the big moments (GO!, FINAL ROUND, HURRY UP, CORRECT /
+     WRONG, MISSION COMPLETED...). The host picks the voice for the session
+     (female / male / off) in SHOW CONTROL and has an ANNOUNCER pad; every
+     player can mute it with the 🎙 VOICE button. Clips: Kenney Voiceover
+     Pack (CC0), hosted by the Platform under /public/sounds/pflx-announcer/.
      X-LIVE v0.37.6, Sept 16 2026 — PATCH X-LIVE v0.37.6: Spin the Wheel
      replaced with a slot-reel style randomizer (WHO'S NEXT) -- same
      wheelOpen()/wheelSpin() entry points and wheelSpin/wheelLand SFX, new
@@ -394,6 +400,20 @@
   .bigbtn.xl-sm { padding:8px 11px; font-size:10px; }
   .xl-hint { font-size:10.5px; color:#7d86ab; text-align:center; line-height:1.4; }
   .xl-fxpad { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  /* PATCH X-LIVE v0.38 -- announcer */
+  .xl-ann { margin-top:10px; }
+  .xl-ann-h { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 6px; }
+  .xl-ann-h .xl-hint { margin:0 4px 0 0; }
+  .xl-ann-pad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .xl-ann-pad button { cursor:pointer; padding:8px 4px; border-radius:10px; font-family:'Audiowide'; font-size:8.5px; letter-spacing:0.06em; color:#dfe4ff; background:rgba(57,192,255,0.05); border:1px solid rgba(57,192,255,0.22); transition:transform .08s, border-color .15s, box-shadow .15s; }
+  .xl-ann-pad button:hover { border-color:rgba(57,192,255,0.65); box-shadow:0 0 14px rgba(57,192,255,0.2); }
+  .xl-ann-pad button:active { transform:scale(0.93); }
+  .xl-ann-pad button.good { border-color:rgba(61,220,151,0.35); } .xl-ann-pad button.bad { border-color:rgba(255,77,109,0.35); } .xl-ann-pad button.gold { border-color:rgba(255,209,102,0.4); }
+  .xl-ann-off .xl-ann-pad { opacity:0.4; pointer-events:none; }
+  .xl-ann-seg { display:inline-flex; border:1px solid rgba(255,255,255,0.14); border-radius:9px; overflow:hidden; }
+  .xl-ann-seg button { cursor:pointer; padding:5px 9px; font-family:'Audiowide'; font-size:8.5px; letter-spacing:0.08em; color:#8a93b8; background:transparent; border:0; border-right:1px solid rgba(255,255,255,0.1); }
+  .xl-ann-seg button:last-child { border-right:0; }
+  .xl-ann-seg button.on { color:#0b1020; background:#39c0ff; }
   .xl-fxbtn { cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; border-radius:12px; font-family:'Audiowide'; font-size:9px; letter-spacing:0.06em;
     color:#dfe4ff; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); transition:transform .08s, box-shadow .15s, border-color .15s; }
   .xl-fxbtn span { font-size:22px; line-height:1; }
@@ -3445,6 +3465,7 @@ async function liveEndSession() {
     s.showTimer.stoppedAt = Date.now(); s.showTimer.updatedAt = Date.now();
   }
   if (typeof xlSfx === 'function') xlSfx('end');
+  if (typeof xlAnnounce === 'function' && xlAnnVoice(s) !== 'off') { L.annDone = L.annDone || {}; if (!L.annDone['end:' + s.id]) { L.annDone['end:' + s.id] = Date.now(); xlAnnounce(XL_ANN_AUTO.mission, xlAnnVoice(s)); } }   // v0.38
   if (s.screenShare && s.screenShare.active) { s.screenShare = Object.assign({}, s.screenShare, { active: false, endedAt: Date.now() }); } // PATCH X-LIVE v0.37
   if (typeof xlShareCleanup === 'function') xlShareCleanup();
   if (typeof xlSegmentMark === 'function') xlSegmentMark(s, s.currentSlideIndex || 0, -1);
@@ -5338,6 +5359,128 @@ const xlMusic = {
   duck(reason, on) { if (on) this.ducks[reason] = 1; else delete this.ducks[reason]; this.apply(); }
 };
 window.xlMusic = xlMusic;
+// ── PATCH X-LIVE v0.38 -- announcer (Kenney Voiceover Pack, CC0) ──
+const XL_ANN_ROOT = XL_SOUND_ROOT + 'pflx-announcer/';
+const XL_ANN_PREF = 'xl_ann_on_v1';
+// pad lines: [key, label, clips, css]
+const XL_ANN_PAD = [
+  ['rsg', 'READY · SET · GO', ['ready', 'set', 'go'], ''],
+  ['round', 'ROUND', ['round'], ''],
+  ['final', 'FINAL ROUND', ['final_round'], 'gold'],
+  ['hurry', 'HURRY UP', ['hurry_up'], 'bad'],
+  ['correct', 'CORRECT', ['correct'], 'good'],
+  ['wrong', 'WRONG', ['wrong'], 'bad'],
+  ['congrats', 'CONGRATS', ['congratulations'], 'gold'],
+  ['highscore', 'NEW HIGH SCORE', ['new_highscore'], 'gold'],
+  ['levelup', 'LEVEL UP', ['level_up'], 'good'],
+  ['objective', 'OBJECTIVE DONE', ['objective_achieved'], 'good'],
+  ['tie', 'IT\'S A TIE', ['its_a_tie'], ''],
+  ['timeover', 'TIME OVER', ['time_over'], 'bad'],
+  ['mission', 'MISSION COMPLETE', ['mission_completed'], 'gold'],
+  ['failed', 'MISSION FAILED', ['mission_failed'], 'bad'],
+  ['gameover', 'GAME OVER', ['game_over'], 'bad']
+];
+const XL_ANN_AUTO = { go: ['go'], final: ['final_round'], hurry: ['hurry_up'], correct: ['correct'], wrong: ['wrong'], picked: ['power_up'], hold: ['war_hold'], mission: ['mission_completed'] };
+const XL_ANN_CLIPS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'congratulations', 'correct', 'final_round', 'game_over', 'go', 'hurry_up', 'its_a_tie', 'level', 'level_up', 'mission_completed', 'mission_failed', 'new_highscore', 'objective_achieved', 'power_up', 'ready', 'round', 'set', 'time_over', 'war_call_for_backup', 'war_cover_me', 'war_go_go_go', 'war_hold', 'war_look_out', 'war_target_destroyed', 'war_target_engaged', 'war_watch_my_back', 'wrong', 'you_lose', 'you_win'];
+function xlAnnOn() { return xlPref(XL_ANN_PREF, true); }
+function xlAnnVoice(s) { const v = s && s.announcer; return v === 'male' || v === 'off' ? v : 'female'; }
+const xlAnn = { pool: {}, timers: [], playing: 0, last: {} };
+function xlAnnClip(voice, clip) {
+  const url = XL_ANN_ROOT + voice + '/' + clip + '.mp3';
+  let a = xlAnn.pool[url];
+  if (!a) { a = new Audio(url); a.preload = 'auto'; xlAnn.pool[url] = a; }
+  return a;
+}
+function xlAnnStop() {
+  xlAnn.timers.forEach(t => clearTimeout(t)); xlAnn.timers = [];
+  Object.keys(xlAnn.pool).forEach(k => { try { xlAnn.pool[k].pause(); } catch (e) {} });
+  if (xlAnn.playing) { xlAnn.playing = 0; xlMusic.duck('announcer', false); }
+}
+// clips: array of clip names; voice: female | male | off. Returns true when it plays.
+function xlAnnounce(clips, voice, opts) {
+  opts = opts || {};
+  if (!clips || !clips.length || voice === 'off' || typeof Audio === 'undefined') return false;
+  if (!xlAnnOn() || !xlAudioHere) return false;
+  if (voice !== 'male') voice = 'female';
+  const key = clips.join('+');
+  const now = Date.now();
+  if (!opts.force && xlAnn.last[key] && now - xlAnn.last[key] < 1500) return false;   // one call per moment
+  xlAnn.last[key] = now;
+  xlAnnStop();
+  const gap = opts.gap || 900;
+  xlAnn.playing = clips.length;
+  xlMusic.duck('announcer', true);
+  const done = () => { xlAnn.playing = Math.max(0, xlAnn.playing - 1); if (!xlAnn.playing) xlMusic.duck('announcer', false); };
+  clips.forEach((clip, i) => {
+    const t = setTimeout(() => {
+      const a = xlAnnClip(voice, clip);
+      try {
+        a.currentTime = 0; a.volume = 1;
+        a.onended = done; a.onerror = done;
+        const p = a.play(); if (p && p.catch) p.catch(done);
+      } catch (e) { done(); }
+    }, i * gap);
+    xlAnn.timers.push(t);
+  });
+  window.__xlAnnLog = (window.__xlAnnLog || []).concat([{ voice: voice, clips: clips.slice(), at: now }]).slice(-40);
+  return true;
+}
+window.xlAnnounce = xlAnnounce;
+function xlToggleAnn() { const on = !xlAnnOn(); xlSetPref(XL_ANN_PREF, on); if (on) xlAnnounce(['ready'], xlAnnVoice(xlViewerSession()), { force: true }); else xlAnnStop(); render(); }
+window.xlToggleAnn = xlToggleAnn;
+// host: pick the session's announcer voice
+function xlSetAnnouncer(v) {
+  const s = xlRunningSession(); if (!s) return;
+  s.announcer = v === 'male' || v === 'off' ? v : 'female';
+  saveSession(s);
+  if (s.announcer !== 'off') xlAnnounce(['ready'], s.announcer, { force: true });
+  render();
+}
+window.xlSetAnnouncer = xlSetAnnouncer;
+// host: announcer pad -> this window + every player in the session
+function xlAnnPad(key) {
+  const line = XL_ANN_PAD.find(x => x[0] === key); if (!line) return;
+  const s = xlRunningSession();
+  const voice = xlAnnVoice(s);
+  if (voice === 'off') return;
+  xlAnnounce(line[2], voice, { force: true });
+  if (s) {
+    const ev = { id: 'an_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6), ann: key, at: Date.now() };
+    L.fxSeen[ev.id] = true;
+    s.fxEvents = (s.fxEvents || []).concat([ev]).slice(-30);
+    saveSession(s);
+  }
+}
+window.xlAnnPad = xlAnnPad;
+function xlAnnPadHtml(s) {
+  const v = xlAnnVoice(s);
+  const seg = [['female', '\u2640 FEMALE'], ['male', '\u2642 MALE'], ['off', 'OFF']].map(o =>
+    '<button class="' + (v === o[0] ? 'on' : '') + '" onclick="xlSetAnnouncer(\'' + o[0] + '\')">' + o[1] + '</button>').join('');
+  return '<div class="xl-ann' + (v === 'off' ? ' xl-ann-off' : '') + '">' +
+    '<div class="xl-ann-h"><span class="xl-hint">\u{1F399} ANNOUNCER</span><span class="xl-ann-seg">' + seg + '</span></div>' +
+    '<div class="xl-ann-pad">' + XL_ANN_PAD.map(l => '<button class="' + l[3] + '" onclick="xlAnnPad(\'' + l[0] + '\')">' + esc(l[1]) + '</button>').join('') + '</div>' +
+    '</div>';
+}
+window.xlAnnPadHtml = xlAnnPadHtml;
+// automatic calls, from what changed in the session (every viewer, incl. the host)
+function xlAnnWatch(s, prev, snap, sl, now) {
+  const v = xlAnnVoice(s);
+  if (v === 'off') return;
+  L.annDone = L.annDone || {};
+  const once = (id, clips) => { if (L.annDone[id]) return; L.annDone[id] = now; xlAnnounce(clips, v); };
+  if (snap.raceAt && snap.raceAt !== prev.raceAt && now - snap.raceAt < 5000) once('go:' + snap.slideId + ':' + snap.raceAt, XL_ANN_AUTO.go);
+  else if (prev.slideId !== snap.slideId && snap.total > 2 && snap.idx === snap.total - 1) once('final:' + s.id + ':' + snap.slideId, XL_ANN_AUTO.final);
+  if ((!prev.paused && snap.paused) || (!prev.held && snap.held)) once('hold:' + s.id + ':' + now, XL_ANN_AUTO.hold);
+  if (prev.status === 'active' && snap.status !== 'active') once('end:' + s.id, XL_ANN_AUTO.mission);
+  // HURRY UP with 30 s left on a timer of 45 s or more
+  const hurry = (id, endsAt, secs) => {
+    const left = endsAt - now;
+    if (secs >= 45 && left <= 30500 && left > 25000) once('hurry:' + id + ':' + endsAt, XL_ANN_AUTO.hurry);
+  };
+  const t = s.showTimer, info = xlTimerInfo(t, now);
+  if (info && info.running && !(s.hostControls || {}).paused) hurry(xlTimerId(s, t), info.endsAt, t.seconds || 0);
+  if (sl && sl.type === 'quiz_race' && sl.startedAt && !sl.revealed && sl.seconds > 0) hurry('race:' + sl.id, sl.startedAt + sl.seconds * 1000, sl.seconds);
+}
 function xlToggleMusic() { xlSetPref(XL_MUSIC_PREF, !xlMusicOn()); xlAudioUnlocked = true; xlMusic.apply(); render(); }
 function xlToggleSfx() { const on = !xlSfxOn(); xlSetPref(XL_SFX_PREF, on); if (on) xlSfx('blip'); render(); }
 window.xlToggleMusic = xlToggleMusic; window.xlToggleSfx = xlToggleSfx;
@@ -5345,7 +5488,8 @@ function xlAudioButtonsHtml() {
   const m = xlMusicOn(), s = xlSfxOn();
   const z = XL_MUSIC[xlMusic.zone];
   return '<button class="xl-audio-btn' + (m ? ' on' : '') + '" onclick="xlToggleMusic()" title="' + (m ? 'Music on' + (z ? ' — ' + esc(z.label) : '') : 'Music off') + '">' + (m ? '\u{1F3B5}' : '\u{1F507}') + '<span>MUSIC</span></button>' +
-    '<button class="xl-audio-btn' + (s ? ' on' : '') + '" onclick="xlToggleSfx()" title="' + (s ? 'Sound effects on' : 'Sound effects off') + '">' + (s ? '\u{1F50A}' : '\u{1F508}') + '<span>SFX</span></button>';
+    '<button class="xl-audio-btn' + (s ? ' on' : '') + '" onclick="xlToggleSfx()" title="' + (s ? 'Sound effects on' : 'Sound effects off') + '">' + (s ? '\u{1F50A}' : '\u{1F508}') + '<span>SFX</span></button>' +
+    '<button class="xl-audio-btn' + (xlAnnOn() ? ' on' : '') + '" id="xl-ann-btn" onclick="xlToggleAnn()" title="' + (xlAnnOn() ? 'Announcer voice on' : 'Announcer voice off') + '">' + (xlAnnOn() ? '\u{1F399}' : '\u{1F507}') + '<span>VOICE</span></button>';   // v0.38
 }
 // Which music fits what is on screen right now (pure: returns a zone key or null).
 function xlMusicZone() {
@@ -5557,7 +5701,7 @@ function xlShowControlHtml(s) {
         (info && info.running && onThisSlide ? '<div class="xl-timer-btns"><button class="bigbtn ghost xl-sm" onclick="xlShowTimerAdd(30)">+30s</button><button class="bigbtn red xl-sm" onclick="xlShowTimerStop()">■ STOP</button><button class="bigbtn ghost xl-sm" onclick="xlProjectTimer()">\u{1F4FD}️ PROJECT</button></div>' : '') +
         '<div class="xl-hint">The last 10 seconds count down out loud and flash every PFLX screen in this class.</div>' +
       '</div>' +
-      '<div class="xl-showctl-fx"><div class="xl-hint" style="margin:0 0 6px">SHOW FX — plays for everyone in the session</div>' + xlFxPadHtml() + '</div>' +
+      '<div class="xl-showctl-fx"><div class="xl-hint" style="margin:0 0 6px">SHOW FX — plays for everyone in the session</div>' + xlFxPadHtml() + xlAnnPadHtml(s) + '</div>' +
     '</div></div>';
 }
 
@@ -5682,7 +5826,8 @@ function xlWatchSession(s, now) {
   const idx = s.currentSlideIndex || 0;
   const sl = (s.slides || [])[idx];
   const hc = s.hostControls || {};
-  const snap = { idx: idx, slideId: sl && sl.id, revealed: !!(sl && sl.revealed), paused: !!hc.paused, frozen: !!hc.slideFrozen, locked: !!hc.responsesLocked, pickAt: s.lastRandomPickAt || 0, status: s.status };
+  const snap = { idx: idx, slideId: sl && sl.id, revealed: !!(sl && sl.revealed), paused: !!hc.paused, frozen: !!hc.slideFrozen, locked: !!hc.responsesLocked, pickAt: s.lastRandomPickAt || 0, status: s.status,
+    total: (s.slides || []).length, held: !!hc.hold, raceAt: (sl && sl.type === 'quiz_race' && sl.startedAt) || 0 };   // v0.38
   const prev = L.fxSnap[s.id];
   L.fxSnap[s.id] = snap;
   // Show FX: first sight of a session only records history, never replays it.
@@ -5695,10 +5840,12 @@ function xlWatchSession(s, now) {
       if (!e || L.fxSeen[e.id]) return;
       L.fxSeen[e.id] = true;
       if (Math.abs(now - (+e.at || 0)) > 20000) return;
+      if (e.ann) { const line = XL_ANN_PAD.find(x => x[0] === e.ann); if (line) xlAnnounce(line[2], xlAnnVoice(s), { force: true }); return; }   // v0.38
       if (inPlatform) xlPostParent({ type: 'pflx_show_fx', fx: e.fx, eventId: e.id });
       else if (window.PflxFx) window.PflxFx.playShow(e.fx);
     });
   }
+  if (prev) { try { xlAnnWatch(s, prev, snap, sl, now); } catch (e) {} }   // v0.38
   if (!prev || L.isHost) return;
   if (prev.slideId !== snap.slideId) { xlSfx('next'); L.fxSlideAnim = snap.slideId; }
   else if (!prev.revealed && snap.revealed && sl) {
@@ -5707,6 +5854,7 @@ function xlWatchSession(s, now) {
     if (meta.graded && mine) {
       const right = mine.value === sl.correctIndex;
       xlSfx(right ? 'correct' : 'wrong');
+      xlAnnounce(right ? XL_ANN_AUTO.correct : XL_ANN_AUTO.wrong, xlAnnVoice(s));   // v0.38
       xlFlashBanner(right ? '✅ CORRECT!' : '❌ NOT QUITE', right ? 'good' : 'bad');
     } else xlSfx('reveal');
   }
@@ -5715,7 +5863,7 @@ function xlWatchSession(s, now) {
   if (!prev.frozen && snap.frozen) xlSfx('freeze');
   if (!prev.locked && snap.locked) xlSfx('lock');
   if (snap.pickAt && snap.pickAt !== prev.pickAt && now - snap.pickAt < 30000) {
-    if (s.lastRandomPickId && s.lastRandomPickId === myId) { xlSfx('pickLand'); xlSfx('award', 0.9); xlFlashBanner('\u{1F31F} YOU’RE UP! \u{1F31F}', 'gold'); }
+    if (s.lastRandomPickId && s.lastRandomPickId === myId) { xlSfx('pickLand'); xlSfx('award', 0.9); xlAnnounce(XL_ANN_AUTO.picked, xlAnnVoice(s)); xlFlashBanner('\u{1F31F} YOU’RE UP! \u{1F31F}', 'gold'); }
     else xlSfx('blip');
   }
   if (prev.status === 'active' && snap.status !== 'active') xlSfx('end');
@@ -5780,7 +5928,7 @@ window.addEventListener('message', function (e) {
   if (!m || !m.type) return;
   if (m.type === 'pflx_xlive_sessions_changed') xlNudgeSessions();
   if (m.type === 'pflx_fx_duck') xlMusic.duck('countdown', !!m.on);
-  if (m.type === 'pflx_audio_owner') { const h = m.here !== false; if (h !== xlAudioHere) { xlAudioHere = h; xlMusic.apply(); } }   // v0.37.5
+  if (m.type === 'pflx_audio_owner') { const h = m.here !== false; if (h !== xlAudioHere) { xlAudioHere = h; if (!h) xlAnnStop(); xlMusic.apply(); } }   // v0.37.5 (+v0.38 announcer)
 });
 // v0.37.5: using X-Live inside PFLX = wanting the sound in this window
 if (inPlatform) {
@@ -6244,7 +6392,7 @@ function xlBackstageInner(s, controls) {
   const shareBox = share ? xlShareHostBoxHtml(s) : '';
   return '<div class="xl-bs' + (clock.cls === 'over' ? ' over' : '') + '">' + head +
     '<div class="xl-bs-grid">' +
-      '<div class="xl-bs-col">' + bigClock + (controls && typeof xlFxPadHtml === 'function' ? '<div class="xl-bs-fx"><div class="xl-bs-k">SHOW FX</div>' + xlFxPadHtml() + '</div>' : '') + '</div>' +
+      '<div class="xl-bs-col">' + bigClock + (controls && typeof xlFxPadHtml === 'function' ? '<div class="xl-bs-fx"><div class="xl-bs-k">SHOW FX</div>' + xlFxPadHtml() + xlAnnPadHtml(s) + '</div>' : '') + '</div>' +
       '<div class="xl-bs-col wide">' + xlSlidePreviewHtml(sl, 'NOW', 'now') + shareBox + notes + '</div>' +
       '<div class="xl-bs-col">' + xlSlidePreviewHtml(next, 'UP NEXT', 'next') + rail + '</div>' +
     '</div>' + ctl + '</div>';
