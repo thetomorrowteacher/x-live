@@ -1,0 +1,56 @@
+PATCH X-LIVE v0.39: Story Mode in the live room
+
+Reporter: Ennis. Ask: "build story mode. X-Live will integrate with this as well."
+
+Root cause of what this closes: platform v233 shipped Story Mode -- a 28-quest
+campaign whose per-player progress lives in app_data under pflx_story_<id>, and
+which broadcasts pflx_story_progress on every quest completion. X-Live ignored
+all of it, so a host running a live session had no idea where the room actually
+was in the season and no way to move everyone to the same beat.
+
+WHAT THIS ADDS
+- A host-only STORY tab (between TOOLS and PLAY; players never see it).
+- THE ROOM: every joined player's campaign state -- act, percentage, the next
+  unfinished quest, story X-Coin, and their chosen client -- sorted furthest
+  first, then by X-Coin, then by name. When no session is running it falls back
+  to the host's visible roster so the tab is useful between shows.
+- PUSH A STORY BEAT: all 28 quests as buttons, grouped by act. Pushing stamps
+  the session through xlStampPush(), which means the platform's existing PiP
+  pull-in fires for every joined player with zero new plumbing, and the
+  pflx_xlive_push parent message goes out as usual. It also emits a
+  pflx_story_beat message with the questId for anything that wants it later.
+- A six-beat STORY BEAT pad in SHOW CONTROL and in backstage -- both places,
+  matching the two-site rule the v0.38 announcer pad follows.
+
+DISCIPLINE
+- One batched PostgREST read (app_data?key=in.(...)) for the whole room rather
+  than N kvLoad round trips. Keys are encodeURIComponent'd; kvLoad is not, and
+  a player id with a comma or a dot in it would break a naive concat.
+- The push reuses xlStampPush rather than assigning s.push, so the seq
+  increment and the parent postMessage stay in step -- and because xlShareStart
+  snapshots and restores s.push on failure, hand-rolling it would have been a
+  real bug.
+- No new session collection, so mergeSession needs no new union rule: the panel
+  reads a separate app_data namespace and writes nothing but the existing push.
+- Pushing with no active session toasts and returns instead of throwing.
+- Module and CSS are both sentinel-wrapped (PATCH X-LIVE v0.39) for slicing.
+- The patch script is idempotent -- re-running prints OK and changes nothing.
+
+VERIFIED
+- Syntax gate clean.
+- test_xlive_story_v039.js -- 28 assertions. Twelve static (tab is host-only,
+  dispatch wired, batched read present, push rides xlStampPush and not a
+  hand-rolled s.push, pad in both sites, responsive CSS) and sixteen that pull
+  the real xlStoryPct / xlStoryStage / xlStorySort out of index.html with vm and
+  run them: empty and null states are 0% not NaN, two of 28 is 7%, an unstarted
+  player is pointed at the very first quest, the furthest act wins over ordering
+  while "next" still points at the earliest UNFINISHED quest (the gap case), a
+  finished season reads 100% and complete, sorting is stable and non-mutating,
+  and an unknown quest id is ignored rather than crashing.
+- Browser: 8 assertions in a headless run with a stubbed Supabase -- the tab
+  appears only for a host, all three cards render, 28 quest buttons across 7
+  acts, a push with no live session is refused cleanly, the progress maths runs
+  in the page, no horizontal scroll at 390px, no page errors.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0178bRc3bAmFXBGbNopm2YMR

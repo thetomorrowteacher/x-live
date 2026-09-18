@@ -1,0 +1,29 @@
+
+    /* PATCH X-LIVE v0.39 -- Story Mode */
+    .xl-story-row{display:grid;grid-template-columns:minmax(150px,1.4fr) 1fr 48px minmax(120px,1.1fr) 70px;
+      gap:10px;align-items:center;padding:9px 10px;border-bottom:1px solid rgba(125,233,255,.10)}
+    .xl-story-row:last-child{border-bottom:0}
+    .xl-story-who{display:flex;gap:9px;align-items:center;min-width:0}
+    .xl-story-who img{width:30px;height:30px;border-radius:8px;object-fit:cover;flex:0 0 30px;
+      border:1px solid rgba(125,233,255,.3)}
+    .xl-story-dot{width:30px;height:30px;border-radius:8px;flex:0 0 30px;
+      background:rgba(125,233,255,.12);border:1px solid rgba(125,233,255,.25)}
+    .xl-story-who b{display:block;font-family:'Audiowide',sans-serif;font-size:11.5px;color:#e8ecff;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .xl-story-who i{display:block;font-style:normal;font-size:10.5px;color:#8a93b8;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .xl-story-bar{height:7px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
+    .xl-story-bar i{display:block;height:100%;background:linear-gradient(90deg,#39c0ff,#ffd166)}
+    .xl-story-num{font-family:'Audiowide',sans-serif;font-size:11px;color:#7de9ff;text-align:right}
+    .xl-story-next{font-size:10.5px;color:#7d86ab;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .xl-story-xc{font-family:'Audiowide',sans-serif;font-size:11px;color:#ffd166;text-align:right}
+    .xl-story-beats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+    .xl-story-act{display:flex;flex-direction:column;gap:5px}
+    .xl-story-act .bigbtn{text-align:left}
+    .xl-story-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    @media (max-width:760px){
+      .xl-story-row{grid-template-columns:1fr 52px;grid-auto-rows:min-content}
+      .xl-story-bar{grid-column:1/-1}
+      .xl-story-next,.xl-story-xc{grid-column:span 1}
+      .xl-story-pad{grid-template-columns:repeat(2,1fr)}
+    }

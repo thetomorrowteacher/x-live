@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.39, Sept 18 2026 — PATCH X-LIVE v0.39: STORY MODE in the live
+     room. A host-only STORY tab reads every joined player's platform Story
+     Mode progress (app_data pflx_story_<id>) in one batched call and shows
+     act, percentage, next quest and story X-Coin; the host can push a story
+     beat, which rides the same xlStampPush path as a slide push so the
+     platform pull-in fires. A six-beat pad sits in SHOW CONTROL and backstage.
+
      X-LIVE v0.38, Sept 17 2026 — PATCH X-LIVE v0.38: gameshow ANNOUNCER.
      A voice calls the big moments (GO!, FINAL ROUND, HURRY UP, CORRECT /
      WRONG, MISSION COMPLETED...). The host picks the voice for the session
@@ -548,6 +555,36 @@
   body.xl-pip-mode #app { max-width:none !important; }
   body.xl-stage-mode { padding:0 !important; background:#02030a; }
   body.xl-stage-mode #app { max-width:none !important; }
+
+    /* PATCH X-LIVE v0.39 -- Story Mode */
+    .xl-story-row{display:grid;grid-template-columns:minmax(150px,1.4fr) 1fr 48px minmax(120px,1.1fr) 70px;
+      gap:10px;align-items:center;padding:9px 10px;border-bottom:1px solid rgba(125,233,255,.10)}
+    .xl-story-row:last-child{border-bottom:0}
+    .xl-story-who{display:flex;gap:9px;align-items:center;min-width:0}
+    .xl-story-who img{width:30px;height:30px;border-radius:8px;object-fit:cover;flex:0 0 30px;
+      border:1px solid rgba(125,233,255,.3)}
+    .xl-story-dot{width:30px;height:30px;border-radius:8px;flex:0 0 30px;
+      background:rgba(125,233,255,.12);border:1px solid rgba(125,233,255,.25)}
+    .xl-story-who b{display:block;font-family:'Audiowide',sans-serif;font-size:11.5px;color:#e8ecff;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .xl-story-who i{display:block;font-style:normal;font-size:10.5px;color:#8a93b8;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .xl-story-bar{height:7px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
+    .xl-story-bar i{display:block;height:100%;background:linear-gradient(90deg,#39c0ff,#ffd166)}
+    .xl-story-num{font-family:'Audiowide',sans-serif;font-size:11px;color:#7de9ff;text-align:right}
+    .xl-story-next{font-size:10.5px;color:#7d86ab;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .xl-story-xc{font-family:'Audiowide',sans-serif;font-size:11px;color:#ffd166;text-align:right}
+    .xl-story-beats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+    .xl-story-act{display:flex;flex-direction:column;gap:5px}
+    .xl-story-act .bigbtn{text-align:left}
+    .xl-story-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    @media (max-width:760px){
+      .xl-story-row{grid-template-columns:1fr 52px;grid-auto-rows:min-content}
+      .xl-story-bar{grid-column:1/-1}
+      .xl-story-next,.xl-story-xc{grid-column:span 1}
+      .xl-story-pad{grid-template-columns:repeat(2,1fr)}
+    }
+
 </style>
 </head>
 <body>
@@ -1518,7 +1555,7 @@ function render() {
     return;
   }
   const tabs = L.isHost
-    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']].filter(function (t) { return pflxHostTabAllowed(t[0], L.hostCapabilities); })
+    ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['story', '📖 STORY'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']].filter(function (t) { return pflxHostTabAllowed(t[0], L.hostCapabilities); })
     : [['me', '🤖 MY EXO'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
@@ -1528,7 +1565,7 @@ function render() {
     (L.demo ? '<div class="demoBanner">DEMO MODE — open X-Live inside the PFLX Platform for real balances. Everything is tappable; nothing you do here changes real XC.</div>' : '') +
     liveSessionBanner() + nativeLiveSessionBanner() +
     '<div class="tabbar">' + tabs.map(t => '<div class="tab ' + (cur === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + '</div>').join('') + '</div>' +
-    ({ class: rClass, live: rLive, theater: rTheater, teams: rTeams, boards: rBoards, tools: rTools, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
+    ({ class: rClass, live: rLive, theater: rTheater, teams: rTeams, boards: rBoards, tools: rTools, story: rStory, play: rPlay, feed: rFeed, setup: rSetup, me: rMe, shop: rShop })[cur]();
   renderTray();
   pflxSyncEmbedPortal();
   xlAfterRender();
@@ -4167,6 +4204,199 @@ function rBoards() {
 }
 
 // ── TOOLS (randomizer, groups, timer) ──
+
+    /* PATCH X-LIVE v0.39 -- Story Mode in the live room ------------------
+       The platform's Story Mode writes each player's campaign progress to
+       app_data key pflx_story_<playerId>. This panel reads those rows for
+       whoever is in the room, so a host can see where the cohort actually
+       is, and push a story beat to every joined player mid-session using
+       the same xlStampPush path the slide pusher uses. */
+    const XL_STORY = {"total":28,"acts":[{"id":"act0","n":"Act Zero","t":"Arrival","q":[["a0-brief","The Nexus Opens"],["a0-studio","Pick Your Studio"]]},{"id":"act1","n":"Act One","t":"The Alter Ego","q":[["a1-traits","Personality Trait Inventory"],["a1-forge","Character Forge"],["a1-profile","Character Profile"],["a1-board","Brand Board"],["a1-mint","Mint Your Alter Ego"]]},{"id":"act2","n":"Act Two","t":"BrandBuilder · Phase One","q":[["a2-brief","Client Briefing"],["a2-pick","Choose Your Client"],["a2-interview","The Client Interview"],["a2-cprofile","Client Profile"],["a2-empathy","Client Empathy Map"],["a2-cp3","Checkpoint 3 Submission"]]},{"id":"act3","n":"Act Three","t":"BrandBuilder · Phase Two","q":[["a3-r1","SparkLab Round One"],["a3-r2","SparkLab Round Two"],["a3-r3","SparkLab Round Three"],["a3-merge","The Combined Concept"],["a3-cp4","Checkpoint 4 Submission"]]},{"id":"act4","n":"Act Four","t":"The Developer's Workshop","q":[["a4-start","Starting State"],["a4-log","Daily Growth Log"],["a4-build","Build the Prototype"]]},{"id":"act5","n":"Act Five","t":"FeedForward Force","q":[["a5-course","FeedForward Mini Course"],["a5-give","Give Feedforward"],["a5-take","Take Feedforward"]]},{"id":"act6","n":"Act Six","t":"Exhibit","q":[["a6-design","Exhibit Design"],["a6-pitch","The Pitch"],["a6-show","Showcase"],["a6-eval","Self Evaluation and Future Steps"]]}]};
+    const XL_STORY_QUEST = (function () {
+      const m = {};
+      XL_STORY.acts.forEach(function (a, ai) {
+        a.q.forEach(function (q, qi) { m[q[0]] = { act: a, actIndex: ai, title: q[1], n: qi + 1 }; });
+      });
+      return m;
+    })();
+
+    // Pure: how far through the campaign a saved state is.
+    function xlStoryPct(st) {
+      if (!st || !st.done) return 0;
+      const n = Object.keys(st.done).length;
+      return Math.max(0, Math.min(100, Math.round(100 * n / XL_STORY.total)));
+    }
+    // Pure: the furthest act a player has finished a quest in, and what is next.
+    function xlStoryStage(st) {
+      const done = (st && st.done) || {};
+      let far = -1;
+      Object.keys(done).forEach(function (id) {
+        const q = XL_STORY_QUEST[id];
+        if (q && q.actIndex > far) far = q.actIndex;
+      });
+      let next = null;
+      for (let i = 0; i < XL_STORY.acts.length && !next; i++) {
+        const a = XL_STORY.acts[i];
+        for (let j = 0; j < a.q.length; j++) {
+          if (!done[a.q[j][0]]) { next = { act: a, title: a.q[j][1], id: a.q[j][0] }; break; }
+        }
+      }
+      return {
+        act: far >= 0 ? XL_STORY.acts[far] : null,
+        next: next,
+        done: Object.keys(done).length,
+        pct: xlStoryPct(st),
+        complete: !next
+      };
+    }
+    // Pure: sort furthest-first, then by X-Coin earned, then by name.
+    function xlStorySort(rows) {
+      return rows.slice().sort(function (a, b) {
+        if (b.stage.done !== a.stage.done) return b.stage.done - a.stage.done;
+        if ((b.st.xc || 0) !== (a.st.xc || 0)) return (b.st.xc || 0) - (a.st.xc || 0);
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+    }
+    window.xlStoryPct = xlStoryPct; window.xlStoryStage = xlStoryStage; window.xlStorySort = xlStorySort;
+
+    L.story = { byId: {}, at: 0, loading: false };
+
+    // One batched PostgREST read for every id in the room. kvLoad is one key
+    // per call, so this goes direct rather than N round trips.
+    async function xlStoryLoad(ids) {
+      if (!ids || !ids.length) { L.story.at = Date.now(); return; }
+      L.story.loading = true;
+      try {
+        const keys = ids.map(function (id) { return encodeURIComponent('pflx_story_' + id); }).join(',');
+        const r = await fetch(SUPABASE_URL + '/rest/v1/app_data?key=in.(' + keys + ')&select=key,data',
+                              { headers: SB_HEADERS });
+        if (r.ok) {
+          const rows = await r.json();
+          rows.forEach(function (row) {
+            const id = String(row.key || '').replace(/^pflx_story_/, '');
+            if (id && row.data) L.story.byId[id] = row.data;
+          });
+        }
+      } catch (e) {}
+      L.story.loading = false; L.story.at = Date.now();
+      render();
+    }
+    window.xlStoryLoad = xlStoryLoad;
+
+    // Who the panel is about: the joined room if a session is running,
+    // otherwise everyone this host can see.
+    function xlStoryAudience() {
+      const s = (typeof xlRunningSession === 'function') ? xlRunningSession() : null;
+      if (s && (s.liveParticipants || []).length) {
+        return { label: 'In the room', live: true,
+                 ids: s.liveParticipants.map(function (p) { return p.id; }) };
+      }
+      return { label: 'Your roster', live: false,
+               ids: (L.roster || []).map(function (r) { return r.id; }).slice(0, 60) };
+    }
+
+    function xlStoryRows() {
+      const aud = xlStoryAudience();
+      const rows = aud.ids.map(function (id) {
+        const p = (L.roster || []).find(function (r) { return r.id === id; }) || { id: id };
+        const st = L.story.byId[id] || {};
+        return { id: id, name: p.brand || p.name || id, image: p.image || null,
+                 st: st, stage: xlStoryStage(st) };
+      });
+      return { aud: aud, rows: xlStorySort(rows) };
+    }
+
+    function rStory() {
+      const got = xlStoryRows(), rows = got.rows, aud = got.aud;
+      const started = rows.filter(function (r) { return r.stage.done > 0; });
+      const avg = started.length
+        ? Math.round(started.reduce(function (a, r) { return a + r.stage.pct; }, 0) / started.length) : 0;
+      const s = (typeof xlRunningSession === 'function') ? xlRunningSession() : null;
+
+      let h = '<div class="card"><div class="cardT">STORY MODE &mdash; ' + esc(aud.label) + '</div>' +
+        '<div class="xl-hint" style="text-align:left;margin:0 0 10px">Live campaign progress from the platform. ' +
+        started.length + ' of ' + rows.length + ' started &middot; average ' + avg + '% &middot; ' +
+        (L.story.at ? 'read ' + Math.max(0, Math.round((Date.now() - L.story.at) / 1000)) + 's ago' : 'not read yet') +
+        '</div>' +
+        '<button class="bigbtn xl-sm" onclick="xlStoryRefresh()">' +
+        (L.story.loading ? 'READING…' : 'REFRESH') + '</button></div>';
+
+      h += '<div class="card"><div class="cardT">THE ROOM</div>';
+      if (!rows.length) {
+        h += '<div class="xl-hint">Nobody to show yet. Start a session, or wait for the roster to load.</div>';
+      } else {
+        h += rows.map(function (r) {
+          const g = r.stage;
+          const where = g.complete ? 'Season complete'
+            : (g.act ? g.act.n + ' &middot; ' + esc(g.act.t) : 'Not started');
+          const nx = g.next ? esc(g.next.title) : '&mdash;';
+          return '<div class="xl-story-row">' +
+            '<div class="xl-story-who">' +
+              (r.image ? '<img src="' + esc(r.image) + '" alt="">' : '<span class="xl-story-dot"></span>') +
+              '<div><b>' + esc(r.name) + '</b>' +
+              '<i>' + where + (r.st.client ? ' &middot; client ' + esc(r.st.client) : '') + '</i></div>' +
+            '</div>' +
+            '<div class="xl-story-bar"><i style="width:' + g.pct + '%"></i></div>' +
+            '<div class="xl-story-num">' + g.pct + '%</div>' +
+            '<div class="xl-story-next">next: ' + nx + '</div>' +
+            '<div class="xl-story-xc">' + (r.st.xc || 0) + ' XC</div>' +
+          '</div>';
+        }).join('');
+      }
+      h += '</div>';
+
+      h += '<div class="card"><div class="cardT">PUSH A STORY BEAT</div>' +
+        '<div class="xl-hint" style="text-align:left;margin:0 0 10px">Sends every joined player to this quest. ' +
+        'They get the pull-in on the platform, same as a slide push.' +
+        (s && s.status === 'active' ? '' : ' <b style="color:#ff8ba0">No session is running.</b>') + '</div>' +
+        '<div class="xl-story-beats">' +
+        XL_STORY.acts.map(function (a) {
+          return '<div class="xl-story-act"><div class="xl-bs-k">' + esc(a.n) + ' &middot; ' + esc(a.t) + '</div>' +
+            a.q.map(function (q) {
+              return '<button class="bigbtn xl-sm ghost" onclick="xlStoryBeat(\'' + q[0] + '\')">' +
+                esc(q[1]) + '</button>';
+            }).join('') + '</div>';
+        }).join('') +
+        '</div></div>';
+      return h;
+    }
+    window.rStory = rStory;
+
+    function xlStoryRefresh() {
+      const aud = xlStoryAudience();
+      xlStoryLoad(aud.ids);
+      render();
+    }
+    window.xlStoryRefresh = xlStoryRefresh;
+
+    async function xlStoryBeat(questId) {
+      const q = XL_STORY_QUEST[questId];
+      if (!q) return;
+      const s = (typeof xlRunningSession === 'function') ? xlRunningSession() : null;
+      if (!s || s.status !== 'active') { toast('Start a session first.'); return; }
+      xlStampPush(s, 'Story Mode: ' + q.title);
+      if (inPlatform) xlPostParent({ type: 'pflx_story_beat', sessionId: s.id, questId: questId,
+                                     act: q.act.id, title: q.title });
+      if (typeof xlSfx === 'function') xlSfx('golive', 0.6);
+      toast('📖 Pushed: ' + q.title);
+      render();
+      await saveSession(s);
+    }
+    window.xlStoryBeat = xlStoryBeat;
+
+    // The six beats a host reaches for mid-show, on the SHOW CONTROL pad.
+    function xlStoryPadHtml(s) {
+      const quick = ['a0-brief', 'a1-traits', 'a1-board', 'a2-interview', 'a2-empathy', 'a3-r1'];
+      return '<div class="xl-hint" style="margin:10px 0 6px">STORY BEAT &mdash; sends joined players to a quest</div>' +
+        '<div class="xl-story-pad">' + quick.map(function (id) {
+          const q = XL_STORY_QUEST[id];
+          if (!q) return '';
+          return '<button class="bigbtn xl-sm" onclick="xlStoryBeat(\'' + id + '\')">' + esc(q.title) + '</button>';
+        }).join('') + '</div>';
+    }
+    window.xlStoryPadHtml = xlStoryPadHtml;
+    /* /PATCH X-LIVE v0.39 -- Story Mode ---------------------------------- */
+
 function rTools() {
   return '<div class="grid3">' +
     '<div class="card"><div class="cardT">🎰 Randomizer</div><div style="font-size:12px;color:#8a93b8;margin-bottom:10px">Spin the reel of players — full screen on the projector.</div><button class="bigbtn gold" onclick="wheelOpen()">SPIN THE REEL</button></div>' +
@@ -5701,7 +5931,7 @@ function xlShowControlHtml(s) {
         (info && info.running && onThisSlide ? '<div class="xl-timer-btns"><button class="bigbtn ghost xl-sm" onclick="xlShowTimerAdd(30)">+30s</button><button class="bigbtn red xl-sm" onclick="xlShowTimerStop()">■ STOP</button><button class="bigbtn ghost xl-sm" onclick="xlProjectTimer()">\u{1F4FD}️ PROJECT</button></div>' : '') +
         '<div class="xl-hint">The last 10 seconds count down out loud and flash every PFLX screen in this class.</div>' +
       '</div>' +
-      '<div class="xl-showctl-fx"><div class="xl-hint" style="margin:0 0 6px">SHOW FX — plays for everyone in the session</div>' + xlFxPadHtml() + xlAnnPadHtml(s) + '</div>' +
+      '<div class="xl-showctl-fx"><div class="xl-hint" style="margin:0 0 6px">SHOW FX — plays for everyone in the session</div>' + xlFxPadHtml() + xlAnnPadHtml(s) + xlStoryPadHtml(s) + '</div>' +
     '</div></div>';
 }
 
@@ -6392,7 +6622,7 @@ function xlBackstageInner(s, controls) {
   const shareBox = share ? xlShareHostBoxHtml(s) : '';
   return '<div class="xl-bs' + (clock.cls === 'over' ? ' over' : '') + '">' + head +
     '<div class="xl-bs-grid">' +
-      '<div class="xl-bs-col">' + bigClock + (controls && typeof xlFxPadHtml === 'function' ? '<div class="xl-bs-fx"><div class="xl-bs-k">SHOW FX</div>' + xlFxPadHtml() + xlAnnPadHtml(s) + '</div>' : '') + '</div>' +
+      '<div class="xl-bs-col">' + bigClock + (controls && typeof xlFxPadHtml === 'function' ? '<div class="xl-bs-fx"><div class="xl-bs-k">SHOW FX</div>' + xlFxPadHtml() + xlAnnPadHtml(s) + xlStoryPadHtml(s) + '</div>' : '') + '</div>' +
       '<div class="xl-bs-col wide">' + xlSlidePreviewHtml(sl, 'NOW', 'now') + shareBox + notes + '</div>' +
       '<div class="xl-bs-col">' + xlSlidePreviewHtml(next, 'UP NEXT', 'next') + rail + '</div>' +
     '</div>' + ctl + '</div>';
