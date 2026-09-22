@@ -47,7 +47,7 @@ function makeSandbox() {
 // ── 1. PFLX_SUBAPPS catalog ───────────────────────────────────────────
 (function () {
   const sb = makeSandbox();
-  check('all 4 sub-apps present', Object.keys(sb.PFLX_SUBAPPS).length === 4);
+  check('all 5 sub-apps present (pathways/arena/darkcampus/missioncontrol/story)', Object.keys(sb.PFLX_SUBAPPS).length === 5);
   check('the original 3 are untouched (labels/urls unchanged)',
     sb.PFLX_SUBAPPS.pathways.url === 'https://pflx-pathway-portal.vercel.app' &&
     sb.PFLX_SUBAPPS.arena.url === 'https://pflx-battle-arena.vercel.app' &&

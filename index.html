@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.40, Sept 22 2026 — PATCH X-LIVE v0.40: Story Mode is now
+     PLAYABLE from inside X-Live, not just monitored. Removed Story Mode's
+     two Console-level entry points (Homebase tile, toolbar icon) per Ennis
+     -- Story Mode still boots fine when navigated to internally. Added a
+     'story' entry to PFLX_SUBAPPS and generalized pflxOnEmbedFrameLoad /
+     the Console's pflxTryEmbedIdentityLogin to accept a targetView, so a
+     new "🎮 OPEN STORY MODE" toggle on the existing STORY tab embeds a real,
+     auto-logged-in Console instance landed directly on the story view --
+     the exact same embed/identity-relay technique already proven for the
+     Mission Control embed, reused rather than reinvented. The existing
+     progress-dashboard/push-a-quest STORY tab content is unchanged.
+
      X-LIVE v0.39, Sept 18 2026 — PATCH X-LIVE v0.39: STORY MODE in the live
      room. A host-only STORY tab reads every joined player's platform Story
      Mode progress (app_data pflx_story_<id>) in one batched call and shows
@@ -2779,7 +2791,8 @@ var PFLX_SUBAPPS = {
   pathways:      { label: 'Core Pathways',    url: 'https://pflx-pathway-portal.vercel.app' },
   arena:         { label: 'Battle Arena',      url: 'https://pflx-battle-arena.vercel.app' },
   darkcampus:    { label: 'DarkCampus',        url: 'https://pflx-darkcampus.vercel.app' },
-  missioncontrol: { label: 'Mission Control',  url: 'https://www.prototypeflx.com/', fullChrome: true }
+  missioncontrol: { label: 'Mission Control',  url: 'https://www.prototypeflx.com/', fullChrome: true },
+  story:         { label: 'Story Mode',        url: 'https://www.prototypeflx.com/', fullChrome: true, targetView: 'story' }
 };
 window.PFLX_SUBAPPS = PFLX_SUBAPPS;
 
@@ -2841,7 +2854,11 @@ window.pflxSyncEmbedPortal = pflxSyncEmbedPortal;
 // spoof it.
 function pflxOnEmbedFrameLoad(key) {
   try {
-    if (key !== 'missioncontrol') return;
+    // PATCH X-LIVE -- generalized beyond 'missioncontrol' (Sept 22, Ennis:
+    // "Storymode should be accessible within X-Live") so a 'story' embed
+    // gets the exact same auto-login handshake, just landing the Console
+    // on the story view instead of mission-control.
+    if (key !== 'missioncontrol' && key !== 'story') return;
     if (!_pflxEmbedFrame || !_pflxEmbedFrame.contentWindow) return;
     var brand = (L.me && L.me.brand) || '';
     if (!brand) return;
@@ -2849,7 +2866,7 @@ function pflxOnEmbedFrameLoad(key) {
     if (!app) return;
     var targetOrigin;
     try { targetOrigin = new URL(app.url).origin; } catch (e) { targetOrigin = app.url; }
-    _pflxEmbedFrame.contentWindow.postMessage(JSON.stringify({ type: 'pflx_xlive_embed_identity', brand: brand }), targetOrigin);
+    _pflxEmbedFrame.contentWindow.postMessage(JSON.stringify({ type: 'pflx_xlive_embed_identity', brand: brand, targetView: app.targetView || 'mission-control' }), targetOrigin);
   } catch (e) { console.warn('[PFLX] embed identity relay failed', e); }
 }
 window.pflxOnEmbedFrameLoad = pflxOnEmbedFrameLoad;
@@ -4259,7 +4276,7 @@ function rBoards() {
     }
     window.xlStoryPct = xlStoryPct; window.xlStoryStage = xlStoryStage; window.xlStorySort = xlStorySort;
 
-    L.story = { byId: {}, at: 0, loading: false };
+    L.story = { byId: {}, at: 0, loading: false, embedOpen: false };
 
     // One batched PostgREST read for every id in the room. kvLoad is one key
     // per call, so this goes direct rather than N round trips.
@@ -4321,6 +4338,15 @@ function rBoards() {
         '<button class="bigbtn xl-sm" onclick="xlStoryRefresh()">' +
         (L.story.loading ? 'READING…' : 'REFRESH') + '</button></div>';
 
+      h += '<div class="card"><div class="cardT">PLAY STORY MODE</div>' +
+        '<div class="xl-hint" style="text-align:left;margin:0 0 10px">Open the real Story Mode experience right here, without leaving X-Live.</div>' +
+        '<button class="bigbtn xl-sm' + (L.story.embedOpen ? '' : ' ghost') + '" onclick="xlStoryToggleEmbed()">' +
+        (L.story.embedOpen ? '✕ CLOSE STORY MODE' : '🎮 OPEN STORY MODE') + '</button>' +
+        (L.story.embedOpen
+          ? '<div class="pflx-embed-wrap" style="position:relative;padding-top:66%;margin:12px 0 2px;border-radius:10px;overflow:hidden;background:#000"><div data-pflx-embed-slot="1" data-pflx-embed-key="story" style="position:absolute;top:0;left:0;width:100%;height:100%"></div></div>'
+          : '') +
+        '</div>';
+
       h += '<div class="card"><div class="cardT">THE ROOM</div>';
       if (!rows.length) {
         h += '<div class="xl-hint">Nobody to show yet. Start a session, or wait for the roster to load.</div>';
@@ -4368,6 +4394,19 @@ function rBoards() {
       render();
     }
     window.xlStoryRefresh = xlStoryRefresh;
+
+    // PATCH X-LIVE -- "Play Story Mode" embed toggle (Sept 22, Ennis:
+    // "Storymode should be accessible within X-Live"). Reuses the exact
+    // PFLX_SUBAPPS/pflxSyncEmbedPortal/pflxOnEmbedFrameLoad mechanism
+    // already proven for the Mission Control embed -- turning the toggle
+    // on just renders a [data-pflx-embed-slot] element, which the core
+    // render() cycle's own pflxSyncEmbedPortal() call picks up
+    // automatically on the very next render, no extra wiring needed.
+    function xlStoryToggleEmbed() {
+      L.story.embedOpen = !L.story.embedOpen;
+      render();
+    }
+    window.xlStoryToggleEmbed = xlStoryToggleEmbed;
 
     async function xlStoryBeat(questId) {
       const q = XL_STORY_QUEST[questId];
