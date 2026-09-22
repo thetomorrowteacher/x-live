@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.42, Sept 22 2026 — PATCH X-LIVE v0.42: UPGRADES is the MARKETPLACE.
+     Game upgrades load from X-Coin's own catalog (app_data `modifiers`, type upgrade, with
+     the uploaded image, trigger, effect, scope, duration, auto badge) in X-Coin's card style;
+     session upgrades (Front of the Line, Music Picker, Choose Your Seat, Off-Task Ticket) render
+     in the same style. Buying posts a negative award through the data bus like before and
+     records the purchase in app_data `pflx_upgrade_purchases` for X-Coin / MC to honor.
+
      X-LIVE v0.41, Sept 22 2026 — PATCH X-LIVE v0.41: Story Mode is NATIVE.
      The v0.40 Console iframe is gone; the flythrough engine mounts inside X-Live as a
      full screen overlay (ENTER STORY MODE on the STORY tab, players get the tab too).
@@ -407,6 +414,26 @@
   @media (max-width:640px){ .grid2 { grid-template-columns:1fr; } }
   .feedrow { display:flex; gap:10px; align-items:center; font-size:12.5px; color:#aeb6d8; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,0.05); }
   .feedrow b { color:#fff; } .feedrow .t { margin-left:auto; font-size:10px; color:#5c6488; white-space:nowrap; }
+  /* PATCH X-LIVE v0.42 -- Marketplace cards in X-Coin's style */
+  .mk-h{font-family:'Audiowide',sans-serif;font-size:11px;letter-spacing:.2em;color:#7de9ff;margin:6px 0 10px}
+  .mk-h span{color:#5c6488;letter-spacing:.08em;font-size:10px;margin-left:8px;text-transform:none}
+  .mk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .mk-card{border:1px solid rgba(125,233,255,.22);background:rgba(10,14,28,.85);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 0 0 1px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35)}
+  .mk-card.session{border-color:rgba(179,136,255,.3)}
+  .mk-top{display:grid;grid-template-columns:76px 1fr auto;gap:12px;align-items:start}
+  .mk-ic{width:76px;height:76px;border-radius:16px;overflow:hidden;background:#0b1122;border:1px solid rgba(125,233,255,.25);box-shadow:0 0 18px rgba(125,233,255,.25);display:grid;place-items:center;font-size:34px}
+  .mk-ic img{width:100%;height:100%;object-fit:cover;display:block}
+  .mk-t b{display:block;font-family:'Exo 2',sans-serif;font-weight:700;font-size:17px;color:#fff;margin-bottom:4px}
+  .mk-t div{font-size:12.5px;color:#aeb6d8;line-height:1.4}
+  .mk-auto{font-family:'Audiowide',sans-serif;font-size:9px;letter-spacing:.14em;color:#7de9ff;border:1px solid rgba(125,233,255,.5);border-radius:999px;padding:5px 9px;white-space:nowrap}
+  .mk-auto.live{color:#b388ff;border-color:rgba(179,136,255,.5)}
+  .mk-strip{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:8px;align-items:center;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:12px;padding:10px 12px;font-size:12px;color:#e8ecff;font-weight:600}
+  .mk-strip small{display:block;font-size:9px;letter-spacing:.14em;color:#6f789c;font-weight:400;margin-bottom:2px}
+  .mk-strip i{color:#4d5678;font-style:normal}
+  .mk-strip .e{color:#b388ff}
+  .mk-chips{display:flex;gap:8px;flex-wrap:wrap}
+  .mk-chips span{font-size:11px;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.06);color:#aeb6d8}
+  .mk-chips span.c{color:#ffd166;font-weight:700}
   .upcard { border:1px solid rgba(179,136,255,0.35); background:rgba(179,136,255,0.07); border-radius:14px; padding:14px; text-align:center; }
   .upcard .ic { font-size:26px; } .upcard .lb { font-family:'Audiowide'; font-size:10px; font-weight:800; color:#fff; margin:6px 0; }
   /* PATCH X-LIVE v0.35 -- gameshow mode */
@@ -695,7 +722,8 @@ const DEFAULT_CFG = {
   upgrades: [
     { id: 'up-line', label: 'Front of the Line', icon: '🎫', cost: 300 },
     { id: 'up-music', label: 'Music Picker', icon: '🎵', cost: 500 },
-    { id: 'up-seat', label: 'Choose Your Seat', icon: '🪑', cost: 400 }
+    { id: 'up-seat', label: 'Choose Your Seat', icon: '🪑', cost: 400 },
+    { id: 'up-offtask', label: 'Off-Task Ticket', icon: '🎫', cost: 250, desc: 'One free pass on an off-task moment. Hand it to your teacher instead of taking the fine.' }
   ],
   teams: { names: [], assign: {} },
   goal: { label: 'Class Reward Party', target: 10000 },
@@ -1077,6 +1105,8 @@ async function loadModifiers() {
       const list = mods.filter(m => !m.autoApply && (m.triggerEvent === 'manual' || !m.triggerEvent))
         .map(m => ({ id: m.id, type: m.type, name: m.name, description: m.description || '', costXcoin: m.costXcoin || 0, icon: m.icon || '', image: m.image || '' }));
       if (list.length) L.modifiers = list;
+      /* PATCH X-LIVE v0.42 -- every X-Coin upgrade, full record, for the Marketplace */
+      L.market = mods.filter(m => m.type === 'upgrade').map(m => Object.assign({}, m));
     }
   } catch (e) {}
   L.loaded.modifiers = true; render();
@@ -1599,7 +1629,7 @@ function render() {
   }
   const tabs = L.isHost
     ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['story', '📖 STORY'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']].filter(function (t) { return pflxHostTabAllowed(t[0], L.hostCapabilities); })
-    : [['me', '🤖 MY EXO'], ['story', '📖 STORY'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🎁 UPGRADES'], ['play', '🎮 PLAY']];
+    : [['me', '🤖 MY EXO'], ['story', '📖 STORY'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🛒 MARKETPLACE'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
     '<div class="hd"><div class="logo"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" class="logo-img"/><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
@@ -5044,11 +5074,59 @@ function rMe() {
 }
 function rShop() {
   const p = myRecord();
-  return '<div class="card"><div class="cardT">🎁 Class Upgrades — spend your XC</div>' +
-    '<div class="grid3">' + L.cfg.upgrades.map((u, i) =>
-      '<div class="upcard"><div class="ic">' + u.icon + '</div><div class="lb">' + esc(u.label) + '</div>' +
-      '<button class="bigbtn gold" style="width:100%" onclick="buyUpgrade(' + i + ')">' + u.cost.toLocaleString() + ' XC</button></div>').join('') + '</div>' +
-    '<div style="font-size:10px;color:#5c6488;margin-top:12px">Your teacher sees every redemption in the feed and makes it happen in class. Balance: ' + (p.xc || 0).toLocaleString() + ' XC</div></div>';
+  const game = Array.isArray(L.market) ? L.market : [];
+  const bal = '<div style="font-size:11px;color:#8a93b8;margin:0 0 12px">Balance <b style="color:#ffd166">' + (p.xc || 0).toLocaleString() + ' XC</b>. Game upgrades come from X-Coin and fire in the platform; session upgrades are redeemed in class and your teacher sees them in the feed.</div>';
+  let h = '<div class="card"><div class="cardT">\uD83D\uDED2 MARKETPLACE</div>' + bal +
+    '<div class="mk-h">GAME UPGRADES <span>from X-Coin</span></div>' +
+    (game.length ? '<div class="mk-grid">' + game.map(function (u) { return mkCard(u, 'game'); }).join('') + '</div>'
+      : '<div class="xl-hint" style="text-align:left">No game upgrades published in X-Coin yet' + (L.loaded.modifiers ? '' : ' · loading') + '.</div>') +
+    '<div class="mk-h" style="margin-top:18px">SESSION UPGRADES <span>this class</span></div>' +
+    '<div class="mk-grid">' + L.cfg.upgrades.map(function (u, i) { return mkCard(Object.assign({ _i: i }, u), 'session'); }).join('') + '</div>' +
+    '</div>';
+  return h;
+}
+function mkLabel(s) { return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+function mkEffect(u) {
+  const v = u.effectValue;
+  return ({ deadline_extend: 'Extend Deadline (hrs)', xc_multiply: 'Multiply XC', xc_deduct: 'Deduct XC', xc_bonus: 'Bonus XC', freeze: 'Freeze' })[u.effectType] || mkLabel(u.effectType || 'Effect') + (v ? ' · ' + v : '');
+}
+function mkCard(u, kind) {
+  const isGame = kind === 'game';
+  const cost = isGame ? (parseInt(u.costXcoin, 10) || 0) : (u.cost || 0);
+  const auto = isGame && (u.autoApply === true || u.autoApply === 'True' || u.autoApply === 'true');
+  const art = (isGame && u.image) ? '<img src="' + u.image + '" alt="">' : '<span>' + (u.icon || '\uD83C\uDF81') + '</span>';
+  const trig = isGame ? mkLabel(u.triggerEvent || 'manual') : 'Live session';
+  const eff = isGame ? mkEffect(u) + (u.effectValue && !/·/.test(mkEffect(u)) ? ' · ' + u.effectValue : '') : esc(u.label);
+  const scope = isGame ? mkLabel(u.scope || 'all') : 'Class';
+  const dur = isGame ? (u.duration || 'single-use') : 'single-use';
+  const onclick = isGame ? "buyGameUpgrade('" + esc(String(u.id)) + "')" : 'buyUpgrade(' + u._i + ')';
+  return '<div class="mk-card' + (isGame ? '' : ' session') + '">' +
+    '<div class="mk-top"><div class="mk-ic">' + art + '</div><div class="mk-t"><b>' + esc(u.name || u.label) + '</b><div>' + esc(u.description || u.desc || (isGame ? '' : 'Redeem in class.')) + '</div></div>' +
+    (auto ? '<span class="mk-auto">⚡ AUTO</span>' : (isGame ? '' : '<span class="mk-auto live">● LIVE</span>')) + '</div>' +
+    '<div class="mk-strip"><div><small>TRIGGER</small>' + esc(trig) + '</div><i>›</i><div><small>EFFECT</small><span class="e">' + eff + '</span></div><i>›</i><div><small>SCOPE</small>' + esc(scope) + '</div></div>' +
+    '<div class="mk-chips"><span class="c">\uD83E\uDE99 ' + cost.toLocaleString() + ' XC</span><span>⏱ ' + esc(dur) + '</span></div>' +
+    '<button class="bigbtn gold" style="width:100%" onclick="' + onclick + '">BUY · ' + cost.toLocaleString() + ' XC</button></div>';
+}
+function buyGameUpgrade(id) {
+  const u = (L.market || []).filter(function (m) { return String(m.id) === String(id); })[0]; if (!u) return;
+  const p = myRecord(); const cost = parseInt(u.costXcoin, 10) || 0;
+  if ((p.xc || 0) < cost) { toast('Not enough XC — you have ' + (p.xc || 0).toLocaleString()); return; }
+  modal('<div class="cardT">Buy ' + esc(u.name) + '?</div><div style="font-size:13px;color:#aeb6d8">This spends <b style="color:#ffd166">' + cost.toLocaleString() + ' XC</b>. ' + esc(u.description || '') + ' It fires in the platform: ' + esc(mkLabel(u.triggerEvent || 'manual')) + ' → ' + mkEffect(u) + '.</div>' +
+    '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="confirmGameUpgrade(\'' + esc(String(u.id)) + '\')">BUY</button><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+}
+async function confirmGameUpgrade(id) {
+  const u = (L.market || []).filter(function (m) { return String(m.id) === String(id); })[0]; if (!u) return;
+  const p = myRecord(); const cost = parseInt(u.costXcoin, 10) || 0;
+  postAward(p.id, { xc: -cost, reason: 'xlive.market.' + u.id });
+  p.xc = Math.max(0, (p.xc || 0) - cost);
+  liteLog(p.id, 'upgrade', u.name, -cost);
+  try {
+    const rows = (await kvLoad('pflx_upgrade_purchases')) || [];
+    const list = Array.isArray(rows) ? rows : (rows.items || []);
+    list.push({ playerId: p.id, brand: p.brand || '', upgradeId: u.id, name: u.name, costXcoin: cost, at: new Date().toISOString(), source: 'xlive', status: 'purchased' });
+    kvSave('pflx_upgrade_purchases', list.slice(-500));
+  } catch (e) {}
+  modalClose(); render(); toast('\uD83D\uDED2 ' + u.name + ' bought. It is yours in the platform.' + (L.demo ? ' (demo)' : ''));
 }
 function buyUpgrade(i) {
   const u = L.cfg.upgrades[i]; const p = myRecord();
