@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.43, Sept 22 2026 — PATCH X-LIVE v0.43: MY EXO is the STUDIO HUB.
+     The player dashboard leads with their Startup Studio (logo, tagline, and the live
+     X-Coin stats: XC pool, members, tax rate, treasury) read from app_data `startupStudios`,
+     then Evo management (card, line, stage, Sync XP to next stage, orbs, colorway, Evo Bay),
+     then the Story Mode campaign block, badges and recent activity.
+
      X-LIVE v0.42, Sept 22 2026 — PATCH X-LIVE v0.42: UPGRADES is the MARKETPLACE.
      Game upgrades load from X-Coin's own catalog (app_data `modifiers`, type upgrade, with
      the uploaded image, trigger, effect, scope, duration, auto badge) in X-Coin's card style;
@@ -410,6 +416,28 @@
   .demoBanner { background:rgba(255,209,102,0.1); border:1px solid rgba(255,209,102,0.4); color:#ffd166; border-radius:12px;
                 padding:9px 14px; font-size:12px; margin-bottom:14px; text-align:center; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  /* PATCH X-LIVE v0.43 -- Studio Hub */
+  .card.hub{margin-bottom:14px;border-color:rgba(var(--srgb),.45);background:linear-gradient(135deg, rgba(var(--srgb),.10), rgba(10,14,28,.85) 60%)}
+  .hub-head{display:flex;gap:14px;align-items:center}
+  .hub-head img{width:64px;height:64px;border-radius:14px;object-fit:cover;border:1px solid rgba(var(--srgb),.5);box-shadow:0 0 18px rgba(var(--srgb),.35);background:#0b1122}
+  .hub-tag{font-size:12.5px;color:rgb(var(--srgb));font-style:italic;margin-top:2px}
+  .hub-you{font-size:11px;color:#8a93b8;margin-top:4px}
+  .hub-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 10px}
+  .hub-stats div{border:1px solid rgba(var(--srgb),.3);background:rgba(10,14,28,.6);border-radius:12px;padding:12px 6px;text-align:center}
+  .hub-stats b{display:block;font-family:'Audiowide',sans-serif;font-size:20px;color:rgb(var(--srgb));font-variant-numeric:tabular-nums}
+  .hub-stats small{font-size:9px;letter-spacing:.16em;color:#6f789c}
+  .hub-row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:#8a93b8;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.03)}
+  .hub-row b{color:#e8ecff}
+  .hub-themes{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .hub-themes span{font-size:10px;letter-spacing:.08em;padding:4px 9px;border-radius:999px;border:1px solid rgba(var(--srgb),.35);color:#aeb6d8}
+  .hub-members{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .hub-members i{font-size:11px;color:#8a93b8;font-style:normal}
+  .hub-bars{display:grid;gap:10px;margin-top:12px;text-align:left}
+  .hub-bars > div{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:11px;color:#8a93b8}
+  .hub-bars b{color:#e8ecff;font-variant-numeric:tabular-nums}
+  .hub-bars .xl-story-bar{grid-column:1/-1;margin-top:4px}
+  .xl-story-bar.orb i{background:linear-gradient(90deg,#7de9ff,#ffd166)}
+  @media (max-width:640px){ .hub-stats{grid-template-columns:repeat(2,1fr)} }
   .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
   @media (max-width:640px){ .grid2 { grid-template-columns:1fr; } }
   .feedrow { display:flex; gap:10px; align-items:center; font-size:12.5px; color:#aeb6d8; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,0.05); }
@@ -1093,6 +1121,12 @@ async function loadCoinCategories() {
   } catch (e) {}
   L.loaded.badges = true; render();
 }
+/* PATCH X-LIVE v0.43 -- Startup Studios from X-Coin (app_data `startupStudios`) */
+L.studios = [];
+async function loadStudios() {
+  try { const rows = await kvLoad('startupStudios'); if (Array.isArray(rows) && rows.length) L.studios = rows; } catch (e) {}
+  render();
+}
 async function loadModifiers() {
   // Real host-triggerable Upgrades/Taxes/Fines from X-Coin's own catalog (`modifiers`
   // in Supabase app_data — the same key X-Coin's admin Modifier Management page writes).
@@ -1629,7 +1663,7 @@ function render() {
   }
   const tabs = L.isHost
     ? [['class', '🏫 CLASS'], ['live', '🔴 LIVE'], ['theater', '🎬 THEATER'], ['teams', '👥 TEAMS'], ['boards', '🏆 BOARDS'], ['tools', '🎲 TOOLS'], ['story', '📖 STORY'], ['play', '🎮 PLAY'], ['feed', '📜 FEED'], ['setup', '⚙️ SETUP']].filter(function (t) { return pflxHostTabAllowed(t[0], L.hostCapabilities); })
-    : [['me', '🤖 MY EXO'], ['story', '📖 STORY'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🛒 MARKETPLACE'], ['play', '🎮 PLAY']];
+    : [['me', '🏢 STUDIO HUB'], ['story', '📖 STORY'], ['theater', '🎬 THEATER'], ['boards', '🏆 BOARDS'], ['shop', '🛒 MARKETPLACE'], ['play', '🎮 PLAY']];
   const cur = tabs.some(t => t[0] === L.screen) ? L.screen : tabs[0][0];
   app.innerHTML =
     '<div class="hd"><div class="logo"><img src="' + XLIVE_LOGO_HORIZONTAL + '" alt="X-Live" class="logo-img"/><span class="logo-pulse" title="Live"></span></div><div class="sub">' +
@@ -5059,18 +5093,61 @@ function rMe() {
   const board = boardData('weekly');
   const rank = board.findIndex(r => r.p.id === p.id) + 1;
   const team = L.cfg.teams.assign[p.id];
-  return '<div class="grid2">' +
-    '<div class="card" style="text-align:center"><div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(120,140,255,0.5))">' + exoAvatarHTML(p.id, 150, p.brand, p.image) + '</div>' +
-    '<div style="font-family:Audiowide;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex && ex.exo_name ? ex.exo_name : p.brand) + '</div>' +
-    (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · STAGE ' + (ex.stage || 1) + '</div>' : '<div style="font-size:11px;color:#8a93b8">Visit the EXO Bay in Battle Arena to hatch your EXO!</div>') +
-    '<div style="font-family:Audiowide;font-weight:900;font-size:26px;color:#ffd166;margin-top:12px">' + (p.xc || 0).toLocaleString() + ' XC</div>' +
-    '<div style="font-size:11px;color:#8a93b8">+' + week.toLocaleString() + ' this week' + (L.cfg.boards.showRanks && rank ? ' · #' + rank + ' in class' : '') + (team ? ' · TEAM ' + esc(team) : '') + '</div>' +
-    /* PATCH X-LIVE v0.41 -- the Evo is the door into Story Mode: the campaign is joined through the avatar */
-    (typeof xlStoryCampaignBlock === 'function' ? xlStoryCampaignBlock(p, ex) : '') + '</div>' +
-    '<div class="card"><div class="cardT">🎖️ My Badges</div><div style="font-size:34px">' + '🎖️'.repeat(Math.min(12, p.badges || 0)) + (p.badges > 12 ? ' +' + (p.badges - 12) : '') + (!p.badges ? '<span style="font-size:12px;color:#8a93b8">None yet — earn your first!</span>' : '') + '</div>' +
+  const LINE_STUDIO = { ironwright: 'studio-gentech', resonant: 'studio-mindforge', mythweaver: 'studio-emagination', neonborn: 'studio-innov8' };
+  const sid = p.studioId || (ex && LINE_STUDIO[ex.line]) || '';
+  const st = (L.studios || []).find(x => x.id === sid) || null;
+  const members = L.roster.filter(r => r.studioId === sid);
+  const logo = sid ? 'https://pflx-battle-arena.vercel.app/' + sid + '.png' : '';
+  const rgb = (st && st.colorRgb) || '125,233,255';
+  const stages = (window.SMF_SEASON && SMF_SEASON.studios && sid) ? ((SMF_SEASON.studios.find(x => x.id === sid) || {}).exo || {}).stages : null;
+  const stageName = ex ? ((stages && stages[(ex.stage || 1) - 1]) || (EXO_LINES[ex.line] ? EXO_LINES[ex.line].stages[(ex.stage || 1) - 1] : 'Evo')) : null;
+  const xpNext = ex ? (typeof EXO_STAGE_XP !== 'undefined' ? EXO_STAGE_XP[ex.stage || 1] : [0, 500, 2500, 8000, 20000][ex.stage || 1]) : null;
+  const xpPct = ex && xpNext ? Math.min(100, Math.round(100 * (ex.sync_xp || 0) / xpNext)) : (ex ? 100 : 0);
+  const story = (L.story && L.story.byId && L.story.byId[p.id]) || {};
+  const orbs = story.orbs || 0, orbCap = 100 + 50 * ((ex && ex.stage || 1) - 1);
+
+  /* studio card */
+  let hub = '<div class="card hub" style="--srgb:' + rgb + '">';
+  if (st) {
+    hub += '<div class="hub-head"><img src="' + logo + '" alt="" onerror="this.style.display=\'none\'"><div><div class="cardT" style="margin:0">' + esc(st.name) + '</div>' +
+      '<div class="hub-tag">' + esc(st.tagline || '') + '</div><div class="hub-you">' + esc(p.brand || 'You') + ' · member' + (team ? ' · TEAM ' + esc(team) : '') + '</div></div></div>' +
+      '<div class="hub-stats">' +
+        '<div><b>' + (parseInt(st.xcPool, 10) || 0).toLocaleString() + '</b><small>XC POOL</small></div>' +
+        '<div><b>' + members.length + '</b><small>MEMBERS</small></div>' +
+        '<div><b>' + Math.round((parseFloat(st.corporateTaxRate) || 0) * 100) + '%</b><small>TAX RATE</small></div>' +
+        '<div><b>' + (parseInt(st.taxTreasury, 10) || 0).toLocaleString() + '</b><small>TREASURY</small></div>' +
+      '</div>' +
+      '<div class="hub-row"><span>Active stakes <b>' + ((st.stakes && st.stakes.length) || 0) + '</b></span><span>Total tax collected <b>' + (parseInt(st.totalTaxCollected, 10) || 0).toLocaleString() + ' XC</b></span></div>' +
+      (st.themes && st.themes.length ? '<div class="hub-themes">' + st.themes.map(t => '<span>' + esc(t) + '</span>').join('') + '</div>' : '') +
+      '<div class="hub-members">' + (members.length ? members.slice(0, 12).map(m => '<span title="' + esc(m.brand || m.name) + '">' + exoAvatarHTML(m.id, 34, m.brand, m.image) + '</span>').join('') + (members.length > 12 ? '<i>+' + (members.length - 12) + '</i>' : '') : '<i>No members assigned yet</i>') + '</div>';
+  } else {
+    hub += '<div class="cardT">🏢 STARTUP STUDIO</div><div class="xl-hint" style="text-align:left">You are not in a Studio yet. Your host assigns Studios in X-Coin; your Evo and your Story Mode season both start there.</div>';
+  }
+  hub += '</div>';
+
+  /* evo management card */
+  let evo = '<div class="card" style="text-align:center"><div class="cardT" style="text-align:left">🧬 EVO</div>' +
+    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' + exoAvatarHTML(p.id, 150, p.brand, p.image) + '</div>' +
+    '<div style="font-family:Audiowide;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex ? (ex.exo_name || stageName) : p.brand) + '</div>';
+  if (ex) {
+    evo += '<div style="font-size:10px;color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · ' + esc(stageName) + ' · STAGE ' + (ex.stage || 1) + (ex.colorway && ex.colorway !== 'default' ? ' · ' + esc(String(ex.colorway).toUpperCase()) : '') + '</div>' +
+      '<div class="hub-bars">' +
+        '<div><span>Sync XP' + (xpNext ? ' to stage ' + ((ex.stage || 1) + 1) : '') + '</span><b>' + (ex.sync_xp || 0).toLocaleString() + (xpNext ? ' / ' + xpNext.toLocaleString() : ' · Paragon') + '</b><div class="xl-story-bar"><i style="width:' + xpPct + '%"></i></div></div>' +
+        '<div><span>Energy orbs</span><b>' + orbs + ' / ' + orbCap + '</b><div class="xl-story-bar orb"><i style="width:' + Math.min(100, Math.round(100 * orbs / orbCap)) + '%"></i></div></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><button class="bigbtn ghost xl-sm" onclick="go(\'play\')">🛠 EVO BAY</button><button class="bigbtn ghost xl-sm" onclick="go(\'shop\')">🛒 MARKETPLACE</button></div>';
+  } else {
+    evo += '<div style="font-size:11px;color:#8a93b8">Hatch your Evo in the EVO Bay (PLAY tab) and it bonds to your Studio.</div><div style="margin-top:10px"><button class="bigbtn ghost xl-sm" onclick="go(\'play\')">🛠 OPEN EVO BAY</button></div>';
+  }
+  evo += '<div style="font-family:Audiowide;font-weight:900;font-size:26px;color:#ffd166;margin-top:14px">' + (p.xc || 0).toLocaleString() + ' XC</div>' +
+    '<div style="font-size:11px;color:#8a93b8">+' + week.toLocaleString() + ' this week' + (L.cfg.boards.showRanks && rank ? ' · #' + rank + ' in class' : '') + '</div>' +
+    (typeof xlStoryCampaignBlock === 'function' ? xlStoryCampaignBlock(p, ex) : '') + '</div>';
+
+  const side = '<div class="card"><div class="cardT">🎖️ My Badges</div><div style="font-size:34px">' + '🎖️'.repeat(Math.min(12, p.badges || 0)) + (p.badges > 12 ? ' +' + (p.badges - 12) : '') + (!p.badges ? '<span style="font-size:12px;color:#8a93b8">None yet — earn your first!</span>' : '') + '</div>' +
     '<div class="cardT" style="margin-top:16px">📜 My Recent</div>' +
     L.activity.filter(a => a.player_id === p.id).slice(0, 6).map(a => '<div class="feedrow">' + ({ award: '✅', fine: '⚠️', tax: '🏛️', upgrade: '🎁', badge: '🎖️' }[a.kind] || '•') + ' ' + esc(a.label) + (a.xc ? ' <b style="color:' + (a.xc > 0 ? '#7dffb8' : '#ff8ba0') + '">' + (a.xc > 0 ? '+' : '') + a.xc + '</b>' : '') + '</div>').join('') +
-    '</div></div>';
+    '</div>';
+  return hub + '<div class="grid2">' + evo + side + '</div>';
 }
 function rShop() {
   const p = myRecord();
@@ -7177,7 +7254,7 @@ window.xlProductionBoot = xlProductionBoot;
 xlProductionBoot(); // PATCH X-LIVE v0.37 (reads ?stage= / ?pip=)
 adoptFromParams();
 render();
-loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers(); loadSessions();
+loadCfg(); loadRoster(); loadExo(); loadActivity(); loadCohortGroups(); loadCoinCategories(); loadModifiers(); loadStudios(); loadSessions();
 xlAudioBoot(); // PATCH X-LIVE v0.35
 setInterval(loadActivity, 60000);
 bcGetLastSeenAt(); // baseline on first-ever load so old broadcast history never replays
