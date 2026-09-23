@@ -5,6 +5,80 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.55, Sept 23 2026 — PATCH X-LIVE v0.55: Battle Arena Games
+     Expansion Phase C -- Spar, a real two-player PvP practice duel. Per
+     the confirmed build order (A cinematics -> B boss tier -> C Spar ->
+     D team race -> E board game), this is the third Archive Battle
+     sub-patch.
+     Ships entirely inside the existing Archive Battle IIFE, as a new
+     "⚔️ SPAR A PLAYER" entry point alongside FIGHT THE ARCHIVE / HIVE
+     ALERT on the pre-battle screen (xlBattleHTML() now returns
+     xlSparHTML() whenever the module-level sparView is set).
+     Sync layer: a new shared Supabase app_data row, pflx_spar_matches
+     (array of match objects), following the EXACT merge-safe
+     read-merge-write discipline mergeSession()/saveSession() already use
+     for X-Live sessions (mergeSparMatch/mergeSparMatchList/
+     sparLoadMatches/sparSaveMatch mirror those four functions 1:1, per
+     pflx-persistence-guardrail). The one real design difference from
+     mergeSession: combat state (HP/streak/guard/orbs/turn/winnerId) is
+     NEVER trusted from either client's snapshot -- mergeSparMatch only
+     unions the append-only actions log by id (plus log/rewardedIds, and
+     protects a terminal ended/declined status exactly like mergeSession
+     protects ended/archived), then calls sparRecompute(), which
+     deterministically REPLAYS every unioned action from a fresh starting
+     state (sparReplay/sparStep). This makes two clients racing a click
+     provably safe without any locking: the earlier-timestamped action
+     wins that side's turn, a later out-of-turn one is silently skipped
+     on replay -- both clients always converge on the identical state
+     regardless of merge order (see the "mergeSparMatch is symmetric"
+     test case).
+     Combat: sparStep/sparResolve port resolve()'s exact strike/guard/
+     support formulas and the 3-correct-streak crit (1.5x) as pure
+     functions with zero dependency on the module-level B object.
+     Documented, deliberate simplifications vs. solo battle: stats come
+     from each side's line+stage only via sparStatsFor (no build
+     modifier, no mood bonus) -- an opponent's real equipped build/mood
+     live on their own per-player story() row, which isn't bulk-loadable
+     the way player_avatars (L.exo) is; abilities are each side's BASE
+     moves plus the stage-appropriate FIRST-branch ('A') signature move
+     only (sparAbilities) -- MindForge's Tempo Shift act-twice mechanic
+     is unreachable in Spar by design. A wrong answer costs the ACTOR
+     their own HP (0.3x the ability's power) since there's no bot to
+     swing back on a fixed schedule the way foeAttack() does solo.
+     Reward: a small fixed XC grant on completion (win 20 / lose 8, both
+     sides get something since this is framed as practice) via the SAME
+     earnXc()/postAward() funnel the solo battle uses
+     (xlive.spar.win/xlive.spar.lose reason strings, matching the
+     existing xlive.archive.win.<id> convention). Granted independently
+     by EACH client for their OWN account only (postAward can't grant to
+     someone else), guarded by the union-never-shrinks rewardedIds list
+     so a stale poll can never cause a double-grant; checked via
+     sparPollAndReward() on every Spar poll tick (4s) and right after a
+     player's own action ends the match.
+     Reuses ask(cb) exactly as-is (confirmed fully generic already -- the
+     term bank it pulls from is the ACTOR's own act progress via
+     bankFor()/story(), same as solo battle) and the existing .evb-foe/
+     .evb-panel/.ab/.evb-bar/.evb-log/.evb-result CSS -- no new styles.
+     Verified: syntax gate clean (5 blocks); 46-case unit test
+     (test_xlive_spar_v055.js) extracting the real shipped functions,
+     covering stat/ability derivation, guard/crit/wrong-answer math,
+     out-of-turn and unknown-ability replay safety, replay determinism
+     under shuffled input order, win/ended detection, reward
+     grant-once-per-player idempotency, and merge symmetry/terminal-
+     status/rewardedIds-union safety -- all PASS. Full regression suite
+     re-run (all test files invoked with their index.html arg, per the
+     harness convention): the same 6 pre-existing failures
+     (test_subapp_embed.js, test_v022/028/029.js,
+     test_xlive_gameshow_v035.js, test_xlive_story_embed_v040.js) confirmed
+     identical via git-stash before/after -- zero new regressions.
+     Not verified live in-browser this pass -- Chrome automation
+     (Kapture) was unavailable this session; a real two-tab click-through
+     (challenge, accept, trade a few turns, confirm both sides converge
+     and both get rewarded) is worth doing next time a browser is
+     reachable.
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.54, Sept 23 2026 — PATCH X-LIVE v0.54: Battle Arena Games
      Expansion Phase B -- boss-tier Archives (Hack Guild + Trojan) and The
      Hive swarm encounter. Per the confirmed plan (Sept 23, "Boss
@@ -8813,9 +8887,10 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   };
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
   window.xlBattleHTML = function () {
+    if (sparView) return xlSparHTML();
     var ex = exoRow(), g = G();
     if (!ex || !g) return '<div class="evb-stage"><div class="card"><div class="cardT">⚔️ ARCHIVE BATTLE</div><div class="xl-hint" style="text-align:left">Hatch your Evo first. The Archive is waiting.</div></div></div>';
-    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ARCHIVE BATTLE</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleNew()">FIGHT THE ARCHIVE</button>' + (hiveUnlocked() ? ' <button class="bigbtn ghost" onclick="xlHiveNew()">⚠ HIVE ALERT · FIGHT THE SWARM</button>' : '') + '</div></div>'; // PATCH X-LIVE v0.54 -- Hive entry point, unlocked after a Trojan win
+    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ARCHIVE BATTLE</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleNew()">FIGHT THE ARCHIVE</button>' + (hiveUnlocked() ? ' <button class="bigbtn ghost" onclick="xlHiveNew()">⚠ HIVE ALERT · FIGHT THE SWARM</button>' : '') + ' <button class="bigbtn ghost" onclick="xlSparOpen()">⚔️ SPAR A PLAYER</button></div></div>'; // PATCH X-LIVE v0.54 -- Hive entry point, unlocked after a Trojan win; v0.55 adds Spar
     var f = B.foe, st = story(), m = mood();
     // PATCH X-LIVE v0.50 -- real hit/act/crit classes (see resolve()/
     // foeAttack()); previously B.hitFoe was read here but never set.
@@ -8955,6 +9030,332 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     }
     render();
   }
+
+  /* ---------- Spar: PvP practice duel (PATCH X-LIVE v0.55) ---------- */
+  // A lightweight, real two-player duel layered on the SAME combat math
+  // as the solo Archive Battle engine above (resolve()/foeAttack()'s
+  // hit/crit/miss formula, ported as pure functions with no dependency on
+  // the module-level B object), synced through a shared Supabase app_data
+  // row (pflx_spar_matches) using the EXACT merge-safe read-merge-write
+  // discipline mergeSession()/saveSession() already use for X-Live
+  // sessions (see pflx-persistence-guardrail). Deliberate, documented
+  // simplifications vs. solo battle: stats are derived from each side's
+  // line+stage only (bulk-loadable via L.exo, same source exoRow() reads
+  // for the current player -- no build modifier, no mood bonus, since an
+  // opponent's real equipped build/mood live on their own per-player
+  // story() row, which isn't bulk-loadable the way player_avatars is);
+  // abilities are each side's BASE moves plus the stage-appropriate
+  // FIRST-branch ('A') signature move only -- MindForge's Tempo Shift
+  // act-twice mechanic is unreachable in Spar by design. Turns strictly
+  // alternate (state.turn); combat state (HP/streak/guard/orbs) is never
+  // trusted from either client's snapshot -- it is always DETERMINISTICALLY
+  // REPLAYED from the merged, append-only actions log (sparReplay), so two
+  // clients racing a click can never desync: the earlier-timestamped
+  // action wins the turn, a later out-of-turn one is silently skipped on
+  // replay. A small fixed XC reward posts on completion (win or lose,
+  // since this is framed as practice) via the same earnXc()/postAward()
+  // funnel the solo battle uses, granted independently and exactly once
+  // per player through the union-never-shrinks rewardedIds list (each
+  // client can only grant its OWN account's XC, so this can't be
+  // centralized like a session reward the way grantSessionReward is).
+  var SPAR_ORB_START = 30, SPAR_REWARD = { win: 20, lose: 8 };
+  var sparView = null, sparPoll = null;
+  function sparStatsFor(ln, stg) {
+    var g = G(), base = (g && ln && g.cards && g.cards.baseStats[ln]) || {};
+    var keys = (S().exo && S().exo.stats) || ['POWER', 'GUARD', 'SPEED', 'HACK', 'LUCK'];
+    var out = {};
+    keys.forEach(function (k) { out[k] = (base[k] || 5) + Math.max(0, (stg || 1) - 1); });
+    return out;
+  }
+  function sparAbilities(ln, stg) {
+    var g = G(); if (!g || !ln || !g.abilities || !g.abilities[ln]) return [];
+    var list = g.abilities[ln].BASE.slice();
+    if ((stg || 1) > 1 && g.abilities[ln].A) list.push(g.abilities[ln].A);
+    return list;
+  }
+  function sparAbilityById(ln, stg, id) { var list = sparAbilities(ln, stg); for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
+  function sparHpFor(sv) { return 60 + (sv.GUARD || 5) * 8; }
+  function sparOtherSide(side) { return side === 'host' ? 'opp' : 'host'; }
+  function sparMySide(m) { var id = myId(); if (!m || !id) return null; if (m.hostId === id) return 'host'; if (m.oppId === id) return 'opp'; return null; }
+  function sparNewId(prefix) { return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); }
+
+  // sparStep -- pure. Applies ONE action to a plain {hostHp,oppHp,
+  // hostStreak,oppStreak,hostGuard,oppGuard,orbs,turn} state object,
+  // returns a NEW state. Mirrors resolve()'s strike/guard/support
+  // branches and the wrong-answer penalty above, with no B/DOM dependency.
+  function sparStep(state, m, action) {
+    var side = action.by, other = sparOtherSide(side);
+    if (state.turn !== side) return state; // out-of-turn action from a client race -- silently skipped on replay
+    if (state.hostHp <= 0 || state.oppHp <= 0) return state; // match already decided
+    var ln = side === 'host' ? m.hostLine : m.oppLine, stg = side === 'host' ? m.hostStage : m.oppStage;
+    var ability = sparAbilityById(ln, stg, action.abilityId);
+    if (!ability) return state; // unknown/stale ability id -- skip rather than crash a replay
+    var s = JSON.parse(JSON.stringify(state));
+    s.orbs = s.orbs || { host: SPAR_ORB_START, opp: SPAR_ORB_START };
+    s.orbs[side] = Math.max(0, (s.orbs[side] || 0) - (ability.cost || 0));
+    var streakKey = side + 'Streak', correct = !!action.correct;
+    if (ability.type === 'support' && ability.power) {
+      var hpKey = side + 'Hp';
+      s[hpKey] = Math.min(sparHpFor(sparStatsFor(ln, stg)), s[hpKey] + ability.power);
+    } else if (ability.type === 'guard' && !ability.power) {
+      s[side + 'Guard'] = true;
+    } else {
+      var atk = sparStatsFor(ln, stg);
+      var mult = correct ? 1 : 0.4, crit = false, streakAfter = correct ? (s[streakKey] || 0) + 1 : 0;
+      if (correct && streakAfter >= 3) { crit = true; mult *= 1.5; streakAfter = 0; }
+      s[streakKey] = streakAfter;
+      var stat = ability.type === 'guard' ? atk.GUARD : (ability.type === 'hack' ? atk.HACK : atk.POWER);
+      var dmg = Math.round((ability.power || 0) * (1 + stat / 20) * mult);
+      if (s[other + 'Guard']) { dmg = Math.round(dmg / 2); s[other + 'Guard'] = false; }
+      var oKey = other + 'Hp';
+      s[oKey] = Math.max(0, s[oKey] - dmg);
+    }
+    if (!correct) {
+      var selfDmg = Math.round((ability.power || 0) * 0.3), myHpKey = side + 'Hp';
+      if (selfDmg > 0) s[myHpKey] = Math.max(0, s[myHpKey] - selfDmg);
+    }
+    s.turn = other;
+    return s;
+  }
+
+  // sparReplay -- pure. Rebuilds the authoritative combat state by
+  // replaying every unioned action in timestamp order from a fresh
+  // starting state. This is what makes mergeSparMatch below safe: it
+  // never has to guess which client's HP snapshot is "more current" --
+  // the merged action list IS the source of truth.
+  function sparReplay(m) {
+    var svH = sparStatsFor(m.hostLine, m.hostStage), svO = sparStatsFor(m.oppLine, m.oppStage);
+    var state = {
+      hostHp: m.hostMax || sparHpFor(svH), oppHp: m.oppMax || sparHpFor(svO),
+      hostStreak: 0, oppStreak: 0, hostGuard: false, oppGuard: false,
+      orbs: { host: SPAR_ORB_START, opp: SPAR_ORB_START }, turn: 'host'
+    };
+    var actions = (m.actions || []).slice().sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    actions.forEach(function (a) { state = sparStep(state, m, a); });
+    return state;
+  }
+  function sparRecompute(m) {
+    var out = Object.assign({}, m), state = sparReplay(out);
+    Object.assign(out, state);
+    if ((out.hostHp <= 0 || out.oppHp <= 0) && out.status !== 'ended') {
+      out.status = 'ended'; out.endedAt = out.endedAt || Date.now();
+      out.winnerId = out.hostHp <= 0 && out.oppHp <= 0 ? null : (out.hostHp <= 0 ? out.oppId : out.hostId);
+    }
+    return out;
+  }
+
+  // sparResolve -- the one impure entry point a UI click calls. Builds a
+  // new action + log entry (real id/timestamp) from the current player's
+  // move, appends them, then recomputes the authoritative state via
+  // sparReplay above. Never mutates its input.
+  function sparResolve(match, side, ability, correct) {
+    var m = JSON.parse(JSON.stringify(match));
+    var actId = sparNewId('a'), at = Date.now();
+    var nameKey = side + 'Name';
+    m.actions = (m.actions || []).concat([{ id: actId, by: side, abilityId: ability.id, correct: !!correct, at: at }]);
+    m = sparRecompute(m);
+    var dmgNote = correct ? '' : ' but the answer was wrong';
+    var logT = (m[nameKey] || (side === 'host' ? 'Host' : 'Opponent')) + ' uses ' + ability.name + dmgNote + '.';
+    m.log = (m.log || []).concat([{ id: actId, t: logT, c: side, at: at }]).slice(-60);
+    m.updatedAt = at;
+    return m;
+  }
+
+  // sparCheckReward -- pure. If THIS match is ended, I was a participant,
+  // and I haven't self-granted yet, mints my (win or lose) XC and returns
+  // a NEW match with my id added to rewardedIds. Otherwise returns the
+  // SAME object reference unchanged (callers use `!==` to detect a grant).
+  function sparCheckReward(match) {
+    var side = sparMySide(match);
+    if (!side || match.status !== 'ended') return match;
+    var id = myId();
+    if ((match.rewardedIds || []).indexOf(id) !== -1) return match;
+    var won = match.winnerId === id, amt = won ? SPAR_REWARD.win : SPAR_REWARD.lose;
+    earnXc(amt, 'xlive.spar.' + (won ? 'win' : 'lose'));
+    var m = JSON.parse(JSON.stringify(match));
+    m.rewardedIds = (m.rewardedIds || []).concat([id]);
+    m.updatedAt = Date.now();
+    return m;
+  }
+
+  /* ---------- Spar: sync layer (mirrors mergeSession/saveSession) ---------- */
+  function mergeSparMatch(local, incoming) {
+    if (!local) return sparRecompute(incoming);
+    if (!incoming) return sparRecompute(local);
+    var localNewer = (local.updatedAt || 0) >= (incoming.updatedAt || 0);
+    var merged = localNewer ? Object.assign({}, incoming, local) : Object.assign({}, local, incoming);
+    // actions -- append-only union by id (the SOLE source of truth for
+    // combat state -- see sparReplay above)
+    var actById = {};
+    (incoming.actions || []).forEach(function (a) { actById[a.id] = a; });
+    (local.actions || []).forEach(function (a) { actById[a.id] = a; });
+    merged.actions = Object.keys(actById).map(function (k) { return actById[k]; }).sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    // log -- append-only union by id, for display only (not authoritative)
+    var logById = {};
+    (incoming.log || []).forEach(function (e) { logById[e.id] = e; });
+    (local.log || []).forEach(function (e) { logById[e.id] = e; });
+    merged.log = Object.keys(logById).map(function (k) { return logById[k]; }).sort(function (a, b) { return (a.at || 0) - (b.at || 0); }).slice(-60);
+    // rewardedIds -- union, never shrinks (a player must never lose their
+    // recorded self-grant to a stale poll, which would let them re-grant)
+    var rSet = {};
+    (incoming.rewardedIds || []).forEach(function (id) { rSet[id] = true; });
+    (local.rewardedIds || []).forEach(function (id) { rSet[id] = true; });
+    merged.rewardedIds = Object.keys(rSet);
+    // status -- a terminal status (ended/declined) always wins over a
+    // non-terminal one, from EITHER side, so a stale poll can never
+    // resurrect/un-decline a match another client already closed.
+    var TERMINAL = { ended: 1, declined: 1 };
+    if (TERMINAL[incoming.status] && !TERMINAL[local.status]) merged.status = incoming.status;
+    else if (TERMINAL[local.status] && !TERMINAL[incoming.status]) merged.status = local.status;
+    else merged.status = localNewer ? local.status : incoming.status;
+    merged.updatedAt = Math.max(local.updatedAt || 0, incoming.updatedAt || 0);
+    // HP/streak/guard/orbs/turn/winnerId are never trusted from either
+    // snapshot -- always rebuilt from the merged actions list.
+    return sparRecompute(merged);
+  }
+  function mergeSparMatchList(localList, incomingList) {
+    var byId = {};
+    (incomingList || []).forEach(function (m) { byId[m.id] = m; });
+    (localList || []).forEach(function (m) { byId[m.id] = mergeSparMatch(m, byId[m.id]); });
+    return Object.keys(byId).map(function (k) { return byId[k]; });
+  }
+  async function sparLoadMatches() {
+    try {
+      var cloud = await kvLoad('pflx_spar_matches');
+      if (Array.isArray(cloud)) L.sparMatches = mergeSparMatchList(L.sparMatches || [], cloud);
+    } catch (e) {}
+  }
+  async function sparSaveMatch(match) {
+    match.updatedAt = Date.now();
+    var cloud = [];
+    try { var c = await kvLoad('pflx_spar_matches'); if (Array.isArray(c)) cloud = c; } catch (e) {}
+    var idx = cloud.findIndex(function (s) { return s.id === match.id; });
+    var saved = idx === -1 ? sparRecompute(match) : mergeSparMatch(match, cloud[idx]);
+    if (idx === -1) cloud.push(saved); else cloud[idx] = saved;
+    L.sparMatches = mergeSparMatchList(L.sparMatches || [], cloud);
+    await kvSave('pflx_spar_matches', cloud);
+    return saved;
+  }
+  function sparMyMatches() {
+    var id = myId();
+    return (L.sparMatches || []).filter(function (m) { return m.hostId === id || m.oppId === id; })
+      .sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+  }
+  function sparFindMatch(id) { return (L.sparMatches || []).filter(function (m) { return m.id === id; })[0] || null; }
+  async function sparPollAndReward() {
+    await sparLoadMatches();
+    var id = myId(), mine = sparMyMatches();
+    for (var i = 0; i < mine.length; i++) {
+      var m = mine[i];
+      if (m.status === 'ended' && (m.rewardedIds || []).indexOf(id) === -1) {
+        var updated = sparCheckReward(m);
+        if (updated !== m) { await sparSaveMatch(updated); }
+      }
+    }
+  }
+
+  /* ---------- Spar: UI ---------- */
+  window.xlSparChallenge = function (oppId) {
+    var id = myId(), ex = exoRow(), oppEx = (L.exo && L.exo[oppId]) || null;
+    if (!id || !ex || !oppEx) { toast('That player has no Evo yet.'); return; }
+    var me = myRecord(), opp = L.roster.find(function (p) { return p.id === oppId; }) || { brand: 'Player' };
+    var hostSv = sparStatsFor(ex.line, ex.stage || 1), oppSv = sparStatsFor(oppEx.line, oppEx.stage || 1);
+    var m = {
+      id: sparNewId('spar'), status: 'pending', createdAt: Date.now(), updatedAt: Date.now(),
+      hostId: id, hostName: me.brand || 'Player', hostLine: ex.line, hostStage: ex.stage || 1, hostMax: sparHpFor(hostSv),
+      oppId: oppId, oppName: opp.brand || 'Player', oppLine: oppEx.line, oppStage: oppEx.stage || 1, oppMax: sparHpFor(oppSv),
+      actions: [], log: [{ id: sparNewId('a'), t: (me.brand || 'A player') + ' challenges ' + (opp.brand || 'a player') + ' to a Spar.', c: 'win', at: Date.now() }],
+      rewardedIds: []
+    };
+    m = sparRecompute(m);
+    sparSaveMatch(m).then(function (saved) { sparView = saved.id; render(); });
+  };
+  window.xlSparAccept = function (matchId) {
+    var m = sparFindMatch(matchId); if (!m || sparMySide(m) !== 'opp' || m.status !== 'pending') return;
+    var m2 = JSON.parse(JSON.stringify(m)); m2.status = 'active';
+    m2.log = (m2.log || []).concat([{ id: sparNewId('a'), t: (m2.oppName || 'The opponent') + ' accepts.', c: 'win', at: Date.now() }]);
+    sparSaveMatch(m2).then(function (saved) { sparView = saved.id; render(); });
+  };
+  window.xlSparDecline = function (matchId) {
+    var m = sparFindMatch(matchId); if (!m || sparMySide(m) !== 'opp' || m.status !== 'pending') return;
+    var m2 = JSON.parse(JSON.stringify(m)); m2.status = 'declined';
+    sparSaveMatch(m2).then(function () { render(); });
+  };
+  window.xlSparView = function (matchId) { sparView = matchId; render(); };
+  window.xlSparOpen = function () {
+    sparView = 'list';
+    sparPollAndReward().then(function () { render(); });
+    if (!sparPoll) sparPoll = setInterval(function () { sparPollAndReward().then(function () { if (sparView) render(); }); }, 4000);
+  };
+  window.xlSparClose = function () { sparView = null; if (sparPoll) { clearInterval(sparPoll); sparPoll = null; } render(); };
+  function sparAbBtnHTML(a, orbs, matchId) {
+    var inner = '<b>' + esc(a.name) + '<span class="tp">' + a.type + '</span></b><span class="cost' + (a.cost ? '' : ' free') + '">' + (a.cost ? a.cost + ' orbs' : 'free') + '</span><small>' + esc(a.text) + (a.power ? ' Power ' + a.power + '.' : '') + '</small>';
+    return '<button class="ab" data-spar-ab="' + a.id + '" data-spar-match="' + matchId + '"' + (a.cost > orbs ? ' disabled' : '') + '>' + inner + '</button>';
+  }
+  function xlSparMatchHTML(m) {
+    var mySide = sparMySide(m), other = mySide ? sparOtherSide(mySide) : null;
+    var myName = mySide ? m[mySide + 'Name'] : '', otherName = mySide ? m[other + 'Name'] : '';
+    var myHp = mySide ? m[mySide + 'Hp'] : 0, myMax = mySide ? m[mySide + 'Max'] : 1;
+    var oHp = mySide ? m[other + 'Hp'] : 0, oMax = mySide ? m[other + 'Max'] : 1;
+    var myOrbs = (m.orbs && mySide) ? m.orbs[mySide] : 0;
+    var myTurn = mySide && m.status === 'active' && m.turn === mySide;
+    var ln = mySide ? m[mySide + 'Line'] : null, stg = mySide ? m[mySide + 'Stage'] : 1;
+    var abils = ln ? sparAbilities(ln, stg) : [];
+    var h = '<div class="evb-stage"><div class="arena">';
+    h += '<div class="evb-foe"><h4>' + esc(otherName) + '</h4><small>Opponent</small>' +
+      '<div class="evb-row"><span>HP</span><b>' + oHp + ' / ' + oMax + '</b></div><div class="evb-bar hp' + (oHp < oMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * oHp / (oMax || 1)) + '%"></i></div></div>';
+    h += '<div class="evb-panel"><h3>' + esc(myName) + (myTurn ? ' · your move' : (m.status === 'active' ? ' · waiting on ' + esc(otherName) : '')) + '</h3>' +
+      '<div class="evb-row"><span>HP</span><b>' + myHp + ' / ' + myMax + '</b></div><div class="evb-bar hp' + (myHp < myMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * myHp / (myMax || 1)) + '%"></i></div>' +
+      '<div class="evb-row"><span>Orbs</span><b>' + myOrbs + ' / ' + SPAR_ORB_START + '</b></div><div class="evb-bar orb"><i style="width:' + Math.min(100, 100 * myOrbs / SPAR_ORB_START) + '%"></i></div>' +
+      '<div class="abil" style="margin-top:10px">' + (m.status === 'active' && myTurn ? abils.map(function (a) { return sparAbBtnHTML(a, myOrbs, m.id); }).join('') : '') + '</div></div></div>';
+    h += '<div class="evb-panel" style="margin-top:14px"><h3>Play by play</h3><div class="evb-log">' + (m.log || []).slice(-40).slice().reverse().map(function (l) { return '<div class="' + (l.c === 'win' ? 'win' : (l.c === mySide ? 'me' : 'fo')) + '">' + esc(l.t) + '</div>'; }).join('') + '</div></div>';
+    if (m.status === 'pending') {
+      if (mySide === 'opp') h += '<div class="evb-result"><h2>Spar challenge</h2><p>' + esc(m.hostName) + ' wants to spar.</p><div><button class="bigbtn gold" onclick="xlSparAccept(\'' + m.id + '\')">ACCEPT</button> <button class="bigbtn ghost" onclick="xlSparDecline(\'' + m.id + '\')">DECLINE</button></div></div>';
+      else h += '<div class="evb-result"><h2>Waiting</h2><p>Challenge sent to ' + esc(m.oppName) + '. Waiting for them to accept.</p></div>';
+    } else if (m.status === 'declined') {
+      h += '<div class="evb-result"><h2>Declined</h2><p>' + esc(m.oppName) + ' declined the challenge.</p><div><button class="bigbtn ghost" onclick="xlSparOpen()">BACK</button></div></div>';
+    } else if (m.status === 'ended') {
+      var won = m.winnerId === myId();
+      h += '<div class="evb-result"><h2>' + (m.winnerId ? (won ? 'You win!' : 'You lose') : 'Draw') + '</h2><p>Rewards post through X-Coin.</p><div class="r"><div>+' + (won ? SPAR_REWARD.win : SPAR_REWARD.lose) + '<span>XC</span></div></div><div><button class="bigbtn gold" onclick="xlSparOpen()">BACK TO SPAR</button></div></div>';
+    }
+    h += '<div style="margin-top:10px"><button class="bigbtn ghost" onclick="xlSparClose()">✕ EXIT SPAR</button></div>';
+    return h;
+  }
+  function xlSparHTML() {
+    if (sparView && sparView !== 'list') {
+      var m0 = sparFindMatch(sparView);
+      if (m0) return xlSparMatchHTML(m0);
+      sparView = 'list';
+    }
+    var mine = sparMyMatches();
+    var pending = mine.filter(function (m) { return m.status === 'pending'; });
+    var active = mine.filter(function (m) { return m.status === 'active'; });
+    var h = '<div class="evb-stage"><div class="card"><div class="cardT">⚔️ SPAR</div><div class="xl-hint" style="text-align:left">Practice duels against another Player. Small XC reward either way.</div>';
+    if (active.length) h += '<h3 style="font-family:Audiowide;font-size:11px;letter-spacing:.2em;color:#7de9ff;margin:14px 0 8px">IN PROGRESS</h3>' + active.map(function (m) { var side = sparMySide(m), otherName = m[sparOtherSide(side) + 'Name']; return '<div class="ab" style="cursor:pointer" onclick="xlSparView(\'' + m.id + '\')"><b>vs ' + esc(otherName) + '</b><small>' + (m.turn === side ? 'Your turn' : 'Waiting') + '</small></div>'; }).join('');
+    if (pending.length) h += '<h3 style="font-family:Audiowide;font-size:11px;letter-spacing:.2em;color:#7de9ff;margin:14px 0 8px">CHALLENGES</h3>' + pending.map(function (m) { var side = sparMySide(m); return '<div class="ab" style="cursor:pointer" onclick="xlSparView(\'' + m.id + '\')"><b>' + (side === 'host' ? 'Sent to ' + esc(m.oppName) : esc(m.hostName) + ' challenged you') + '</b><small>Pending</small></div>'; }).join('');
+    var roster = classRoster().filter(function (p) { return p.id !== myId() && L.exo && L.exo[p.id]; });
+    h += '<h3 style="font-family:Audiowide;font-size:11px;letter-spacing:.2em;color:#7de9ff;margin:14px 0 8px">CHALLENGE A PLAYER</h3>';
+    h += roster.length ? roster.map(function (p) { return '<div class="ab" style="cursor:pointer" onclick="xlSparChallenge(\'' + p.id + '\')"><b>' + esc(p.brand || 'Player') + '</b><span class="cost free">CHALLENGE</span></div>'; }).join('') : '<div class="xl-hint">No other Players with an Evo yet.</div>';
+    h += '<div style="margin-top:10px"><button class="bigbtn ghost" onclick="xlSparClose()">✕ BACK</button></div></div></div>';
+    return h;
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('#evb-battle [data-spar-ab]'); if (!b) return;
+    var matchId = b.getAttribute('data-spar-match'), m = sparFindMatch(matchId);
+    if (!m || m.status !== 'active') return;
+    var side = sparMySide(m); if (!side || m.turn !== side) return;
+    var ln = side === 'host' ? m.hostLine : m.oppLine, stg = side === 'host' ? m.hostStage : m.oppStage;
+    var a = sparAbilityById(ln, stg, b.getAttribute('data-spar-ab')); if (!a) return;
+    var orbs = (m.orbs && m.orbs[side]) || 0; if (a.cost > orbs) return;
+    ask(function (correct) {
+      var updated = sparResolve(m, side, a, correct);
+      sparSaveMatch(updated).then(function (saved) {
+        var withReward = sparCheckReward(saved);
+        if (withReward !== saved) { sparSaveMatch(withReward).then(function () { render(); }); }
+        else render();
+      });
+    });
+  });
 
   /* ---------- question gate ---------- */
   var qTimer = null;
