@@ -5,6 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.50, Sept 23 2026 — PATCH X-LIVE v0.50: Archive Battle
+     presentation layer (phase A of the Battle Arena Games Expansion --
+     see the plan doc). Per Ennis: "more popup animation scenes... the
+     main music should turn off... battle animations, sfx, vfx, and music
+     should play... chances of critical hits, misses, normal hits, with
+     animations" and "background screen of a moving space of stars, and
+     the floating cards of the Evos or the Archive." xlBattleHTML() now
+     wraps every Archive Battle screen in a new .evb-stage (an animated,
+     CSS-only star-field, two independently panning layers), and the foe
+     panel / player's card get a gentle continuous float (evbfloat). The
+     .evc.hit/.evc.act/.evb-foe.hit CSS hooks that ALREADY existed but
+     were never wired to real JS (B.hitFoe was only ever read, never set)
+     now actually fire: resolve()/foeAttack() set B.actMe/B.hitFoe/
+     B.critFoe/B.actFoe/B.hitMe at the real moments a card acts, lands a
+     hit, or lands a 3-streak crit, cleared via a new flashOff() helper
+     once each animation's real duration has played. Crit gets its own
+     distinct flash treatment (critflash), not just the pre-existing
+     text-only "· CRITICAL" log suffix. New compound CSS rules (e.g.
+     .evb-foe.act.hit.crit svg) cover a card acting AND getting hit in
+     the same render -- the common case, since a strike and the foe's
+     counter both resolve within one turn today. Music: a new 'battle'
+     zone (XL_MUSIC.battle, file is a placeholder reusing 'rush''s track
+     until Ennis supplies the real one) is now returned by xlMusicZone()
+     whenever the ARCHIVE BATTLE hub pane is open, ahead of the generic
+     Studio Hub 'dash' zone -- so the main/ambient music actually stops
+     and battle music plays. xlHubGo()/the hub-swipe scroll handler now
+     re-apply the music zone on pane switch (previously switching hub
+     panes never called render(), so the music poll never fired on a tab
+     click alone). SFX/VFX and the boss-tier Archives (The Hive/Hack
+     Guild/Trojan) are separate, larger phases (B onward) -- not in this
+     patch; the plan doc has the full phased breakdown. Turn-sequencing
+     (attacker beat, then a delayed counter-beat) was deliberately kept
+     out of scope for this patch to limit risk to a working combat
+     resolver -- resolve()/foeAttack() stay fully synchronous, only
+     cosmetic flags were added.
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.49, Sept 23 2026 — PATCH X-LIVE v0.49: Evo Bay's "Card deck"
      panel is now one horizontally-scrollable row instead of two visually
      separate blocks. Per Ennis, from 5 Evo Bay screenshots: "The cards of
@@ -5843,7 +5880,12 @@ const XL_MUSIC = {
   lobby:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_glass_interface_drift_95bpm.mp3', vol: 0.28, label: 'Glass Interface Drift' },
   boards: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_clocktower_run_132bpm.mp3', vol: 0.3, label: 'Clocktower Run' },
   think:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_event_horizon_111bpm.mp3', vol: 0.24, label: 'Event Horizon' },
-  dash:   { file: 'pflx-music/glass_interface_drift_full.mp3', vol: 0.3, label: 'Glass Interface Drift' } // PATCH X-LIVE v0.37.2
+  dash:   { file: 'pflx-music/glass_interface_drift_full.mp3', vol: 0.3, label: 'Glass Interface Drift' }, // PATCH X-LIVE v0.37.2
+  // PATCH X-LIVE v0.50 -- Archive Battle zone. Ennis is supplying a real
+  // battle track; this reuses 'rush''s file as a placeholder so the zone
+  // isn't silent until the real clip lands -- swap `file` below once he
+  // hands it over, nothing else about the wiring needs to change.
+  battle: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_midnight_mission_run_131bpm.mp3', vol: 0.34, label: 'Archive Battle (placeholder)' }
 };
 const XL_FX_PAD = ['intro', 'drumroll', 'hit', 'boom', 'glitch', 'win', 'fail', 'alarm', 'go'];
 const XL_QUICK_TIMERS = [[10, '10s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m']];
@@ -6125,6 +6167,11 @@ function xlMusicZone() {
     s = nativeSessionAppliesToMe();
   }
   if (s && s.status === 'active') return xlSessionZone(s, Date.now());
+  // PATCH X-LIVE v0.50 -- Archive Battle gets its own music zone, checked
+  // ahead of the generic Studio Hub 'dash' zone below, so opening ARCHIVE
+  // BATTLE actually swaps the music (not just SFX) per "the main music
+  // should turn off" during battle.
+  if (L.screen === 'me' && (L.hubPane || 0) === 2) return 'battle';
   if (L.screen === 'play') return 'arcade';
   if (L.screen === 'boards') return 'boards';
   // PATCH X-LIVE v0.37.2 -- player dashboard (MY EXO). render() shows it for any
@@ -8415,6 +8462,29 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .evb-foe small{display:block;color:var(--muted);font-size:12px;margin:2px 0 8px}
 .evb .evb-foe svg{display:block;width:100%;max-width:220px;margin:0 auto 8px;filter:drop-shadow(0 0 18px rgba(var(--limergb),.6))}
 .evb .evb-foe.hit svg{animation:hit .35s}
+.evb .evb-foe.act svg{animation:act .4s}
+.evb .evb-foe.act.hit svg{animation:act .4s, hit .35s}
+.evb .evb-foe.hit.crit svg{animation:hit .35s, critflash .5s}
+.evb .evb-foe.act.hit.crit svg{animation:act .4s, hit .35s, critflash .5s}
+@keyframes critflash{0%,100%{filter:drop-shadow(0 0 18px rgba(163,230,53,.6))}30%{filter:drop-shadow(0 0 22px #ffd166) brightness(1.6) saturate(1.4)}70%{filter:drop-shadow(0 0 12px #ffd166) brightness(1.25)}}
+.evb .evc.act.hit{animation:act .4s, hit .35s}
+/* PATCH X-LIVE v0.50 -- Archive Battle presentation layer: a moving
+   star-field stage behind the whole pane (evb-stage), the foe panel and
+   the player's own card float over it (evbfloat), and the (previously
+   dead) hit/act CSS hooks above now have compound rules so a card that
+   both acts AND gets hit in the same render (the common case, since a
+   strike and the foe's counter both resolve in one turn) plays both
+   animations together instead of one silently overriding the other. */
+.evb .evb-stage{position:relative;overflow:hidden}
+.evb .evb-stage::before,.evb .evb-stage::after{content:'';position:absolute;inset:-15% -8%;pointer-events:none;background-repeat:repeat}
+.evb .evb-stage::before{background-image:radial-gradient(1.6px 1.6px at 24px 34px,rgba(255,255,255,.85),transparent 60%),radial-gradient(1.2px 1.2px at 96px 128px,rgba(180,225,255,.75),transparent 60%),radial-gradient(1.6px 1.6px at 168px 64px,rgba(255,255,255,.6),transparent 60%),radial-gradient(1.2px 1.2px at 236px 190px,rgba(125,233,255,.6),transparent 60%);background-size:280px 240px;animation:evbstars1 100s linear infinite;opacity:.9}
+.evb .evb-stage::after{background-image:radial-gradient(1.2px 1.2px at 44px 96px,rgba(125,233,255,.5),transparent 60%),radial-gradient(1.6px 1.6px at 140px 40px,rgba(255,255,255,.5),transparent 60%),radial-gradient(1.2px 1.2px at 210px 160px,rgba(163,230,53,.4),transparent 60%);background-size:320px 280px;animation:evbstars2 160s linear infinite reverse;opacity:.55}
+.evb .evb-stage > *{position:relative;z-index:1}
+@keyframes evbstars1{from{background-position:0 0}to{background-position:-280px 240px}}
+@keyframes evbstars2{from{background-position:0 0}to{background-position:320px -280px}}
+@keyframes evbfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.evb .evb-foe{animation:evbfloat 3.6s ease-in-out infinite}
+.evb .evb-float{animation:evbfloat 3.6s ease-in-out infinite;animation-delay:-1.8s}
 .evb .evb-log{border:1px solid var(--line);background:rgba(7,11,22,.6);padding:10px 12px;height:150px;overflow:auto;font-size:12.5px;display:flex;flex-direction:column-reverse;gap:4px}
 .evb .evb-log div{color:var(--muted)}.evb-log div.me{color:var(--ink)}.evb-log div.fo{color:var(--lime)}.evb-log div.win{color:var(--gold)}.evb-log div.bad{color:var(--red)}
 .evb .streak{font-family:var(--display);font-size:10px;letter-spacing:.2em;color:var(--gold)}
@@ -8613,38 +8683,65 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
   window.xlBattleHTML = function () {
     var ex = exoRow(), g = G();
-    if (!ex || !g) return '<div class="card"><div class="cardT">⚔️ ARCHIVE BATTLE</div><div class="xl-hint" style="text-align:left">Hatch your Evo first. The Archive is waiting.</div></div>';
-    if (!B) return '<div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ARCHIVE BATTLE</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleNew()">FIGHT THE ARCHIVE</button></div>';
+    if (!ex || !g) return '<div class="evb-stage"><div class="card"><div class="cardT">⚔️ ARCHIVE BATTLE</div><div class="xl-hint" style="text-align:left">Hatch your Evo first. The Archive is waiting.</div></div></div>';
+    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ARCHIVE BATTLE</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleNew()">FIGHT THE ARCHIVE</button></div></div>';
     var f = B.foe, st = story(), m = mood();
-    var h = '<div class="arena"><div class="evb-foe' + (B.hitFoe ? ' hit' : '') + '"><h4>' + esc(f.name) + '</h4><small>Tier ' + f.tier + ' · ' + esc(f.ability) + '</small>' + foeSVG(f) +
+    // PATCH X-LIVE v0.50 -- real hit/act/crit classes (see resolve()/
+    // foeAttack()); previously B.hitFoe was read here but never set.
+    var foeCls = (B.actFoe ? ' act' : '') + (B.hitFoe ? ' hit' : '') + (B.critFoe ? ' crit' : '');
+    var myCard = cardHTML(stage(), activeBuild());
+    var myCls = (B.actMe ? ' act' : '') + (B.hitMe ? ' hit' : '');
+    if (myCls) myCard = myCard.replace('class="evc', 'class="evc' + myCls);
+    var h = '<div class="evb-stage"><div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>Tier ' + f.tier + ' · ' + esc(f.ability) + '</small>' + foeSVG(f) +
       '<div class="evb-row"><span>HP</span><b>' + B.foeHp + ' / ' + B.foeMax + '</b></div><div class="evb-bar hp' + (B.foeHp < B.foeMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.foeHp / B.foeMax) + '%"></i></div></div>';
-    h += '<div class="evb-panel"><h3>Your move</h3><div style="max-width:190px;margin:0 auto">' + cardHTML(stage(), activeBuild()) + '</div>' +
+    h += '<div class="evb-panel"><h3>Your move</h3><div class="evb-float" style="max-width:190px;margin:0 auto">' + myCard + '</div>' +
       '<div class="evb-row"><span>' + esc(cardName(stage(), activeBuild())) + ' HP</span><b>' + B.hp + ' / ' + B.max + '</b></div><div class="evb-bar hp' + (B.hp < B.max * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.hp / B.max) + '%"></i></div>' +
       '<div class="evb-row"><span>Orbs</span><b>' + (st.orbs || 0) + ' / ' + orbCap() + '</b></div><div class="evb-bar orb"><i style="width:' + Math.min(100, 100 * (st.orbs || 0) / orbCap()) + '%"></i></div>' +
       '<div class="evb-row"><span class="streak">' + (streak >= 2 ? 'Streak ' + streak + (streak >= 3 ? ' · crit ready' : '') : '') + '</span><span class="mood ' + m + '">' + (m === 'fed' ? 'Fed +10%' : (m === 'hungry' ? 'Hungry −10%' : 'Ready')) + '</span></div>' +
       '<div class="abil" style="margin-top:10px">' + (B.over ? '' : abilities().map(function (a) { var s = abHTML(a, true); if (B.disabled === a.id) s = s.replace('<button ', '<button disabled '); return s; }).join('')) + '</div></div></div>';
     h += '<div class="evb-panel" style="margin-top:14px"><h3>Play by play</h3><div class="evb-log">' + B.log.slice(0, 40).map(function (l) { return '<div class="' + l.c + '">' + esc(l.t) + '</div>'; }).join('') + '</div></div>';
     if (B.result) h += '<div class="evb-result">' + B.result + '</div>';
-    return h;
+    return h + '</div>';
   };
   document.addEventListener('click', function (e) {
     var b = e.target.closest('#evb-battle [data-ab]'); if (!b || !B || B.over) return;
     var a = abilities().filter(function (x) { return x.id === b.getAttribute('data-ab'); })[0]; if (!a || a.cost > (story().orbs || 0)) return;
     ask(function (correct) { resolve(a, correct); });
   });
+  // PATCH X-LIVE v0.50 -- clears a set of B flags (act/hit/crit) after
+  // their CSS animation's real duration, then re-renders so the class is
+  // actually removed from the next-generated DOM (a fresh render() always
+  // rebuilds the markup from scratch, so an un-cleared flag would replay
+  // the animation on every unrelated future render). Guarded against a
+  // battle having ended/restarted (B reassigned to a new object) between
+  // when this was scheduled and when it fires.
+  function flashOff(keys, ms) {
+    var ref = B;
+    setTimeout(function () {
+      if (B !== ref || !B) return;
+      keys.forEach(function (k) { B[k] = false; });
+      render();
+    }, ms);
+  }
   function resolve(a, correct) {
     var sv = B.sv, st = story(), mult = correct ? 1 : 0.4, crit = false;
     if (correct) { streak++; if (streak >= 3) { crit = true; mult *= 1.5; streak = 0; } } else { streak = 0; }
     st.orbs = Math.max(0, (st.orbs || 0) - a.cost);
     var stat = a.type === 'guard' ? sv.GUARD : (a.type === 'hack' ? sv.HACK : sv.POWER);
     var dmg = Math.round(a.power * (1 + stat / 20) * mult), me = cardName(stage(), activeBuild());
+    B.actMe = true; flashOff(['actMe'], 420); // PATCH X-LIVE v0.50 -- the player's card pops as it acts
     if (a.type === 'support') { if (a.power) { var h = Math.min(B.max - B.hp, dmg); B.hp += h; say(me + ' uses ' + a.name + ' and recovers ' + h + ' HP.', 'me'); } if (a.id === 'tempo-shift') { B.twice = true; say('Tempo Shift: two actions next turn.', 'me'); } if (a.id === 'chorus') B.guard = 1; }
     else if (a.type === 'guard' && !a.power) { B.guard = 1; say(a.name + ': the next hit is halved.', 'me'); }
     else {
       if (a.id === 'ink-veil' || a.id === 'phase') { B.dodge = a.id === 'phase' ? 1 : (Math.random() < 0.5 + sv.LUCK * 0.04 ? 1 : 0); say(a.name + (B.dodge ? ': the Archive will miss.' : ': the veil slips.'), 'me'); }
       else {
         if (B.shield && a.type === 'strike') { B.shield = false; say('The Drone’s shield absorbs ' + a.name + '.', 'me'); }
-        else { if (B.marked && a.type === 'strike') { dmg = Math.round(dmg * 1.5); B.marked = false; } B.foeHp = Math.max(0, B.foeHp - dmg); say(me + ' uses ' + a.name + (correct ? '' : ' but the answer was wrong') + (crit ? ' · CRITICAL' : '') + ' for ' + dmg + '.', 'me'); }
+        else {
+          if (B.marked && a.type === 'strike') { dmg = Math.round(dmg * 1.5); B.marked = false; }
+          B.foeHp = Math.max(0, B.foeHp - dmg);
+          B.hitFoe = true; if (crit) B.critFoe = true; flashOff(crit ? ['hitFoe', 'critFoe'] : ['hitFoe'], 480); // PATCH X-LIVE v0.50 -- real hit/crit animation (was dead code)
+          say(me + ' uses ' + a.name + (correct ? '' : ' but the answer was wrong') + (crit ? ' · CRITICAL' : '') + ' for ' + dmg + '.', 'me');
+        }
         if (a.id === 'bulwark-bash') B.guard = 1; if (a.id === 'ghostwire') B.foeSilenced = true; if (a.id === 'volt-track') B.marked = true; if (a.id === 'mirage') B.dodge = 2;
       }
     }
@@ -8658,6 +8755,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   }
   function foeAttack(scale) {
     var f = B.foe, sv = B.sv;
+    B.actFoe = true; flashOff(['actFoe'], 420); // PATCH X-LIVE v0.50 -- the foe pops as it lunges to attack
     if (B.dodge > 0) { B.dodge--; say(f.name + ' attacks and misses.', 'fo'); return; }
     var dmg = Math.round(f.attack * scale * (1 - Math.min(0.4, sv.GUARD * 0.02)));
     if (f.id === 'scout' && B.turn > 0 && B.turn % 3 === 2) { dmg = Math.round(dmg * 1.5); say('Probe charged.', 'fo'); }
@@ -8665,6 +8763,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     if (B.foeSilenced) { B.foeSilenced = false; dmg = Math.round(dmg * 0.5); say('Ghostwire scrambles the Archive’s attack.', 'fo'); }
     if (B.guard) { dmg = Math.round(dmg / 2); B.guard = 0; }
     B.hp = Math.max(0, B.hp - dmg); say(f.name + ' hits for ' + dmg + '.', 'fo');
+    B.hitMe = true; flashOff(['hitMe'], 480); // PATCH X-LIVE v0.50 -- real hit animation on the player's card
   }
   function finish(win) {
     var g = G(), f = B.foe, rw = g.battle.rewards, st = story(), ex = exoRow(); B.over = true;
@@ -8706,11 +8805,11 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   }
 
   /* ---------- hub swipe ---------- */
-  window.xlHubGo = function (i) { L.hubPane = i; var sw = document.getElementById('hub-swipe'); if (sw) sw.scrollTo({ left: sw.clientWidth * i, behavior: 'smooth' }); var tabs = document.querySelectorAll('.hub-tabs button'); tabs.forEach(function (t, k) { t.classList.toggle('on', k === i); }); };
+  window.xlHubGo = function (i) { L.hubPane = i; var sw = document.getElementById('hub-swipe'); if (sw) sw.scrollTo({ left: sw.clientWidth * i, behavior: 'smooth' }); var tabs = document.querySelectorAll('.hub-tabs button'); tabs.forEach(function (t, k) { t.classList.toggle('on', k === i); }); if (typeof xlMusic !== 'undefined' && typeof xlMusicZone === 'function') xlMusic.set(xlMusicZone()); };
   window.xlHubAfterRender = function () {
     var sw = document.getElementById('hub-swipe'); if (!sw) return;
     var i = L.hubPane || 0; sw.scrollLeft = sw.clientWidth * i;
-    sw.onscroll = function () { var k = Math.round(sw.scrollLeft / sw.clientWidth); if (k !== L.hubPane) { L.hubPane = k; document.querySelectorAll('.hub-tabs button').forEach(function (t, j) { t.classList.toggle('on', j === k); }); } };
+    sw.onscroll = function () { var k = Math.round(sw.scrollLeft / sw.clientWidth); if (k !== L.hubPane) { L.hubPane = k; document.querySelectorAll('.hub-tabs button').forEach(function (t, j) { t.classList.toggle('on', j === k); }); if (typeof xlMusic !== 'undefined' && typeof xlMusicZone === 'function') xlMusic.set(xlMusicZone()); } };
   };
 })();
 
