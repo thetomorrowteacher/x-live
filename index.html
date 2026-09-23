@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.46, Sept 23 2026 — PATCH X-LIVE v0.46: Studio Hub card sizing
+     now matches the reference mockup's proportions AT EVERY SCREEN WIDTH,
+     not just one. Root cause: .hub-logo (64px) and .hub-brandmark (28px)
+     were fixed pixel sizes inside a fluid grid -- they only looked
+     proportioned like the mockup at the one viewport width the mockup
+     happened to be captured at; on a different (wider) screen the card grew
+     but the logo/badge didn't, so they read as too small. Both are now
+     CSS clamp()-based (scale with viewport width, same ratio everywhere).
+     Also: 'all cards should be scrollable on the same row' -- the Evo
+     portrait, Evo progress, and Badges/Recent cards no longer sit in a
+     fluid 2-col grid that stacks/resizes at narrow widths; they're a new
+     fixed-width horizontally-scrollable row (.hub-cardrow, scroll-snap)
+     so their proportions stay identical everywhere and the whole row swipes
+     as one unit. The Evo portrait avatar was sized up (150px -> 190px) to
+     fill its new, consistently-sized card. The unrelated, shared .grid2
+     class (used elsewhere in the file) was left untouched.
+
      X-LIVE v0.45, Sept 23 2026 — PATCH X-LIVE v0.45: Studio Hub matched to
      Ennis's Canva reference mockups. 'Story' host/player tab renamed to
      'Campaign' (display label only -- internal 'story' key/rStory unchanged,
@@ -451,9 +468,9 @@
   /* PATCH X-LIVE v0.43 -- Studio Hub */
   .card.hub{margin-bottom:14px;border-color:rgba(var(--srgb),.45);background:linear-gradient(135deg, rgba(var(--srgb),.10), rgba(10,14,28,.85) 60%)}
   .hub-head{display:flex;gap:14px;align-items:center}
-  .hub-logo{width:64px;height:64px;flex:0 0 64px;background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain;filter:drop-shadow(0 0 6px rgba(0,240,255,.65)) drop-shadow(0 0 16px rgba(0,240,255,.4))}
-  .hub-brandmark{position:absolute;right:14px;bottom:14px;width:28px;height:28px;border-radius:50%;background:rgba(6,14,26,.6);border:1px solid rgba(0,240,255,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,240,255,.35);z-index:2}
-  .hub-brandmark span{display:block;width:16px;height:16px;background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain}
+  .hub-logo{width:clamp(64px,9vw,132px);height:clamp(64px,9vw,132px);flex:0 0 clamp(64px,9vw,132px);background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain;filter:drop-shadow(0 0 6px rgba(0,240,255,.65)) drop-shadow(0 0 16px rgba(0,240,255,.4))}
+  .hub-brandmark{position:absolute;right:clamp(12px,1.8vw,22px);bottom:clamp(12px,1.8vw,22px);width:clamp(28px,3.6vw,58px);height:clamp(28px,3.6vw,58px);border-radius:50%;background:rgba(6,14,26,.6);border:1px solid rgba(0,240,255,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,240,255,.35);z-index:2}
+  .hub-brandmark span{display:block;width:clamp(16px,2vw,32px);height:clamp(16px,2vw,32px);background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain}
   .hub-tag{font-size:12.5px;color:rgb(var(--srgb));font-style:italic;margin-top:2px}
   .hub-you{font-size:11px;color:#8a93b8;margin-top:4px}
   .hub-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 10px}
@@ -472,6 +489,11 @@
   .hub-bars .xl-story-bar{grid-column:1/-1;margin-top:4px}
   .xl-story-bar.orb i{background:linear-gradient(90deg,#7de9ff,#ffd166)}
   @media (max-width:640px){ .hub-stats{grid-template-columns:repeat(2,1fr)} }
+  .hub-cardrow{display:flex;gap:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding-bottom:8px;margin:0 -2px}
+  .hub-cardrow>.card{flex:0 0 clamp(280px,42vw,440px);scroll-snap-align:start}
+  .hub-cardrow::-webkit-scrollbar{height:6px}
+  .hub-cardrow::-webkit-scrollbar-thumb{background:rgba(57,192,255,.35);border-radius:3px}
+  @media (max-width:640px){ .hub-cardrow>.card{flex-basis:86vw} }
   .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
   @media (max-width:640px){ .grid2 { grid-template-columns:1fr; } }
   .feedrow { display:flex; gap:10px; align-items:center; font-size:12.5px; color:#aeb6d8; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,0.05); }
@@ -5163,7 +5185,7 @@ function rMe() {
 
   /* evo portrait card -- just the Evo itself: avatar, name, line/stage */
   let evo = '<div class="card" style="text-align:center"><div class="cardT" style="text-align:left">🧬 EVO</div>' +
-    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' + exoAvatarHTML(p.id, 150, p.brand, p.image) + '</div>' +
+    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' + exoAvatarHTML(p.id, 190, p.brand, p.image) + '</div>' +
     '<div style="font-family:Audiowide;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex ? (ex.exo_name || stageName) : p.brand) + '</div>' +
     (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · ' + esc(stageName) + ' · STAGE ' + (ex.stage || 1) + (ex.colorway && ex.colorway !== 'default' ? ' · ' + esc(String(ex.colorway).toUpperCase()) : '') + '</div>' : '') +
     '</div>';
@@ -5190,7 +5212,7 @@ function rMe() {
   var pane = L.hubPane || 0;
   var tabs = '<div class="hub-tabs">' + ['\uD83C\uDFE2 STUDIO', '\uD83E\uDDEC EVO BAY', '\u2694\uFE0F ARCHIVE BATTLE'].map(function (t, i) { return '<button class="' + (i === pane ? 'on' : '') + '" onclick="xlHubGo(' + i + ')">' + t + '</button>'; }).join('') + '</div>';
   return tabs + '<div class="hub-swipe" id="hub-swipe">' +
-    '<section>' + hub + '<div class="grid2">' + evo + evoStats + '</div>' + side + '</section>' +
+    '<section>' + hub + '<div class="hub-cardrow">' + evo + evoStats + side + '</div>' + '</section>' +
     '<section><div class="evb" id="evb-bay">' + (typeof xlEvoBayHTML === 'function' ? xlEvoBayHTML() : '') + '</div></section>' +
     '<section><div class="evb" id="evb-battle">' + (typeof xlBattleHTML === 'function' ? xlBattleHTML() : '') + '</div></section>' +
     '</div>';
