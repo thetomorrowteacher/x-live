@@ -10,7 +10,7 @@ function check(l, c, x) {
 }
 
 check('header note v0.39', src.indexOf('X-LIVE v0.39, Sept 18 2026') > 0);
-check('STORY tab is host only', /\['tools', '\S+ TOOLS'\], \['story', '\S+ STORY'\]/.test(src)
+check('CAMPAIGN (formerly STORY) tab is host only', /\['tools', '\S+ TOOLS'\], \['story', '\S+ CAMPAIGN'\]/.test(src)
   && !/\['shop', '\S+ UPGRADES'\], \['story'/.test(src));
 check('render dispatches story -> rStory', /tools: rTools, story: rStory, play: rPlay/.test(src));
 check('module is sentinel-wrapped', src.indexOf('PATCH X-LIVE v0.39 -- Story Mode') !==
