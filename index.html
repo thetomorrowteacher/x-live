@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.47, Sept 23 2026 — PATCH X-LIVE v0.47: Studio Hub header
+     composition matched to the mockup more closely per Ennis's direct
+     read of his reference: the studio logo, name, and tagline were all
+     still too small next to how imposing they are in his design ("it is
+     on the side of the other info therefore it is larger"). .hub-logo grew
+     (clamp max 132px -> 190px) and top-aligns beside the header text
+     instead of vertical-centering against it; the studio name and tagline
+     get their own scoped, bigger clamp()-based sizing (.hub-head .cardT /
+     .hub-tag) without touching the shared base .cardT rule used elsewhere
+     in the file. The Evo portrait's name grew the same way. The Evo
+     portrait's avatar now sits in a fixed overflow:hidden circle with the
+     rendered art scaled 1.35x and top-weighted (transform-origin 50% 30%)
+     so it crops in tighter on the face instead of showing the full figure,
+     per "the evo picture is cropped in to see more of its face" -- a
+     display-only wrapper, exoArtHTML/exoAvatarHTML themselves are
+     untouched. Also: the thin flat cyan ring exoArtHTML already drew
+     around every Evo avatar is now an actual blurred glow (shared
+     function -- applies everywhere Evo art renders, not just here), per
+     "There is also a cyan outline around the Evo profile picture. That
+     should also have a glow."
+
      X-LIVE v0.46, Sept 23 2026 — PATCH X-LIVE v0.46: Studio Hub card sizing
      now matches the reference mockup's proportions AT EVERY SCREEN WIDTH,
      not just one. Root cause: .hub-logo (64px) and .hub-brandmark (28px)
@@ -468,10 +489,12 @@
   /* PATCH X-LIVE v0.43 -- Studio Hub */
   .card.hub{margin-bottom:14px;border-color:rgba(var(--srgb),.45);background:linear-gradient(135deg, rgba(var(--srgb),.10), rgba(10,14,28,.85) 60%)}
   .hub-head{display:flex;gap:14px;align-items:center}
-  .hub-logo{width:clamp(64px,9vw,132px);height:clamp(64px,9vw,132px);flex:0 0 clamp(64px,9vw,132px);background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain;filter:drop-shadow(0 0 6px rgba(0,240,255,.65)) drop-shadow(0 0 16px rgba(0,240,255,.4))}
+  .hub-logo{width:clamp(96px,13vw,190px);height:clamp(96px,13vw,190px);flex:0 0 clamp(96px,13vw,190px);align-self:flex-start;background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain;filter:drop-shadow(0 0 6px rgba(0,240,255,.65)) drop-shadow(0 0 16px rgba(0,240,255,.4))}
   .hub-brandmark{position:absolute;right:clamp(12px,1.8vw,22px);bottom:clamp(12px,1.8vw,22px);width:clamp(28px,3.6vw,58px);height:clamp(28px,3.6vw,58px);border-radius:50%;background:rgba(6,14,26,.6);border:1px solid rgba(0,240,255,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,240,255,.35);z-index:2}
   .hub-brandmark span{display:block;width:clamp(16px,2vw,32px);height:clamp(16px,2vw,32px);background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain}
-  .hub-tag{font-size:12.5px;color:rgb(var(--srgb));font-style:italic;margin-top:2px}
+  .hub-head .cardT{font-size:clamp(18px,2.4vw,30px);margin-bottom:6px}
+  .hub-tag{font-size:clamp(13px,1.5vw,19px);color:rgb(var(--srgb));font-style:italic;margin-top:2px}
+  .hub-head .hub-you{font-size:clamp(11px,1.1vw,14px)}
   .hub-you{font-size:11px;color:#8a93b8;margin-top:4px}
   .hub-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 10px}
   .hub-stats div{border:1px solid rgba(var(--srgb),.3);background:rgba(10,14,28,.6);border-radius:12px;padding:12px 6px;text-align:center}
@@ -1426,7 +1449,7 @@ function exoArtHTML(exo, size, fallback) {
   const alt = EXO_ART_BASE + exoArtFile(exo, 'default') + ext;
   const fb = String(fallback || '').replace(/"/g, '&quot;');
   return '<span class="exo-art" style="display:inline-block;width:' + size + 'px;height:' + size + 'px;position:relative;vertical-align:middle">' +
-    '<img src="' + src + '" data-alt="' + alt + '" alt="" draggable="false" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;object-position:center 22%;display:block;box-shadow:0 0 0 1.5px rgba(120,220,255,.45)" ' +
+    '<img src="' + src + '" data-alt="' + alt + '" alt="" draggable="false" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;object-position:center 22%;display:block;box-shadow:0 0 0 1.5px rgba(120,220,255,.55), 0 0 16px rgba(120,220,255,.6), 0 0 34px rgba(120,220,255,.3)" ' +
     'onerror="if(!this.dataset.f&&this.src!==this.dataset.alt){this.dataset.f=1;this.src=this.dataset.alt}else{this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'}">' +
     '<span style="display:none">' + (fallback || '') + '</span></span>';
 }
@@ -5183,11 +5206,18 @@ function rMe() {
   }
   hub += '</div>';
 
-  /* evo portrait card -- just the Evo itself: avatar, name, line/stage */
+  /* evo portrait card -- just the Evo itself: avatar, name, line/stage.
+     Avatar sits in a fixed overflow:hidden circle and the rendered art is
+     scaled up + top-weighted (transform-origin 50% 30%) so it crops in
+     tighter on the face, per Ennis, instead of showing the full figure. */
   let evo = '<div class="card" style="text-align:center"><div class="cardT" style="text-align:left">🧬 EVO</div>' +
-    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' + exoAvatarHTML(p.id, 190, p.brand, p.image) + '</div>' +
-    '<div style="font-family:Audiowide;font-weight:900;font-size:17px;color:#fff;margin-top:10px">' + esc(ex ? (ex.exo_name || stageName) : p.brand) + '</div>' +
-    (ex ? '<div style="font-size:10px;color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em">' + EXO_LINES[ex.line].name + ' · ' + esc(stageName) + ' · STAGE ' + (ex.stage || 1) + (ex.colorway && ex.colorway !== 'default' ? ' · ' + esc(String(ex.colorway).toUpperCase()) : '') + '</div>' : '') +
+    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' +
+      '<div style="width:210px;height:210px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center">' +
+        '<div style="transform:scale(1.35);transform-origin:50% 30%">' + exoAvatarHTML(p.id, 210, p.brand, p.image) + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-family:Audiowide;font-weight:900;font-size:clamp(20px,2.6vw,30px);color:#fff;margin-top:14px">' + esc(ex ? (ex.exo_name || stageName) : p.brand) + '</div>' +
+    (ex ? '<div style="font-size:clamp(11px,1.2vw,14px);color:#8a93b8;font-family:Audiowide;letter-spacing:0.1em;margin-top:4px">' + EXO_LINES[ex.line].name + ' · ' + esc(stageName) + ' · STAGE ' + (ex.stage || 1) + (ex.colorway && ex.colorway !== 'default' ? ' · ' + esc(String(ex.colorway).toUpperCase()) : '') + '</div>' : '') +
     '</div>';
 
   /* evo progress card -- sync/orb bars, quick actions, XC, campaign block */

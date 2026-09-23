@@ -55,8 +55,8 @@ check('Studio Hub evo/evoStats/side row now uses .hub-cardrow',
   rMeSlice.includes('<div class="hub-cardrow">\' + evo + evoStats + side'));
 check('Studio Hub no longer wraps that row in the shared .grid2',
   !/hub \+ '<div class="grid2">'/.test(rMeSlice));
-check('the Evo portrait avatar was sized up for the new fixed-width card (190px)',
-  rMeSlice.includes('exoAvatarHTML(p.id, 190, p.brand, p.image)'));
+check('the Evo portrait avatar was sized up for the new fixed-width card (superseded by v0.47\'s 210px face-crop, still bigger than the original 150px)',
+  rMeSlice.includes('exoAvatarHTML(p.id, 210, p.brand, p.image)'));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
