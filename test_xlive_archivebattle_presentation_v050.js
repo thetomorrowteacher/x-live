@@ -55,7 +55,7 @@ check('the player\'s card wrapper gets the evb-float class', /<div class="evb-fl
 check('xlBattleHTML() return value closes the new .evb-stage wrapper', /return h \+ '<\/div>';\s*\};/.test(src));
 
 // --- Music zone wiring checks ---
-check('XL_MUSIC.battle zone exists', /battle: \{ file: 'pflx-library\/10_Music_Loops\/loop_drive_8bar_midnight_mission_run_131bpm\.mp3', vol: 0\.34, label: 'Archive Battle \(placeholder\)' \}/.test(src));
+check('XL_MUSIC.battle zone exists (file swapped to Orbit Drift in PATCH X-LIVE v0.51 -- see test_xlive_battle_audio_v051_v053.js)', /battle: \{ file: 'pflx-library\/10_Music_Loops\/loop_drive_8bar_[a-z_0-9]+\.mp3', vol: 0\.34, label: '[^']*' \}/.test(src));
 check('xlMusicZone() returns \'battle\' when the Archive Battle hub pane is open', /if \(L\.screen === 'me' && \(L\.hubPane \|\| 0\) === 2\) return 'battle';/.test(src));
 // the battle-zone check must come BEFORE the generic Studio Hub 'dash' fallback
 const zoneFnStart = src.indexOf('function xlMusicZone() {');

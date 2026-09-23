@@ -5,6 +5,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.53, Sept 23 2026 — PATCH X-LIVE v0.51/v0.52/v0.53: real
+     Archive Battle audio + smoother global hover/click SFX. Per Ennis:
+     "Use a gamified music track from in the folder that hasn't been used
+     during game play. There are also dragon ball sfx that can be used
+     during battles. I have also add a lot of new UI sounds. Use them
+     throughout hovers and clicks within PFLX. The current is too harsh.
+     It should feel and sound smooth and futuristic."
+     v0.51: XL_MUSIC.battle (v0.50's placeholder, reusing 'rush''s file)
+     now points at loop_drive_8bar_orbit_drift_129bpm.mp3 -- Orbit Drift
+     was cut into the library alongside the other 7 zone tracks but never
+     assigned anywhere, matching "hasn't been used during game play."
+     v0.52: Ennis's "Dragon Ball Z Punch" pack (previously un-cut) was
+     sliced into 29 individual clips via ffmpeg silencedetect + peak
+     normalization, following the exact same convention (48kHz, MP3 VBR +
+     WAV masters, peak-normalized to -1dBFS) the original 285-clip PFLX
+     Sound Library was built with. All 29 landed in pflx-library/
+     04_Impacts_Hits as impact_022 through impact_050 (both the deployed
+     copy and Ennis's own reference library, manifest.json updated in
+     both, in each one's own schema). Three are wired into real battle
+     moments: XL_SFX.battleHit/battleCrit/battleFoeHit play at the exact
+     hitFoe/critFoe/hitMe flag-set points v0.50 already instrumented in
+     resolve()/foeAttack() -- a landed strike, a 3-streak crit (a louder,
+     longer clip, not just the visual flash), and the Archive's own
+     counter landing on the player. The other 26 cut clips are in the
+     library for future use (Spar/boss-tier phases).
+     v0.53: replaced the harsh default hover/click SFX (XL_SFX.uiHover/
+     uiClick, and the Console's own PFLX_UI_SFX -- see PATCH PLATFORM
+     v243) with clips cut from Ennis's 5 new UI sound packs. Measured via
+     ffmpeg astats: the old click (click_007.mp3) had a crest factor of
+     8.5 (peak far above its average level -- a sharp, harsh transient
+     tick); the new click (click_041.mp3, from "The Perfect Futuristic UI
+     Click!") measures 2.6, a rounder envelope at the same ~0.26s length.
+     The new hover (click_030.mp3, from "Best UI Sound Effects") measures
+     1.7, the smoothest of everything auditioned. All 92 clips cut from
+     the 5 new packs (Fantasy UI Sounds, Best UI SFX, Futuristic HUD 2,
+     Perfect UI Click, Popular SFX) were added to the library
+     (01_UI_Clicks/02_UI_Blips/07_Transitions_Swells by duration), not
+     just the two picked here -- available for future use. Could not
+     literally listen to the audio in this environment; picks were made
+     on crest-factor/duration heuristics and are trivially swappable
+     (one string each) if Ennis wants a different clip once he hears them.
+     ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.50, Sept 23 2026 — PATCH X-LIVE v0.50: Archive Battle
      presentation layer (phase A of the Battle Arena Games Expansion --
      see the plan doc). Per Ennis: "more popup animation scenes... the
@@ -5871,8 +5915,21 @@ const XL_SFX = {
   wrong: 'pflx-library/06_Power_Downs/powerdown_005.mp3',
   blip: 'pflx-library/02_UI_Blips/blip_010.mp3',
   go: 'countdown/count_go.mp3',
-  uiHover: 'pflx-ui/ui_hover_soft.mp3', // PATCH X-LIVE v0.37.3 (was blip_003 -- too harsh)
-  uiClick: 'pflx-library/01_UI_Clicks/click_007.mp3'
+  // PATCH X-LIVE v0.53 -- smoother, less harsh hover/click SFX (same swap
+  // as the Console's PATCH PLATFORM v243 -- see that comment for the
+  // crest-factor reasoning). Kept in sync so X-Live and the Console sound
+  // consistent everywhere.
+  uiHover: 'pflx-library/01_UI_Clicks/click_030.mp3',
+  uiClick: 'pflx-library/01_UI_Clicks/click_041.mp3',
+  // PATCH X-LIVE v0.52 -- real Dragon Ball Z punch SFX for Archive Battle,
+  // wired to the same hitFoe/critFoe/hitMe flags v0.50 already set for the
+  // visual animations (see resolve()/foeAttack()). 29 clips were cut from
+  // Ennis's source pack into pflx-library/04_Impacts_Hits (impact_022 to
+  // impact_050); these three are the ones wired in, the rest are in the
+  // library for future use.
+  battleHit: 'pflx-library/04_Impacts_Hits/impact_025.mp3',
+  battleCrit: 'pflx-library/04_Impacts_Hits/impact_022.mp3',
+  battleFoeHit: 'pflx-library/04_Impacts_Hits/impact_029.mp3'
 };
 const XL_MUSIC = {
   arcade: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_orbit_arcade_134bpm.mp3', vol: 0.32, label: 'Orbit Arcade' },
@@ -5881,11 +5938,16 @@ const XL_MUSIC = {
   boards: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_clocktower_run_132bpm.mp3', vol: 0.3, label: 'Clocktower Run' },
   think:  { file: 'pflx-library/10_Music_Loops/loop_calm_8bar_event_horizon_111bpm.mp3', vol: 0.24, label: 'Event Horizon' },
   dash:   { file: 'pflx-music/glass_interface_drift_full.mp3', vol: 0.3, label: 'Glass Interface Drift' }, // PATCH X-LIVE v0.37.2
-  // PATCH X-LIVE v0.50 -- Archive Battle zone. Ennis is supplying a real
-  // battle track; this reuses 'rush''s file as a placeholder so the zone
-  // isn't silent until the real clip lands -- swap `file` below once he
-  // hands it over, nothing else about the wiring needs to change.
-  battle: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_midnight_mission_run_131bpm.mp3', vol: 0.34, label: 'Archive Battle (placeholder)' }
+  // PATCH X-LIVE v0.51 -- Archive Battle zone: was a placeholder reusing
+  // 'rush''s track (v0.50); Ennis asked for "a gamified music track...
+  // that hasn't been used during game play." Orbit Drift's drive-tempo
+  // loop was cut into the library alongside every other zone's track
+  // (same 8-source pflx-library/10_Music_Loops set) but never assigned
+  // to a zone -- Into The Singularity and the Sci-Fi Suspense Trailer
+  // loops are the other two still-unused options if this one doesn't
+  // land right; swapping `file` to any 10_Music_Loops path is a
+  // zero-risk one-line change, nothing else about the wiring changes.
+  battle: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_orbit_drift_129bpm.mp3', vol: 0.34, label: 'Archive Battle: Orbit Drift' }
 };
 const XL_FX_PAD = ['intro', 'drumroll', 'hit', 'boom', 'glitch', 'win', 'fail', 'alarm', 'go'];
 const XL_QUICK_TIMERS = [[10, '10s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m']];
@@ -8740,6 +8802,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
           if (B.marked && a.type === 'strike') { dmg = Math.round(dmg * 1.5); B.marked = false; }
           B.foeHp = Math.max(0, B.foeHp - dmg);
           B.hitFoe = true; if (crit) B.critFoe = true; flashOff(crit ? ['hitFoe', 'critFoe'] : ['hitFoe'], 480); // PATCH X-LIVE v0.50 -- real hit/crit animation (was dead code)
+          if (typeof xlSfx === 'function') xlSfx(crit ? 'battleCrit' : 'battleHit'); // PATCH X-LIVE v0.52 -- Dragon Ball punch SFX on every landed strike
           say(me + ' uses ' + a.name + (correct ? '' : ' but the answer was wrong') + (crit ? ' · CRITICAL' : '') + ' for ' + dmg + '.', 'me');
         }
         if (a.id === 'bulwark-bash') B.guard = 1; if (a.id === 'ghostwire') B.foeSilenced = true; if (a.id === 'volt-track') B.marked = true; if (a.id === 'mirage') B.dodge = 2;
@@ -8764,6 +8827,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     if (B.guard) { dmg = Math.round(dmg / 2); B.guard = 0; }
     B.hp = Math.max(0, B.hp - dmg); say(f.name + ' hits for ' + dmg + '.', 'fo');
     B.hitMe = true; flashOff(['hitMe'], 480); // PATCH X-LIVE v0.50 -- real hit animation on the player's card
+    if (typeof xlSfx === 'function') xlSfx('battleFoeHit'); // PATCH X-LIVE v0.52 -- Dragon Ball punch SFX when the Archive actually lands a hit
   }
   function finish(win) {
     var g = G(), f = B.foe, rw = g.battle.rewards, st = story(), ex = exoRow(); B.over = true;
