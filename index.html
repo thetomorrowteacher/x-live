@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.48, Sept 23 2026 — PATCH X-LIVE v0.48: Evo portrait face-crop
+     is now per-line/per-stage instead of one fixed origin. v0.47's crop
+     wrapper used a single transform-origin:50% 30% for every Evo, assuming
+     the art was similarly composed everywhere -- checking the real deployed
+     assets (all 12 line x stage combinations with uploaded art) found that
+     assumption was wrong: face position ranges from ~29%-78% horizontally
+     and ~27%-58% vertically depending on line/stage, so most Evos were
+     cropping to the wrong spot. Per "The profile picture should change to
+     each new level Evo selected. It should be cropped into the face of the
+     evo no matter which level it is on," added EXO_FACE_FOCAL (measured
+     per-line/per-stage face coordinates) and exoFaceFocalOrigin(ex), which
+     remaps those coordinates through the real object-fit:cover crop-window
+     math into a transform-origin the wrapper actually uses. Stages without
+     real uploaded art (3, 5) fall back safely since they render the
+     procedural SVG core instead, which needs no crop. exoArtHTML/
+     exoAvatarHTML remain untouched -- this only changes the Studio Hub's
+     own crop wrapper.
+
      X-LIVE v0.47, Sept 23 2026 — PATCH X-LIVE v0.47: Studio Hub header
      composition matched to the mockup more closely per Ennis's direct
      read of his reference: the studio logo, name, and tagline were all
@@ -1441,6 +1459,35 @@ function exoArtFile(exo, cw) {
   const st = exo.stage || 1;
   const build = String(exo.build || (st === 1 ? 'base' : st < 4 ? 'a' : 'a1')).toLowerCase();
   return exo.line + '/' + st + '-' + build + '-' + cw + '-' + (exo.form || 'standard');
+}
+// PATCH X-LIVE v0.48 -- per-line/stage face focal points for the Studio Hub's
+// cropped-in Evo portrait (see rMe()). Measured by eye against the real
+// assets/exo/<line>/<stage>-<build>-default-standard art (stages 3/5 have no
+// uploaded art yet -- they fall back to the procedural SVG core, which needs
+// no crop). Coordinates are % position of the face within the FULL source
+// image; keyed by line+stage only (not build/colorway/form) since that's the
+// only axis with real, checkable art differences today. Not exact -- if
+// Arena uploads new/replacement art this table can drift; revisit by eye
+// against the real assets if a portrait starts looking off-center again.
+const EXO_FACE_FOCAL = {
+  ironwright: { 1: { x: 53, y: 35 }, 2: { x: 32, y: 43 }, 4: { x: 74, y: 30 } },
+  resonant:   { 1: { x: 40, y: 27 }, 2: { x: 30, y: 35 }, 4: { x: 38, y: 28 } },
+  mythweaver: { 1: { x: 29, y: 27 }, 2: { x: 62, y: 45 }, 4: { x: 65, y: 27 } },
+  neonborn:   { 1: { x: 78, y: 57 }, 2: { x: 78, y: 55 }, 4: { x: 75, y: 58 } }
+};
+// exoArtHTML's <img> uses object-fit:cover + object-position:'center 22%' at
+// a SQUARE target size against a 1024x1536 (2:3) source: that combination
+// always shows the FULL width and, in the source image's own percentage
+// space, roughly the y:7%-74% vertical band. A face's raw image-% position
+// only needs remapping on the Y axis into that already-visible window; X
+// carries over as-is since no horizontal cropping happens before this point.
+function exoFaceFocalOrigin(exo) {
+  const line = exo && exo.line, stage = (exo && exo.stage) || 1;
+  const entry = EXO_FACE_FOCAL[line] && EXO_FACE_FOCAL[line][stage];
+  if (!entry) return '50% 40%';
+  const y = Math.max(0, Math.min(100, (entry.y - 7) / 67 * 100));
+  const x = Math.max(0, Math.min(100, entry.x));
+  return x.toFixed(1) + '% ' + y.toFixed(1) + '%';
 }
 function exoArtHTML(exo, size, fallback) {
   if (!exo || !exo.line) return fallback;
@@ -5213,7 +5260,7 @@ function rMe() {
   let evo = '<div class="card" style="text-align:center"><div class="cardT" style="text-align:left">🧬 EVO</div>' +
     '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' +
       '<div style="width:210px;height:210px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center">' +
-        '<div style="transform:scale(1.35);transform-origin:50% 30%">' + exoAvatarHTML(p.id, 210, p.brand, p.image) + '</div>' +
+        '<div style="transform:scale(1.35);transform-origin:' + (ex ? exoFaceFocalOrigin(ex) : '50% 40%') + '">' + exoAvatarHTML(p.id, 210, p.brand, p.image) + '</div>' +
       '</div>' +
     '</div>' +
     '<div style="font-family:Audiowide;font-weight:900;font-size:clamp(20px,2.6vw,30px);color:#fff;margin-top:14px">' + esc(ex ? (ex.exo_name || stageName) : p.brand) + '</div>' +

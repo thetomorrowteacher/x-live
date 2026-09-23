@@ -38,8 +38,17 @@ const rMeStart = src.indexOf('function rMe() {');
 const rMeSlice = src.slice(rMeStart, rMeStart + 12000);
 check('Evo portrait avatar sits in a fixed, overflow-hidden crop circle',
   rMeSlice.includes('width:210px;height:210px;border-radius:50%;overflow:hidden'));
-check('Evo portrait art is scaled up and top-weighted to crop in on the face',
-  rMeSlice.includes("transform:scale(1.35);transform-origin:50% 30%"));
+// NOTE: the fixed 50% 30% transform-origin pinned here was superseded by
+// PATCH X-LIVE v0.48, which replaced it with a real per-line/per-stage
+// exoFaceFocalOrigin(ex) lookup (see test_xlive_studio_hub_facefocal_v048.js)
+// -- the same "single fixed crop doesn't work for every Evo" bug the v0.48
+// Handoff entry documents. This assertion now checks the scale+wrapper
+// structure stayed intact and the origin is computed rather than literal,
+// instead of pinning the exact (now-superseded) value.
+check('Evo portrait art is scaled up and crop-wrapped (scale 1.35, wrapper intact)',
+  rMeSlice.includes("transform:scale(1.35);transform-origin:'"));
+check('Evo portrait crop origin is computed (exoFaceFocalOrigin), not the old fixed 50% 30%',
+  rMeSlice.includes('exoFaceFocalOrigin(ex)') && !rMeSlice.includes("transform-origin:50% 30%"));
 check('exoAvatarHTML is still called with the matching 210px size (no size drift)',
   rMeSlice.includes('exoAvatarHTML(p.id, 210, p.brand, p.image)'));
 check('Evo name font size grew to a responsive clamp (was a fixed 17px)',
