@@ -5,6 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.49, Sept 23 2026 — PATCH X-LIVE v0.49: Evo Bay's "Card deck"
+     panel is now one horizontally-scrollable row instead of two visually
+     separate blocks. Per Ennis, from 5 Evo Bay screenshots: "The cards of
+     each evo collected should be on the same row. The cards not obtained
+     should be greyed out and faded." Root cause: xlEvoBayHTML() rendered
+     the owned/buyable current-stage deck as its own 3-col grid, then a
+     full-width "STAGE N+1 ... unlocks at" divider line, then a SECOND,
+     separate 3-col grid for the next stage's locked cards below it -- two
+     stacked blocks, not one row. New .evb-deckrow (same horizontally-
+     scrollable flex + scroll-snap pattern as the Studio Hub's .hub-cardrow
+     from v0.46) now wraps BOTH deckHTML(n,false) and deckHTML(n+1,true)
+     together, with .shop neutralized via display:contents inside it so
+     each card becomes a direct flex item instead of staying pinned to its
+     old grid -- owned and next-stage-locked cards now scroll together as
+     one row, with a slim inline divider label (same stage/name/Sync-XP
+     info the old full-width divider showed) between the two groups. The
+     "greyed out and faded" treatment for locked cards (grayscale+dimmed
+     art, reduced-opacity panel, dimmed text) already existed
+     (.evc.locked / .shop .s.locked) and needed no change -- only the
+     layout was the real gap. deckHTML() itself (card generation) is
+     untouched.
+
      X-LIVE v0.48, Sept 23 2026 — PATCH X-LIVE v0.48: Evo portrait face-crop
      is now per-line/per-stage instead of one fixed origin. v0.47's crop
      wrapper used a single transform-origin:50% 30% for every Evo, assuming
@@ -8412,6 +8434,12 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .shop .s.locked{opacity:.75}
 .evb .shop .s.locked .n,.evb .shop .s.locked p{color:var(--dim)}
 .evb .evb-next{font-family:var(--display);font-size:10px;letter-spacing:.22em;color:var(--dim);margin:16px 0 10px;padding-top:12px;border-top:1px dashed var(--line)}
+.evb .evb-deckrow{display:flex;gap:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding-bottom:8px;margin:0 -2px}
+.evb .evb-deckrow .shop{display:contents}
+.evb .evb-deckrow .shop .s{flex:0 0 clamp(150px,40vw,200px);scroll-snap-align:start}
+.evb .evb-deckrow::-webkit-scrollbar{height:6px}
+.evb .evb-deckrow::-webkit-scrollbar-thumb{background:rgba(57,192,255,.35);border-radius:3px}
+.evb .evb-deckrow .evb-divider{flex:0 0 96px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;font-family:var(--display);font-size:9px;letter-spacing:.12em;color:var(--dim);line-height:1.6;border-left:1px dashed var(--line);border-right:1px dashed var(--line);padding:0 10px;scroll-snap-align:start}
 .evb .ab .tp{text-transform:uppercase}
 .evb .evb-log div.fo{color:var(--lime)}
 .evb .abil button.ab{font-family:var(--body);letter-spacing:0;text-transform:none;background:transparent;cursor:pointer}
@@ -8529,7 +8557,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       '<div class="c"><b>Feed</b><p>Feed ' + g.orbs.feedCost + ' orbs for ' + g.orbs.feedSyncXp + ' Sync XP. A fed Evo fights 10 percent stronger. Feeding starts the same rest timer.</p><span class="t">' + (rest > 0 ? 'Resting · ' + fmtT(rest) : ((st.orbs || 0) >= g.orbs.feedCost ? 'Ready to feed' : 'Not enough orbs')) + '</span><button class="bigbtn ghost xl-sm" onclick="xlEvoFeed()"' + ((rest > 0 || (st.orbs || 0) < g.orbs.feedCost) ? ' disabled' : '') + '>FEED</button></div></div></div>';
     h += '<div class="evb-panel"><h3>Abilities on this card</h3><div class="abil">' + abilities().map(function (a) { return abHTML(a, false); }).join('') + '</div></div>';
     /* card deck: this stage's builds, then the next stage greyed out */
-    h += '<div class="evb-panel"><h3>Card deck</h3>' + deckHTML(n, false) + (n < 5 ? '<div class="evb-next">STAGE ' + (n + 1) + ' · ' + esc(stageName(n + 1).toUpperCase()) + ' · unlocks at ' + (nt || 0).toLocaleString() + ' Sync XP</div>' + deckHTML(n + 1, true) : '') + '</div>';
+    h += '<div class="evb-panel"><h3>Card deck</h3><div class="evb-deckrow">' + deckHTML(n, false) + (n < 5 ? '<div class="evb-divider">STAGE ' + (n + 1) + '<br>' + esc(stageName(n + 1).toUpperCase()) + '<br>unlocks at ' + (nt || 0).toLocaleString() + ' Sync XP</div>' + deckHTML(n + 1, true) : '') + '</div></div>';
     h += '</div></div>';
     return h;
   };
