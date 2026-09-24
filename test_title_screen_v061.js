@@ -43,7 +43,7 @@ const labelSrc = extractFn('xlBattleIntroLabel');
 const labelFn = new Function('mode', labelSrc + '\nreturn xlBattleIntroLabel(mode);');
 
 const fight = labelFn('fight');
-ok(fight.title === 'ARCHIVE BATTLE' && fight.tint === 'cyan', 'xlBattleIntroLabel("fight") returns the real ARCHIVE BATTLE / cyan label');
+ok(fight.title === 'EVO CLASH' && fight.tint === 'cyan', 'xlBattleIntroLabel("fight") returns the real EVO CLASH / cyan label (renamed from Archive Battle in PATCH X-LIVE v0.63)');
 
 const hive = labelFn('hive');
 ok(hive.title === 'THE HIVE' && hive.tint === 'crit', 'xlBattleIntroLabel("hive") returns the real THE HIVE / crit label, distinct from a normal fight');
@@ -52,7 +52,7 @@ const spar = labelFn('spar');
 ok(spar.title === 'PLAYER DUEL' && spar.tint === 'cyan', 'xlBattleIntroLabel("spar") returns the real PLAYER DUEL label');
 
 const unknown = labelFn('bogus');
-ok(unknown.title === 'ARCHIVE BATTLE', 'an unrecognized mode falls back to the plain ARCHIVE BATTLE label (fails safe, never blank)');
+ok(unknown.title === 'EVO CLASH', 'an unrecognized mode falls back to the plain EVO CLASH label (fails safe, never blank)');
 
 // ---- xlBattleStartSequence: real wiring checks ----
 const startSeqSrc = extractWindowFn('xlBattleStartSequence');
