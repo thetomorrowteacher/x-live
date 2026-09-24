@@ -5,6 +5,80 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.64, Sept 24 2026 -- PATCH X-LIVE v0.64: Ennis: "in this mode
+     the Player has a move and then the Archive or opposite player has a
+     move. There should be a animation representing a swing....then an
+     animation for a hit, miss, critical hit, etc. This should happen for
+     the Archive move and for the Evo's move. Add SFX."
+     Investigated resolve() (the player's move resolver) and foeAttack()
+     (the Archive's counter-attack) before writing anything: the player's
+     side already had everything asked for, since v0.50/v0.52/v0.60 --
+     swing (B.actMe pops the card), a real PflxFx.slam() HIT/CRITICAL
+     HIT/MISS banner with a percentage, and SFX (xlSfx('battleHit'/
+     'battleCrit')). The Archive's side had swing (B.actFoe) and a hit-
+     flash + SFX (xlSfx('battleFoeHit')) on a landed hit, but NO
+     PflxFx.slam() banner at all, and the B.dodge > 0 miss branch (from
+     the player's Phase/Ink Veil/Mirage abilities) had ZERO feedback
+     beyond a text log line -- silent, no flash, no banner. This patch
+     closes that gap, additively, without touching resolve() or any of
+     the player-side code at all.
+     foeAttack(): the B.dodge > 0 branch now plays a real SFX cue
+     (xlSfx('freeze') -- reused rather than inventing a new asset; reads
+     as "the attack fizzles/glitches past the player", matching the
+     existing Ghostwire flavor text elsewhere in this function) and shows
+     a PflxFx.slam('MISS', { sub: 'DODGED', tint: 'cyan' }) banner (cyan,
+     not the player-hit red, since a dodge is good news for the player)
+     before its existing early return. A new local foeCrit flag is set
+     true only on Scout's existing "Probe charged" 1.5x-damage turn (the
+     foe's one existing "bigger hit" mechanic, B.turn % 3 === 2) --
+     chosen as the foe-side crit trigger for direct parity with the
+     player's own crit/streak mechanic, rather than inventing a new
+     random-chance foe crit roll. Every real landed foe hit now calls
+     PflxFx.slam(foeCrit ? 'CRITICAL HIT' : 'HIT', { sub: dmg + ' DMG',
+     tint: foeCrit ? 'crit' : 'fail', shake: foeCrit }) right where the
+     existing v0.52 battleFoeHit SFX already fires -- gold/shake on a
+     Probe-charged crit, red/no-shake otherwise, mirroring resolve()'s
+     own v0.60 tint convention (crit=gold, hit-against-you=red) while
+     showing the real computed damage rather than a percentage (the foe's
+     damage isn't expressed as a multiplier of a base the way the
+     player's is, so an absolute "N DMG" figure is the honest read here).
+     Vector's (Hack Guild) existing second strike also gets its own HIT
+     banner, for parity across every Archive move within a turn, not just
+     the first.
+     The existing .act/.hit CSS "swing"/hit-flash animation infrastructure
+     (B.actMe/B.actFoe, wired since v0.50) is judged to already satisfy
+     the "animation representing a swing" ask on both sides -- no changes
+     made to those shared keyframes, to avoid touching CSS several other
+     selectors already depend on for a purely additive patch.
+     Verified: syntax gate clean (5 blocks). New 29-case unit test
+     (test_foe_battle_fx_v064.js) extracts the REAL shipped foeAttack()
+     and resolve() functions verbatim (brace-counting, same technique
+     used all session) -- static checks confirm every new call site and
+     every regression-guarded original line (the dodge text log, the
+     v0.52 SFX call, B.actFoe, and resolve()'s own untouched v0.60 banner
+     call), and behavioral checks run the real extracted foeAttack()
+     end-to-end against a hand-rolled fake battle state: a dodge fires
+     exactly one MISS/DODGED/cyan banner + freeze SFX and applies no
+     damage; a normal landed hit fires one HIT/fail/no-shake banner with
+     a real "N DMG" subtitle; Scout's Probe-charged turn fires one
+     CRITICAL HIT/crit/shake banner; a non-charged Scout turn stays a
+     normal HIT; Vector's turn fires two HIT banners (main + second
+     strike) on a scale===1 turn and only one on a scaled-down (wrong-
+     answer free hit) turn, confirming the existing v0.54 gating is
+     unchanged -- all 29 PASS. Full regression suite re-run: same
+     pre-existing failures as before this patch, unchanged -- zero new
+     regressions.
+     Still ahead in the confirmed presentation-first order: host-
+     adjustable question timer (up to 60s, fixed at 12s today), a larger
+     player Evo card + card entrance/idle animations, SFX announcer
+     voice lines -- then the larger pieces (Archive-side stats applying
+     to combat, level/progression scaling, 4-player team battle, hosting
+     as an X-Live session activity, Battle Arena Side Quests, removing
+     live quiz_duel/team_clash from Battle Arena, the Quick Launch
+     system, Edpuzzle-like and Flipgrid-style features).
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.63, Sept 24 2026 -- PATCH X-LIVE v0.63: renamed "Archive
      Battle" to "Evo Clash" across every live, player-facing surface.
      Ennis: "I dont like Archive Battle yet this will be the first
@@ -9603,15 +9677,31 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   function foeAttack(scale) {
     var f = B.foe, sv = B.sv;
     B.actFoe = true; flashOff(['actFoe'], 420); // PATCH X-LIVE v0.50 -- the foe pops as it lunges to attack
-    if (B.dodge > 0) { B.dodge--; say(f.name + ' attacks and misses.', 'fo'); return; }
+    if (B.dodge > 0) {
+      B.dodge--; say(f.name + ' attacks and misses.', 'fo');
+      // PATCH X-LIVE v0.64 -- Ennis: "an animation for a hit, miss,
+      // critical hit... This should happen for the Archive move." The
+      // foe's own swing (B.actFoe, set above) already plays here -- this
+      // adds the SFX + big-title MISS banner that were completely absent
+      // on a dodge before now.
+      if (typeof xlSfx === 'function') xlSfx('freeze'); // the attack fizzles/glitches past the player
+      if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam('MISS', { sub: 'DODGED', tint: 'cyan' }); }
+      return;
+    }
     var dmg = Math.round(f.attack * scale * (1 - Math.min(0.4, sv.GUARD * 0.02)));
-    if (f.id === 'scout' && B.turn > 0 && B.turn % 3 === 2) { dmg = Math.round(dmg * 1.5); say('Probe charged.', 'fo'); }
+    var foeCrit = false; // PATCH X-LIVE v0.64 -- Probe-charged is the foe's one existing "bigger hit" mechanic; treated as the CRITICAL HIT case for the new banner below
+    if (f.id === 'scout' && B.turn > 0 && B.turn % 3 === 2) { dmg = Math.round(dmg * 1.5); foeCrit = true; say('Probe charged.', 'fo'); }
     if (f.id === 'warden' && !B.disabled && Math.random() < 0.4) { var abs = abilities(); B.disabled = abs[abs.length - 1].id; say('Lockdown: ' + abs[abs.length - 1].name + ' is disabled for two turns.', 'fo'); }
     if (B.foeSilenced) { B.foeSilenced = false; dmg = Math.round(dmg * 0.5); say('Ghostwire scrambles the Archive’s attack.', 'fo'); }
     if (B.guard) { dmg = Math.round(dmg / 2); B.guard = 0; }
     B.hp = Math.max(0, B.hp - dmg); say(f.name + ' hits for ' + dmg + '.', 'fo');
     B.hitMe = true; flashOff(['hitMe'], 480); // PATCH X-LIVE v0.50 -- real hit animation on the player's card
     if (typeof xlSfx === 'function') xlSfx('battleFoeHit'); // PATCH X-LIVE v0.52 -- Dragon Ball punch SFX when the Archive actually lands a hit
+    // PATCH X-LIVE v0.64 -- Ennis: "an animation for a hit, miss, critical
+    // hit... This should happen for the Archive move." Mirrors resolve()'s
+    // own v0.60 HIT/CRITICAL HIT/MISS banner treatment on the player's
+    // side, which the foe's landed attack never had until now.
+    if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam(foeCrit ? 'CRITICAL HIT' : 'HIT', { sub: dmg + ' DMG', tint: foeCrit ? 'crit' : 'fail', shake: foeCrit }); }
     // PATCH X-LIVE v0.54 -- Vector (Hack Guild) strikes a second time on
     // its own main turn (scale === 1 only -- not on a wrong-answer free
     // hit, which passes a smaller scale).
@@ -9619,6 +9709,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       var dmg2 = Math.round(f.attack * 0.6 * (1 - Math.min(0.4, sv.GUARD * 0.02)));
       if (B.guard) { dmg2 = Math.round(dmg2 / 2); B.guard = 0; }
       B.hp = Math.max(0, B.hp - dmg2); say(f.name + ' strikes again for ' + dmg2 + '.', 'fo');
+      if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam('HIT', { sub: dmg2 + ' DMG', tint: 'fail' }); } // PATCH X-LIVE v0.64
     }
   }
   function finish(win) {
