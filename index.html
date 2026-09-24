@@ -5,6 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.60, Sept 24 2026 -- PATCH X-LIVE v0.60: the first sub-patch
+     of Ennis's large "Archive Battle presentation overhaul" ask (title
+     screen, tutorial, bold move buttons, bigger cards, adjustable timer,
+     team battle, Quick Launch, Battle Arena live removal, Edpuzzle/
+     Flipgrid-style features -- full scoping + confirmed decisions are in
+     the working plan doc). Confirmed with Ennis: the "save the timer
+     animations as a skill" ask means a real in-app reusable code module
+     (not a Claude Skill doc), the presentation pass ships first, Quick
+     Launch reuses the proven in-app polled-banner pattern (not real push
+     notifications), and Battle Arena's live quiz_duel/team_clash get
+     removed now rather than staged.
+     This patch: generalized the countdown timer's own shake/tint/big-
+     title FX (the shared PflxFx module, byte-identical between this file
+     and pflx-platform-check/preview.html per its own header comment) into
+     a new, reusable PflxFx.slam(text, {sub, tint, shake, sfxKey}) call
+     any PFLX game can use -- purely additive (a new .pfx-slam2 DOM node
+     and a hoisted TINT_COLORS map with a new "crit" gold entry), the
+     countdown's own TIME'S UP finale is completely untouched. Wired
+     Archive Battle's resolve() to call it on every real landed hit: a
+     big HIT / MISS / CRITICAL HIT title now pops up with the REAL
+     computed damage-multiplier percentage (100% / 40% / 150%), a colored
+     screen hue, and a shake on a crit -- exactly Ennis's ask, using data
+     resolve() already computes rather than inventing new numbers.
+     Verified: syntax gate clean on both index.html (5 blocks) and
+     preview.html (28 blocks). New 23-case unit test
+     (test_pflxfx_slam_v060.js) extracts the REAL shipped PflxFx IIFE
+     (marker-matched, not reimplemented) and runs it against a small
+     hand-rolled fake DOM, plus asserts resolve()'s real wiring -- all 23
+     PASS. Full regression suite re-run: same pre-existing failures
+     unchanged (test_subapp_embed.js 2, test_v029.js 1,
+     test_xlive_gameshow_v035.js 1, test_xlive_story_embed_v040.js 3, plus
+     the 2 pre-existing Node-crash files test_v022.js/test_v028.js) --
+     zero new regressions. preview.html's mirrored copy spot-checked
+     directly (node -e against the real extracted IIFE): slamShow, the
+     crit color, and the export all present.
+     Still ahead in this epic (documented in the plan, not yet built):
+     title screen + skippable tutorial, bold move-selection buttons with
+     move/damage/shield descriptors, adjustable question timer (up to
+     60s), a larger player Evo card, card animations, SFX announcer
+     lines, Archive-side stats, level/progression scaling, a 4-player
+     team battle mode, hosting this as an X-Live session activity, a
+     Battle Arena "Side Quests" launch surface, removing live quiz_duel/
+     team_clash from Battle Arena, the cross-app Quick Launch system (in-
+     app polled-banner delivery, 1-week auto-expiring ad hoc sessions),
+     an Edpuzzle-like embedded-question video feature, and the Flipgrid-
+     style video studio (still only its Notes sub-piece shipped, per the
+     xb-10 backlog above).
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.59, Sept 24 2026 — PATCH X-LIVE v0.59: firmed up the
      Archive art mapping Ennis flagged ("Fix it") after v0.56 shipped
      it as a stated default. Re-read
@@ -5881,6 +5931,9 @@ function confirmUpgrade(i) {
     heart: 'countdown/fx_heartbeat.mp3', alert: 'countdown/fx_alert.mp3'
   };
   var RISER_LEN = 5.17; // fx_riser.mp3 peaks at its very end
+  // PATCH X-LIVE v0.60 -- hoisted out of playShow() so the new slam()
+  // helper below can share the exact same tint palette (added: crit).
+  var TINT_COLORS = { cyan: 'rgba(0,240,255,0.28)', win: 'rgba(255,214,0,0.3)', fail: 'rgba(255,0,60,0.3)', boom: 'rgba(255,255,255,0.35)', go: 'rgba(60,255,160,0.3)', pulse: 'rgba(168,85,247,0.22)', alarm: 'rgba(255,0,40,0.4)', sweep: 'rgba(0,240,255,0.15)', glitch: 'rgba(255,0,200,0.18)', crit: 'rgba(255,170,0,0.4)' };
   var RING_MS = 1780;    // one fx_alarm_ring.mp3 ring
   // Host "show FX" pad -- every sound is a PFLX Sound Library clip.
   var SHOWS = {
@@ -5974,6 +6027,9 @@ function confirmUpgrade(i) {
     '#pflx-fx-layer .pfx-slam.on{display:block;animation:pfxSlam 0.55s cubic-bezier(.2,1.8,.35,1),pfxJitter 0.12s steps(2) 0.55s infinite;}' +
     '@keyframes pfxSlam{0%{transform:translate(-50%,-50%) scale(3.2);opacity:0}60%{transform:translate(-50%,-50%) scale(0.9);opacity:1}100%{transform:translate(-50%,-50%) scale(1)}}' +
     '@keyframes pfxJitter{0%{transform:translate(-50.6%,-49.4%)}100%{transform:translate(-49.4%,-50.6%)}}' +
+    '#pflx-fx-layer .pfx-slam2{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;text-align:center;white-space:nowrap;font-size:min(13vw,150px);font-weight:900;letter-spacing:0.06em;color:#fff;text-shadow:0 0 20px #ff0033,0 0 60px rgba(255,0,51,0.9),6px 0 0 rgba(0,240,255,0.7),-6px 0 0 rgba(255,0,120,0.8);}' +
+    '#pflx-fx-layer .pfx-slam2 small{display:block;font-size:0.16em;letter-spacing:0.5em;margin-top:0.4em;color:#ffb3c0;}' +
+    '#pflx-fx-layer .pfx-slam2.on{display:block;animation:pfxSlam 0.55s cubic-bezier(.2,1.8,.35,1),pfxJitter 0.12s steps(2) 0.55s infinite;}' +
     '#pflx-fx-layer .pfx-show{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);display:none;font-size:min(12vw,120px);font-weight:900;color:#fff;white-space:nowrap;text-align:center;}' +
     '#pflx-fx-layer .pfx-show.on{display:block;animation:pfxShow 1.6s ease-out forwards;}' +
     '@keyframes pfxShow{0%{transform:translate(-50%,-50%) scale(0.3);opacity:0}18%{transform:translate(-50%,-50%) scale(1.12);opacity:1}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1.05)}}' +
@@ -6007,7 +6063,7 @@ function confirmUpgrade(i) {
         '<div class="pfx-flash y"></div><div class="pfx-flash r"></div><div class="pfx-tint"></div><div class="pfx-scan"></div>' +
         '<div class="pfx-sweep"></div><div class="pfx-wave"></div>' +
         '<div class="pfx-big"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="45"/><circle class="tk" cx="50" cy="50" r="40"/><circle class="fg" cx="50" cy="50" r="45" stroke-dasharray="282.74" stroke-dashoffset="0"/></svg><div class="pfx-num"></div><div class="pfx-lab"></div></div>' +
-        '<div class="pfx-slam">TIME’S UP<small></small></div><div class="pfx-show"></div>' +
+        '<div class="pfx-slam">TIME’S UP<small></small></div><div class="pfx-slam2"><b></b><small></small></div><div class="pfx-show"></div>' +
         '<div class="pfx-pill" style="top:' + CFG.pillTop + '"><i></i><span class="pfx-pl"></span><b class="pfx-pt"></b></div>';
       // Outside <body> on purpose: the shake moves <body>, never this layer.
       document.documentElement.appendChild(layer);
@@ -6207,6 +6263,27 @@ function confirmUpgrade(i) {
     return true;
   }
   function cancelAll() { Object.keys(live).forEach(cancel); }
+  // PATCH X-LIVE v0.60 -- generalized big-title "slam" banner, extracted
+  // from the countdown finale's TIME'S UP treatment so any PFLX game (Archive
+  // Battle first) can reuse the exact same shake/tint/slam-in visual
+  // language via one call: PflxFx.slam(text, {sub, tint, shake, sfxKey}).
+  // Renders on its own DOM node (.pfx-slam2), so it never conflicts with or
+  // interrupts the countdown's own .pfx-slam finale, which is untouched.
+  function slamShow(text, opts) {
+    opts = opts || {};
+    var el = q('.pfx-slam2'); if (!el) return false;
+    var b = el.querySelector('b'), sm = el.querySelector('small');
+    if (b) b.textContent = text || '';
+    if (sm) sm.textContent = opts.sub || '';
+    retrigger(el, 'on');
+    if (opts.tint) {
+      var tint = q('.pfx-tint');
+      if (tint) { tint.style.background = TINT_COLORS[opts.tint] || opts.tint; retrigger(tint, 'go'); }
+    }
+    if (opts.shake) bump('pfx-bump', opts.ms || 500);
+    if (opts.sfxKey && FILES[opts.sfxKey]) play(FILES[opts.sfxKey], opts.gain, 0, null);
+    return true;
+  }
   function playShow(name) {
     var s = SHOWS[name]; if (!s) return false;
     var l = ensureLayer();
@@ -6214,8 +6291,7 @@ function confirmUpgrade(i) {
     var box = q('.pfx-show');
     if (box && name !== 'drumroll' && name !== 'glitch') { box.textContent = s.icon + ' ' + (name === 'go' ? 'GO!' : s.label.toUpperCase()); retrigger(box, 'on'); }
     var tint = q('.pfx-tint');
-    var colors = { cyan: 'rgba(0,240,255,0.28)', win: 'rgba(255,214,0,0.3)', fail: 'rgba(255,0,60,0.3)', boom: 'rgba(255,255,255,0.35)', go: 'rgba(60,255,160,0.3)', pulse: 'rgba(168,85,247,0.22)', alarm: 'rgba(255,0,40,0.4)', sweep: 'rgba(0,240,255,0.15)', glitch: 'rgba(255,0,200,0.18)' };
-    if (tint) { tint.style.background = colors[s.vis] || colors.cyan; retrigger(tint, 'go'); }
+    if (tint) { tint.style.background = TINT_COLORS[s.vis] || TINT_COLORS.cyan; retrigger(tint, 'go'); }
     if (s.vis === 'sweep') retrigger(q('.pfx-sweep'), 'go');
     if (s.vis === 'boom') bump('pfx-bump', 400);
     if (s.vis === 'glitch') bump('pfx-glitching', 1000);
@@ -6245,7 +6321,7 @@ function confirmUpgrade(i) {
   }
   root.PflxFx = {
     version: 1, configure: configure, startCountdown: startCountdown, cancel: cancel, cancelAll: cancelAll,
-    playShow: playShow, shows: SHOWS, files: FILES, active: active, preload: preload,
+    playShow: playShow, slam: slamShow, shows: SHOWS, files: FILES, active: active, preload: preload,
     isRunning: function (id) { return !!(live[id] && !live[id].done); },
     _tick: tick
   };
@@ -9249,6 +9325,12 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
             B.foeHp = Math.max(0, B.foeHp - dmg);
             B.hitFoe = true; if (crit) B.critFoe = true; flashOff(crit ? ['hitFoe', 'critFoe'] : ['hitFoe'], 480); // PATCH X-LIVE v0.50 -- real hit/crit animation (was dead code)
             if (typeof xlSfx === 'function') xlSfx(crit ? 'battleCrit' : 'battleHit'); // PATCH X-LIVE v0.52 -- Dragon Ball punch SFX on every landed strike
+            // PATCH X-LIVE v0.60 -- big pop-up HIT/MISS/CRITICAL HIT title,
+            // colored screen hue and a shake, via the newly-generalized
+            // PflxFx.slam() (see the shared PflxFx module above). mult is
+            // already the real damage multiplier (1 / 0.4 / 1.5) computed
+            // above, so the shown percentage is the real number, not a guess.
+            if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam(crit ? 'CRITICAL HIT' : (correct ? 'HIT' : 'MISS'), { sub: Math.round(mult * 100) + '% DMG', tint: crit ? 'crit' : (correct ? 'cyan' : 'fail'), shake: crit }); }
             say(me + ' uses ' + a.name + (correct ? '' : ' but the answer was wrong') + (crit ? ' · CRITICAL' : '') + ' for ' + dmg + '.', 'me');
           }
         }
