@@ -5,6 +5,73 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.57, Sept 24 2026 — PATCH X-LIVE v0.57: Battle Arena Games
+     Expansion Phase D -- X-Rush, a Mario-Kart/Quizlet-Live-style team
+     quiz race. Per the confirmed build order (A cinematics -> B boss
+     tier -> C Spar -> D team race -> E board game), this is the fourth
+     sub-patch and the first to reach outside x-live-check.
+     Per the confirmed Decision 1 (new tab per player, not an iframe,
+     not a full navigation away), the real race engine is native to
+     Battle Arena (new repo files: pflx-arena-check/app/lib/xrush.ts,
+     app/lib/xrush-store.ts, app/xrush/page.tsx) -- X-Live's whole role
+     here is a host-only "LAUNCH X-RUSH" button (new tab to Arena's own
+     /xrush creation flow, which reads X-Live's live
+     pflx_lite_config.teams directly -- no team data duplicated) plus a
+     small polled "X-Rush is live -- JOIN" banner on the Teams tab so
+     every other player can open their own tab once a race exists.
+     CORE MECHANIC (xrush.ts, Arena repo): every racer answers the same
+     shared deck, but xrushBuildQuestion() gives each racer their OWN
+     deterministic (seeded by raceId+playerId+round) option arrangement
+     -- same term, different position, the real Quizlet Live mechanic.
+     A wrong answer resets that racer's OWN progress to the start of
+     the deck (Ennis's explicit spec) via xrushRecordAnswer() -- never
+     affects any other racer. Team score is each team's average racer
+     progress; a team finishes once every member has completed the
+     deck. Sync is a single shared Supabase app_data row
+     (pflx_xrush_races), merge-safe read-merge-write per
+     pflx-persistence-guardrail: a client only ever proposes ITS OWN
+     player's progress entry, xrushMergeRace unions progress by
+     playerId with a sticky finishedAt (a stale copy can never
+     un-finish a racer) and a forward-only race status (ended can never
+     revert to active). +25 XC on finishing via the existing awardXC()
+     bridge.
+     NOT built this pass (documented backlog, not faked): team-targeted
+     "Data Cache" powerups and energy orbs -- ships the real, working
+     core race first, same "mechanic before juice" sequencing as every
+     other phase in this plan.
+     Verified: x-live-check side -- syntax gate clean (5 blocks); new
+     13-case unit test (test_xrush_launch_v057.js) on the real shipped
+     banner/join/host-gating logic (empty-state, deck-name display and
+     fallback, XSS escaping, malformed-pointer safety) -- all PASS;
+     full regression suite re-run, same 6 pre-existing failures
+     unchanged. Arena side -- app/lib/xrush.ts compiles clean under the
+     project's own tsc; new 63-case unit test (test_xrush_v1.js)
+     against the real compiled module covering seeded-shuffle
+     determinism, per-player option arrangement (same term, different
+     arrangement across players, identical arrangement on reload),
+     answer resolution (correct advances, wrong resets to 0, finish
+     detection), team standings math, and the full merge-safety
+     property set (union by playerId, sticky finishedAt, forward-only
+     status, list-level union by race id) -- all 63 PASS. app/xrush/
+     page.tsx compiles clean via Next's own SWC ("Compiled successfully");
+     the project's separate type-check pass fails on a PRE-EXISTING,
+     project-wide next/* declaration-resolution issue in this mounted
+     node_modules (confirmed present on files this patch never touched,
+     e.g. app/arena/page.tsx) -- unrelated to this patch, needs Vercel's
+     own build environment (or a fresh npm install) to actually resolve.
+     HOST ACTIONS / BACKLOG: not verified live in-browser this pass (no
+     Chrome automation this session) -- a real two-tab-plus-host
+     click-through (launch a race, two players join and answer through
+     a full deck, confirm a wrong answer really resets progress and the
+     team standings bar moves correctly) is worth doing next time a
+     browser is reachable. The JOIN banner only appears on the Teams
+     tab today, not as a global floating banner -- same documented
+     first-version limitation as Spar's no-push-notification gap
+     (PATCH X-LIVE v0.55). Phase E (the board-game/escape-room mode) is
+     next in the confirmed build order.
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.56, Sept 24 2026 — PATCH X-LIVE v0.56: real illustrated
      Archive character art, replacing the procedural SVG for any foe
      with a matching image. The 8 Archive character images (scout,
@@ -4641,10 +4708,48 @@ function rLiveNative() {
 }
 
 // ── TEAMS view ──
+// PATCH X-LIVE v0.57 -- Battle Arena Games Expansion Phase D: X-Rush, a
+// Mario-Kart/Quizlet-Live-style team quiz race, native to Battle Arena
+// (new repo: pflx-arena-check/app/xrush). Per the confirmed Decision 1
+// (new tab per player, not an iframe embed, not a full navigation
+// away), X-Live's whole role here is: (a) a host-only LAUNCH button
+// that deep-links to Arena's own /xrush creation flow (which reads
+// X-Live's live pflx_lite_config.teams directly -- no data duplicated
+// here), and (b) a small polled "X-Rush is live -- JOIN" banner so
+// every other player can open their own tab once a race exists. The
+// actual race engine (per-player randomized answer arrangement, wrong-
+// answer-resets-progress, team standings, merge-safe sync) lives
+// entirely in Arena's app/lib/xrush.ts -- see that repo's Handoff entry.
+// KNOWN FIRST-VERSION LIMITATION (documented, not hidden): the JOIN
+// banner only appears on the Teams tab (rTeams()), not as a global
+// floating banner -- matches the same "no push notification yet"
+// limitation already documented for Spar (PATCH X-LIVE v0.55).
+var XL_XRUSH_ACTIVE = null;
+var XL_XRUSH_BASE = 'https://pflx-battle-arena.vercel.app/xrush';
+async function xlXRushPollActive() {
+  try {
+    var r = await fetch(SUPABASE_URL + '/rest/v1/app_data?key=eq.pflx_xrush_active&select=data', { headers: SB_HEADERS });
+    if (!r.ok) return;
+    var rows = await r.json();
+    XL_XRUSH_ACTIVE = rows.length ? rows[0].data : null;
+  } catch (e) { /* leave XL_XRUSH_ACTIVE as-is on a transient network error */ }
+}
+window.xlXRushLaunch = function () { window.open(XL_XRUSH_BASE, '_blank'); };
+window.xlXRushJoin = function () {
+  if (!XL_XRUSH_ACTIVE || !XL_XRUSH_ACTIVE.raceId) return;
+  window.open(XL_XRUSH_BASE + '?race=' + encodeURIComponent(XL_XRUSH_ACTIVE.raceId), '_blank');
+};
+function xlXRushBannerHTML() {
+  if (!XL_XRUSH_ACTIVE || !XL_XRUSH_ACTIVE.raceId) return '';
+  return '<div class="card" style="border:1px solid #ffd166;display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+    '<div style="font-size:24px">🏁</div><div style="flex:1"><div style="font-family:Audiowide;font-size:11px;color:#ffd166;letter-spacing:0.08em">X-RUSH IS LIVE</div>' +
+    '<div style="font-size:11px;color:#9aa3c8">' + esc(XL_XRUSH_ACTIVE.deckName || 'Team race') + '</div></div>' +
+    '<button class="bigbtn gold" onclick="xlXRushJoin()">JOIN</button></div>';
+}
 function rTeams() {
   const names = (L.cfg.teams && L.cfg.teams.names) || [];
   if (!names.length) {
-    return '<div class="card" style="text-align:center;padding:40px"><div style="font-size:34px">👥</div>' +
+    return xlXRushBannerHTML() + '<div class="card" style="text-align:center;padding:40px"><div style="font-size:34px">👥</div>' +
       '<div style="font-family:Audiowide;font-size:12px;letter-spacing:0.1em;color:#9aa3c8;margin:10px 0">NO TEAMS YET</div>' +
       '<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px"><span style="font-size:12px;color:#8a93b8">Teams:</span>' +
       '<input id="teamN" type="number" min="2" max="6" value="2" style="width:70px;text-align:center"/>' +
@@ -4666,7 +4771,8 @@ function rTeams() {
       (members.length ? '' : '<div style="font-size:11px;color:#5c6488;text-align:center;padding:8px">empty</div>') +
       '</div>';
   }).join('');
-  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">' +
+  return xlXRushBannerHTML() + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">' +
+    (L.isHost ? '<button class="bigbtn gold" onclick="xlXRushLaunch()">🏁 LAUNCH X-RUSH</button>' : '') +
     '<button class="bigbtn green" onclick="teamsShufflePlayers()">🔀 SHUFFLE PLAYERS</button>' +
     '<button class="bigbtn" onclick="teamsRerollNames()">🎲 NEW NAMES</button>' +
     // PATCH X-LIVE v0.33 -- renamed PROJECT to PRESENT (Ennis: don't mix up
@@ -7716,6 +7822,7 @@ xlAudioBoot(); // PATCH X-LIVE v0.35
 setInterval(loadActivity, 60000);
 bcGetLastSeenAt(); // baseline on first-ever load so old broadcast history never replays
 setInterval(loadBroadcasts, 20000); // Patch X-LIVE v0.16 -- Post a Link + QR
+setInterval(xlXRushPollActive, 20000); xlXRushPollActive(); // PATCH X-LIVE v0.57 -- X-Rush live-race banner
 function scheduleSessionsPoll() {
   const hot = (L.isHost && L.liveRunningSessionId) || (!L.isHost && nativeSessionAppliesToMe()) || L.stageMode || L.pipMode; // v0.37
   setTimeout(async function () { await loadSessions(); scheduleSessionsPoll(); }, hot ? 5000 : 60000);
