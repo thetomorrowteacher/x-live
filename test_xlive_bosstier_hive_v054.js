@@ -35,7 +35,12 @@ check('the old f.tier < 5 filter is gone from pickFoe()', !/f\.stages\.indexOf\(
 check('pickHive() reads g.hive', /function pickHive\(\) \{ var g = G\(\); return \(g\.hive \|\| \[\]\)\.slice\(\); \}/.test(src));
 check('hiveUnlocked() gates on wins >= 9', /function hiveUnlocked\(\) \{ return \(story\(\)\.wins \|\| 0\) >= 9; \}/.test(src));
 check('window.xlHiveNew is a real exported function', /window\.xlHiveNew = function \(\) \{/.test(src));
-check('xlBattleHTML shows a HIVE ALERT button gated on hiveUnlocked()', /hiveUnlocked\(\) \? ' <button class="bigbtn ghost" onclick="xlHiveNew\(\)">/.test(src));
+// PATCH X-LIVE v0.61 -- the HIVE ALERT button now routes through the
+// new title-screen intro sequence (xlBattleStartSequence('hive')) instead
+// of calling xlHiveNew() directly; xlHiveNew() itself is unchanged and is
+// still the real function the intro sequence advances into (see the
+// dedicated test_title_screen_v061.js for that wiring).
+check('xlBattleHTML shows a HIVE ALERT button gated on hiveUnlocked()', /hiveUnlocked\(\) \? ' <button class="bigbtn ghost" onclick="xlBattleStartSequence\(\\'hive\\'\)">/.test(src));
 
 // ---- structural: Hack Guild boss mechanics wired into resolve()/foeAttack()/finish() ----
 check("resolve() has Breach's guard-nullify branch", /B\.foe\.id === 'breach' && !B\.breached/.test(src));

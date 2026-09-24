@@ -5,6 +5,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.61, Sept 24 2026 -- PATCH X-LIVE v0.61: a real title
+     screen + skippable tutorial before every Archive Battle match, the
+     next piece of Ennis's presentation-overhaul epic after v0.60's
+     PflxFx.slam() FX primitive. FIGHT/HIVE ALERT/SPAR A PLAYER now route
+     through a new xlBattleStartSequence(mode) instead of jumping
+     straight into combat: it fires the same PflxFx.slam() big-title
+     treatment (ARCHIVE BATTLE / THE HIVE / PLAYER DUEL, tinted per
+     mode), shows a SKIP button, and auto-advances into the real
+     xlHiveNew()/xlSparOpen()/xlBattleNew() after 1.6s (or immediately on
+     SKIP). This fires before EVERY match, not just the player's first
+     fight ever -- the KEEP PLAYING/TRY AGAIN replay buttons on the
+     result screen were rerouted through it too, since "before the match
+     starts" reasonably covers a replay, not only the very first fight.
+     Also added a real HOW TO PLAY button opening a skippable tutorial
+     modal (reusing the existing modal()/modalClose() primitives) with
+     five real steps: pick a move, answer the question, watch for crits,
+     orbs are energy, win to level up. No video yet -- that needs
+     Ennis-supplied clips, tracked in the backlog below, not faked with
+     an empty player.
+     Caught and fixed during verification, not shipped broken: the first
+     pass used unescaped nested single quotes inside an onclick
+     attribute (onclick="xlBattleStartSequence('fight')" sits inside a
+     JS string ALSO delimited by single quotes), which the syntax gate
+     caught immediately (Unexpected identifier 'fight') before this ever
+     reached a commit -- fixed to the correctly-escaped
+     xlBattleStartSequence(\'fight\') form used everywhere else in this
+     file for a string-arg onclick. A dedicated regression assertion for
+     this exact escaping was added to the new unit test so it can't
+     silently reappear.
+     Verified: syntax gate clean (5 blocks). New 26-case unit test
+     (test_title_screen_v061.js) -- runs the real, pure
+     xlBattleIntroLabel() directly, plus structural assertions on the
+     real xlBattleStartSequence/xlBattleSkipIntro/xlBattleAdvanceIntro/
+     xlBattleTutorial/xlBattleHTML source (including the escaping
+     regression guard above) -- all 26 PASS. Full regression suite
+     re-run: one PRE-EXISTING test (test_xlive_bosstier_hive_v054.js)
+     asserted the old onclick="xlHiveNew()" wiring verbatim -- updated it
+     to assert the new, intentional xlBattleStartSequence('hive') wiring
+     (xlHiveNew() itself is completely unchanged, still the real function
+     the intro sequence advances into) -- back to 66/0 after the update.
+     Every other pre-existing failure unchanged (test_subapp_embed.js 2,
+     test_v029.js 1, test_xlive_gameshow_v035.js 1,
+     test_xlive_story_embed_v040.js 3, plus the 2 pre-existing Node-crash
+     files test_v022.js/test_v028.js) -- zero new regressions.
+     Still ahead in the confirmed presentation-first order: bold
+     move-selection buttons with damage/shield/defense descriptors, the
+     adjustable question timer (up to 60s), a larger player Evo card +
+     card animations, SFX announcer lines -- then the larger pieces
+     (Archive-side stats, progression, 4-player team battle, session
+     activity integration, Battle Arena Side Quests, removing live
+     modes from Battle Arena, Quick Launch, Edpuzzle/Flipgrid).
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.60, Sept 24 2026 -- PATCH X-LIVE v0.60: the first sub-patch
      of Ennis's large "Archive Battle presentation overhaul" ask (title
      screen, tutorial, bold move buttons, bigger cards, adjustable timer,
@@ -9184,6 +9238,11 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 
   /* ---------- Archive Battle pane ---------- */
   var B = null, streak = 0;
+  // PATCH X-LIVE v0.61 -- title screen state: xlBattleIntro is the mode
+  // ('fight'/'hive'/'spar') currently showing its pre-match title card, or
+  // null when none is showing. xlBattleIntroTimer is the pending auto-
+  // advance timeout so SKIP (or starting a second intro) can cancel it.
+  var xlBattleIntro = null, xlBattleIntroTimer = null;
   function bankFor() { var st = story(); var g = xlStoryStage ? xlStoryStage(st) : null; var actId = g && g.act ? g.act.id : 'act1'; var gate = (S().interludes || []).filter(function (i) { return i.after === actId; })[0]; return (S().banks || {})[gate ? gate.bank : 'alterego'] || { name: 'Alter Ego', cards: [] }; }
   function pickFoe() { var g = G(), st = story(); var c = g.archive.filter(function (f) { return f.stages.indexOf(stage()) >= 0 && !f.exhibitOnly; }); return c[Math.min(c.length - 1, Math.floor((st.wins || 0) / 2))] || c[0]; }
   // PATCH X-LIVE v0.54 -- The Hive: a fixed 3-unit swarm roster, kept in
@@ -9254,11 +9313,58 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     streak = 0; say('An ' + f.name + ' locks on. ' + f.ability, 'fo'); render();
   };
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
+  // PATCH X-LIVE v0.61 -- Ennis: "the game should begin with a Title
+  // screen and animation before the match starts." Shows a brief
+  // cinematic title card (reusing PflxFx.slam from v0.60) before EVERY
+  // match -- not just the player's first fight ever -- then auto-
+  // advances into the real fight. Skippable via SKIP, which cancels the
+  // timer and starts the match immediately.
+  function xlBattleIntroLabel(mode) {
+    return mode === 'hive' ? { title: 'THE HIVE', sub: 'SWARM ENCOUNTER', tint: 'crit' }
+      : mode === 'spar' ? { title: 'PLAYER DUEL', sub: 'SPAR -- PRACTICE MATCH', tint: 'cyan' }
+      : { title: 'ARCHIVE BATTLE', sub: 'PREPARE FOR BATTLE', tint: 'cyan' };
+  }
+  window.xlBattleStartSequence = function (mode) {
+    if (xlBattleIntroTimer) { clearTimeout(xlBattleIntroTimer); xlBattleIntroTimer = null; }
+    xlBattleIntro = mode || 'fight';
+    var lab = xlBattleIntroLabel(xlBattleIntro);
+    if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam(lab.title, { sub: lab.sub, tint: lab.tint }); }
+    render();
+    xlBattleIntroTimer = setTimeout(function () { xlBattleAdvanceIntro(); }, 1600);
+  };
+  window.xlBattleSkipIntro = function () {
+    if (xlBattleIntroTimer) { clearTimeout(xlBattleIntroTimer); xlBattleIntroTimer = null; }
+    xlBattleAdvanceIntro();
+  };
+  function xlBattleAdvanceIntro() {
+    var mode = xlBattleIntro; xlBattleIntro = null; xlBattleIntroTimer = null;
+    if (mode === 'hive') xlHiveNew(); else if (mode === 'spar') xlSparOpen(); else xlBattleNew();
+  }
+  // PATCH X-LIVE v0.61 -- Ennis: "quick instructions ... that players can
+  // skip." A real, skippable how-to-play modal (reuses the existing
+  // modal()/modalClose() primitives, same as every other modal in this
+  // file). No video yet -- that needs Ennis-supplied clips, see the
+  // Handoff backlog -- so this ships the text instructions now rather
+  // than faking a video player with nothing to play.
+  window.xlBattleTutorial = function () {
+    modal(
+      '<div class="cardT">\u2753 HOW TO PLAY \u2014 ARCHIVE BATTLE</div>' +
+      '<div style="font-size:13px;color:#aeb6d8;line-height:1.7">' +
+        '<b style="color:#fff">1. Pick a move.</b> Each move costs orbs (or is free) and has a type \u2014 strike, guard, hack, or support.<br>' +
+        '<b style="color:#fff">2. Answer the question.</b> Every move fires a real question from your act\u2019s term bank. Answer correctly and it lands at full power; a wrong answer still lands, just weaker \u2014 and the Archive gets a free hit back.<br>' +
+        '<b style="color:#fff">3. Watch for crits.</b> Three correct answers in a row is a CRITICAL HIT \u2014 extra damage, a big flash on screen.<br>' +
+        '<b style="color:#fff">4. Orbs are your energy.</b> They refill between fights \u2014 spend them wisely on your strongest moves.<br>' +
+        '<b style="color:#fff">5. Win to level up.</b> Beating tougher Archives unlocks stronger boss encounters \u2014 the Hack Guild, Trojan, and eventually The Hive.' +
+      '</div>' +
+      '<div style="margin-top:14px"><button class="bigbtn gold" onclick="modalClose()">GOT IT \u25b6</button></div>'
+    );
+  };
   window.xlBattleHTML = function () {
     if (sparView) return xlSparHTML();
     var ex = exoRow(), g = G();
     if (!ex || !g) return '<div class="evb-stage"><div class="card"><div class="cardT">⚔️ ARCHIVE BATTLE</div><div class="xl-hint" style="text-align:left">Hatch your Evo first. The Archive is waiting.</div></div></div>';
-    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ARCHIVE BATTLE</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleNew()">FIGHT THE ARCHIVE</button>' + (hiveUnlocked() ? ' <button class="bigbtn ghost" onclick="xlHiveNew()">⚠ HIVE ALERT · FIGHT THE SWARM</button>' : '') + ' <button class="bigbtn ghost" onclick="xlSparOpen()">⚔️ SPAR A PLAYER</button></div></div>'; // PATCH X-LIVE v0.54 -- Hive entry point, unlocked after a Trojan win; v0.55 adds Spar
+    if (xlBattleIntro) { var lab = xlBattleIntroLabel(xlBattleIntro); return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ' + lab.title + '</div><div class="xl-hint">Get ready…</div><button class="bigbtn ghost" onclick="xlBattleSkipIntro()">SKIP ▶</button></div></div>'; } // PATCH X-LIVE v0.61 -- brief title card before every match
+    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ARCHIVE BATTLE</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">FIGHT THE ARCHIVE</button>' + (hiveUnlocked() ? ' <button class="bigbtn ghost" onclick="xlBattleStartSequence(\'hive\')">⚠ HIVE ALERT · FIGHT THE SWARM</button>' : '') + ' <button class="bigbtn ghost" onclick="xlBattleStartSequence(\'spar\')">⚔️ SPAR A PLAYER</button> <button class="bigbtn ghost" onclick="xlBattleTutorial()">❓ HOW TO PLAY</button></div></div>'; // PATCH X-LIVE v0.54 -- Hive entry point, unlocked after a Trojan win; v0.55 adds Spar; v0.61 routes through the title-screen intro sequence + adds a skippable tutorial
     var f = B.foe, st = story(), m = mood();
     // PATCH X-LIVE v0.50 -- real hit/act/crit classes (see resolve()/
     // foeAttack()); previously B.hitFoe was read here but never set.
@@ -9396,11 +9502,11 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       if (nt && nxp >= nt && stage() < 4) { patch.stage = stage() + 1; toast('✨ Your Evo evolved into ' + stageName(patch.stage) + '.'); }
       saveExo(patch); liteLog(myId(), 'award', 'Archive Battle: ' + (B.hive ? 'The Hive' : f.name) + ' down', xc);
       say('The ' + f.name + ' breaks apart. +' + xc + ' XC, +' + orbs + ' orbs waiting at the Bay, +' + xp + ' Sync XP.', 'win');
-      B.result = '<h2>' + (B.hive ? 'The Hive is down' : 'Archive unit down') + '</h2><p>Rewards post through X-Coin. The orbs wait in the Bay until your rest timer clears.</p><div class="r"><div>+' + xc + '<span>XC</span></div><div>+' + orbs + '<span>Orbs</span></div><div>+' + xp + '<span>Sync XP</span></div></div><div><button class="bigbtn gold" onclick="xlBattleNew()">KEEP PLAYING · NEXT UNIT</button> <button class="bigbtn ghost" onclick="xlHubGo(1)">EVO BAY</button></div>';
+      B.result = '<h2>' + (B.hive ? 'The Hive is down' : 'Archive unit down') + '</h2><p>Rewards post through X-Coin. The orbs wait in the Bay until your rest timer clears.</p><div class="r"><div>+' + xc + '<span>XC</span></div><div>+' + orbs + '<span>Orbs</span></div><div>+' + xp + '<span>Sync XP</span></div></div><div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">KEEP PLAYING · NEXT UNIT</button> <button class="bigbtn ghost" onclick="xlHubGo(1)">EVO BAY</button></div>';
     } else {
       saveExo({ sync_xp: (ex.sync_xp || 0) + rw.lose.syncXp });
       say('Your Evo is down. +' + rw.lose.syncXp + ' Sync XP for the attempt.', 'bad');
-      B.result = '<h2>Evo down</h2><p>No XC lost. Feed up and try the term bank again.</p><div><button class="bigbtn gold" onclick="xlBattleNew()">TRY AGAIN</button> <button class="bigbtn ghost" onclick="xlHubGo(1)">EVO BAY</button></div>';
+      B.result = '<h2>Evo down</h2><p>No XC lost. Feed up and try the term bank again.</p><div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">TRY AGAIN</button> <button class="bigbtn ghost" onclick="xlHubGo(1)">EVO BAY</button></div>';
     }
     render();
   }
