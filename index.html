@@ -5,6 +5,61 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.62, Sept 24 2026 -- PATCH X-LIVE v0.62: bold, standout
+     move-selection buttons for Archive Battle, the third piece of
+     Ennis's presentation-overhaul epic (after v0.60's PflxFx.slam()
+     and v0.61's title screen/tutorial). The move panel's small,
+     unstyled pills are replaced by a new abBattleHTML() -- a real
+     type descriptor per move (STRIKE/GUARD/SUPPORT/HACK, each with
+     its own icon and accent color), the move's real cost (FREE or
+     "N ORBS"), its real power number tagged DMG/DEF/BUFF/DEBUFF per
+     type, and the ability's own real, unfabricated effect text --
+     satisfying Ennis's ask for "descriptors of move and strike,
+     damage, shield, defense, etc it will cause" from real ability
+     data, not invented copy. Buttons render in a responsive grid,
+     glow-pulse gently while affordable, lift on hover, and grey out
+     when unaffordable or foe-disabled (the existing B.disabled
+     mechanic, preserved unchanged).
+     Deliberately additive, not a rewrite: abHTML() itself -- the
+     function the Evo Bay's plain "Abilities on this card" list still
+     uses (abHTML(a, false)) -- is completely untouched. Only the
+     Archive Battle move panel's call site was switched from
+     abHTML(a, true) to the new abBattleHTML(a); Spar's own button
+     builder (sparAbBtnHTML) is a separate function and was not
+     touched either, since Ennis's ask was specifically about the
+     Archive Battle move-selection panel in his screenshot.
+     Verified: syntax gate clean (5 blocks). New 35-case unit test
+     (test_bold_moves_v062.js) -- extracts the real AB_TYPE_INFO map
+     and abBattleHTML() via brace/string matching and runs them
+     directly: all four real ability types (strike/guard/support/hack)
+     render their correct icon/label/tag/color, a zero-cost move shows
+     FREE not "0 ORBS", a zero-power move (a pure guard/support effect)
+     never shows a fabricated power badge, the real cost/power numbers
+     and the ability's real effect text are shown verbatim, an
+     unrecognized type fails safe to the strike descriptor, the
+     afford/disabled gating matches abHTML()'s own <= cost check
+     exactly (including the exact-orbs edge case), a malicious
+     name/text is still escaped via the real esc(), the battle move
+     panel's real call site wiring is confirmed (abBattleHTML(a), not
+     abHTML(a, true)), the existing B.disabled foe-lock mechanic is
+     confirmed preserved on top of the new markup, and abHTML() plus
+     the Evo Bay's own call site are confirmed completely unchanged --
+     all 35 PASS. Full regression suite re-run: same pre-existing
+     failures as before this patch, unchanged (test_subapp_embed.js 2,
+     test_v029.js 1, test_xlive_gameshow_v035.js 1,
+     test_xlive_story_embed_v040.js 3, plus the 2 pre-existing
+     Node-crash files test_v022.js/test_v028.js) -- zero new
+     regressions.
+     Still ahead in the confirmed presentation-first order: the
+     host-adjustable question timer (up to 60s, fixed at 12s today), a
+     larger player Evo card + card animations, SFX announcer lines --
+     then the larger pieces (Archive-side stats, progression, 4-player
+     team battle, session activity integration, Battle Arena Side
+     Quests, removing live modes from Battle Arena, Quick Launch,
+     Edpuzzle/Flipgrid).
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.61, Sept 24 2026 -- PATCH X-LIVE v0.61: a real title
      screen + skippable tutorial before every Archive Battle match, the
      next piece of Ennis's presentation-overhaul epic after v0.60's
@@ -9016,6 +9071,21 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .ab .tp{display:inline-block;margin-left:8px;font-size:8px;letter-spacing:.2em;padding:2px 6px;border:1px solid var(--line);color:var(--muted)}
 .evb button.ab:hover{border-color:var(--cyan)}
 .evb button.ab:hover b{color:var(--cyan)}
+/* PATCH X-LIVE v0.62 -- bold move-selection buttons (Archive Battle only) */
+.evb .abil.abil-bold{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.evb button.ab-bold{position:relative;display:flex;flex-direction:column;gap:4px;text-align:left;font-family:var(--body);letter-spacing:0;text-transform:none;cursor:pointer;padding:12px 14px;border-radius:10px;border:2px solid var(--ab-color,var(--cyan));background:linear-gradient(160deg,rgba(var(--cyanrgb),.10),rgba(8,14,28,.92));box-shadow:inset 0 0 18px rgba(255,255,255,.03);transition:transform .15s,box-shadow .15s}
+.evb button.ab-bold:hover:not([disabled]){transform:translateY(-2px) scale(1.015);box-shadow:0 6px 18px rgba(0,0,0,.4),0 0 16px var(--ab-color,var(--cyan))}
+.evb button.ab-bold:active:not([disabled]){transform:translateY(0) scale(.98)}
+.evb button.ab-bold[disabled]{opacity:.38;cursor:not-allowed;filter:grayscale(.5);animation:none}
+.evb .ab-bold-top{display:flex;justify-content:space-between;align-items:center;font-family:var(--display);font-size:9px;letter-spacing:.18em}
+.evb .ab-bold-type{color:var(--ab-color,var(--cyan))}
+.evb .ab-bold-cost{background:rgba(255,209,102,.16);color:var(--gold);padding:2px 7px;border-radius:20px}
+.evb .ab-bold-cost.free{background:rgba(255,255,255,.08);color:var(--dim)}
+.evb .ab-bold-name{font-family:var(--display);font-size:15px;letter-spacing:.03em;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.evb .ab-bold-power{font-family:var(--body);font-size:11px;letter-spacing:.08em;color:var(--ab-color,var(--cyan));white-space:nowrap}
+.evb .ab-bold-text{color:var(--muted);font-size:12px;line-height:1.4}
+@keyframes abBoldReady{0%,100%{box-shadow:inset 0 0 18px rgba(255,255,255,.03),0 0 0 rgba(var(--cyanrgb),0)}50%{box-shadow:inset 0 0 18px rgba(255,255,255,.03),0 0 14px rgba(var(--cyanrgb),.35)}}
+.evb button.ab-bold:not([disabled]){animation:abBoldReady 2.6s ease-in-out infinite}
 .evb .shop{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 @media (max-width:600px){.shop{grid-template-columns:1fr}}
 .evb .shop .s{border:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:8px}
@@ -9178,6 +9248,29 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   function abHTML(a, asButton) {
     var inner = '<b>' + esc(a.name) + '<span class="tp">' + a.type + '</span></b><span class="cost' + (a.cost ? '' : ' free') + '">' + (a.cost ? a.cost + ' orbs' : 'free') + '</span><small>' + esc(a.text) + (a.power ? ' Power ' + a.power + '.' : '') + '</small>';
     return asButton ? '<button class="ab" data-ab="' + a.id + '"' + (a.cost > (story().orbs || 0) ? ' disabled' : '') + '>' + inner + '</button>' : '<div class="ab">' + inner + '</div>';
+  }
+  // PATCH X-LIVE v0.62 -- bold, standout move-selection buttons for the
+  // Archive Battle move panel specifically (abHTML() above is untouched,
+  // still used as-is for the Evo Bay's plain ability-list display). Each
+  // button gets a real type descriptor (strike/guard/support/hack), the
+  // real cost, the real power number, and the ability's own real effect
+  // text -- nothing fabricated, all read off the same ability object
+  // abHTML() already reads.
+  var AB_TYPE_INFO = {
+    strike: { icon: '\u2694\ufe0f', label: 'STRIKE', tag: 'DMG', color: '#ff5a3c' },
+    guard: { icon: '\ud83d\udee1\ufe0f', label: 'GUARD', tag: 'DEF', color: '#5aa9ff' },
+    support: { icon: '\ud83d\udcab', label: 'SUPPORT', tag: 'BUFF', color: '#ffd166' },
+    hack: { icon: '\ud83d\udda5\ufe0f', label: 'HACK', tag: 'DEBUFF', color: '#7dff5a' }
+  };
+  function abBattleHTML(a) {
+    var ti = AB_TYPE_INFO[a.type] || AB_TYPE_INFO.strike;
+    var afford = a.cost <= (story().orbs || 0);
+    var costLabel = a.cost ? (a.cost + ' ORB' + (a.cost === 1 ? '' : 'S')) : 'FREE';
+    return '<button class="ab-bold" data-ab="' + a.id + '" style="--ab-color:' + ti.color + '"' + (afford ? '' : ' disabled') + '>' +
+      '<span class="ab-bold-top"><span class="ab-bold-type">' + ti.icon + ' ' + ti.label + '</span><span class="ab-bold-cost' + (a.cost ? '' : ' free') + '">' + costLabel + '</span></span>' +
+      '<span class="ab-bold-name">' + esc(a.name) + (a.power ? '<span class="ab-bold-power">' + ti.tag + ' ' + a.power + '</span>' : '') + '</span>' +
+      '<span class="ab-bold-text">' + esc(a.text) + '</span>' +
+      '</button>';
   }
 
   /* ---------- Evo Bay pane ---------- */
@@ -9378,7 +9471,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       '<div class="evb-row"><span>' + esc(cardName(stage(), activeBuild())) + ' HP</span><b>' + B.hp + ' / ' + B.max + '</b></div><div class="evb-bar hp' + (B.hp < B.max * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.hp / B.max) + '%"></i></div>' +
       '<div class="evb-row"><span>Orbs</span><b>' + (st.orbs || 0) + ' / ' + orbCap() + '</b></div><div class="evb-bar orb"><i style="width:' + Math.min(100, 100 * (st.orbs || 0) / orbCap()) + '%"></i></div>' +
       '<div class="evb-row"><span class="streak">' + (streak >= 2 ? 'Streak ' + streak + (streak >= 3 ? ' · crit ready' : '') : '') + '</span><span class="mood ' + m + '">' + (m === 'fed' ? 'Fed +10%' : (m === 'hungry' ? 'Hungry −10%' : 'Ready')) + '</span></div>' +
-      '<div class="abil" style="margin-top:10px">' + (B.over ? '' : abilities().map(function (a) { var s = abHTML(a, true); if (B.disabled === a.id) s = s.replace('<button ', '<button disabled '); return s; }).join('')) + '</div></div></div>';
+      '<div class="abil abil-bold" style="margin-top:10px">' + (B.over ? '' : abilities().map(function (a) { var s = abBattleHTML(a); if (B.disabled === a.id) s = s.replace('<button ', '<button disabled '); return s; }).join('')) + '</div></div></div>';
     h += '<div class="evb-panel" style="margin-top:14px"><h3>Play by play</h3><div class="evb-log">' + B.log.slice(0, 40).map(function (l) { return '<div class="' + l.c + '">' + esc(l.t) + '</div>'; }).join('') + '</div></div>';
     if (B.result) h += '<div class="evb-result">' + B.result + '</div>';
     return h + '</div>';
