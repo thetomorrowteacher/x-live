@@ -5,6 +5,58 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.56, Sept 24 2026 — PATCH X-LIVE v0.56: real illustrated
+     Archive character art, replacing the procedural SVG for any foe
+     with a matching image. The 8 Archive character images (scout,
+     interceptor, sentry, elite, hive, trojan, nightmare, agent-glitch)
+     were generated via ChatGPT/Codex image generation, visually
+     reviewed, and are served from Battle Arena's own Vercel deploy
+     (pflx-battle-arena.vercel.app/assets/archive/<id>.web.jpg) rather
+     than duplicated into this repo -- a new foeArt(f) function tries
+     the mapped image first and falls back to the original foeSVG(f)
+     procedural shape on any load failure (network hiccup, unmapped
+     foe), so this is additive and never a hard dependency.
+     Documented, deliberate id mapping -- NOT a claimed 1:1 art-to-foe
+     match, since the art set was generated as a broader story concept
+     (see pflx-arena-check/docs/EVO-ARCHIVE-STORYBOARD.md), not a
+     finished boss roster: scout and trojan match the shipped foe id
+     exactly; drone/warden/overseer are mapped onto interceptor/sentry/
+     elite by tier and role (a considered default, not a lore claim);
+     The Hive's one collective swarm image is shown for ANY hive unit
+     during a swarm fight, since there is no per-unit hive-drone/hive-
+     sentinel/hive-matron art yet. The Hack Guild (breach/wraith/
+     vector) and the new nightmare/agent-glitch designs are
+     intentionally left UNMAPPED and still render the procedural SVG --
+     the storyboard doc itself flags the Hack Guild's real membership
+     as undecided, so this patch does not guess a lore assignment for
+     those five.
+     Same pass also deployed the separately-generated Evo card art:
+     pflx-arena-check's manifest bumped to v3 (75 active cards -- the
+     64 complete Level 1-5 cards plus 11 Level 6 flight-revision
+     drafts), with the full PNG/thumb.jpg/web.jpg set for all 4
+     studios pushed live. The rendering wiring for that already
+     shipped in PATCH ARENA evo-art v1; this pass only needed the
+     updated manifest + backing files to actually deploy it.
+     Verified: syntax gate clean (5 blocks). New 19-case unit test
+     (test_archive_art_v056.js) extracting the real shipped foeArt()/
+     foeSVG()/PFLX_ARCHIVE_ART_MAP -- exact-id matches, the documented
+     tier/role mappings, the Hive's per-encounter art override, the
+     unmapped-foe SVG fallback, the onerror image-failure fallback, and
+     an XSS-escaping check on a hostile foe name -- all PASS. Full
+     regression suite re-run: the same 6 pre-existing failures
+     (test_subapp_embed.js, test_v022/028/029.js,
+     test_xlive_gameshow_v035.js, test_xlive_story_embed_v040.js)
+     confirmed unchanged -- zero new regressions.
+     HOST ACTIONS / BACKLOG: the drone->interceptor/warden->sentry/
+     overseer->elite mapping and the Hack Guild staying unmapped are
+     both my considered defaults, not confirmed canon -- flag any of
+     them to change and it's a one-line edit to PFLX_ARCHIVE_ART_MAP.
+     Not verified live in-browser this pass (no Chrome automation this
+     session) -- worth a real look next time a browser is reachable,
+     especially the Hive encounter's art override.
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.55, Sept 23 2026 — PATCH X-LIVE v0.55: Battle Arena Games
      Expansion Phase C -- Spar, a real two-player PvP practice duel. Per
      the confirmed build order (A cinematics -> B boss tier -> C Spar ->
@@ -8652,6 +8704,9 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .evb-foe h4{margin:0;font-family:var(--display);font-weight:400;font-size:14px;letter-spacing:.12em;color:var(--lime)}
 .evb .evb-foe small{display:block;color:var(--muted);font-size:12px;margin:2px 0 8px}
 .evb .evb-foe svg{display:block;width:100%;max-width:220px;margin:0 auto 8px;filter:drop-shadow(0 0 18px rgba(var(--limergb),.6))}
+.evb .evb-foe-art-wrap{margin:0 auto 8px;max-width:220px}
+.evb .evb-foe-art{display:block;width:100%;border-radius:10px;filter:drop-shadow(0 0 18px rgba(var(--limergb),.6))}
+.evb .evb-foe-art-fallback svg{display:block;width:100%;max-width:220px;margin:0 auto;filter:drop-shadow(0 0 18px rgba(var(--limergb),.6))}
 .evb .evb-foe.hit svg{animation:hit .35s}
 .evb .evb-foe.act svg{animation:act .4s}
 .evb .evb-foe.act.hit svg{animation:act .4s, hit .35s}
@@ -8880,6 +8935,30 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       '<g fill="' + f.glow + '"><rect x="70" y="88" width="24" height="7"/><rect x="106" y="88" width="24" height="7"/><rect x="84" y="112" width="32" height="5" opacity=".7"/></g>' +
       (f.tier >= 3 ? '<circle cx="100" cy="100" r="78" fill="none" stroke="' + f.glow + '" stroke-width="1" stroke-dasharray="6 8" opacity=".6"/>' : '') + '</svg>';
   }
+  // PATCH X-LIVE v0.56 -- real illustrated Archive character art (Sept
+  // 24), served from Battle Arena's own deploy (pflx-battle-arena.vercel
+  // .app/assets/archive/<id>.web.jpg) rather than duplicated into this
+  // repo. Documented, deliberate id mapping -- NOT a 1:1 art-to-foe
+  // match (the art set was generated as a broader story concept, see
+  // docs/EVO-ARCHIVE-STORYBOARD.md in pflx-arena-check): scout and
+  // trojan match the shipped foe id exactly; drone/warden/overseer are
+  // mapped onto interceptor/sentry/elite by tier and role (both are
+  // tier-matched base/mid roster slots); The Hive's single collective
+  // swarm image is shown for ANY hive unit during a swarm fight (there
+  // is no per-unit hive-drone/hive-sentinel/hive-matron art yet); the
+  // Hack Guild (breach/wraith/vector) and the new nightmare/agent-glitch
+  // designs are intentionally left UNMAPPED -- the Hack Guild's real
+  // membership is still undecided per the storyboard doc, so those stay
+  // on the procedural SVG rather than guessing a lore assignment. Any
+  // foe without a mapped/loading image falls back to foeSVG() exactly
+  // as before -- this is additive, never a required dependency.
+  var PFLX_ARCHIVE_ART_BASE = 'https://pflx-battle-arena.vercel.app/assets/archive/';
+  var PFLX_ARCHIVE_ART_MAP = { scout: 'scout', drone: 'interceptor', warden: 'sentry', overseer: 'elite', trojan: 'trojan' };
+  function foeArt(f) {
+    var artId = (B && B.hive) ? 'hive' : PFLX_ARCHIVE_ART_MAP[f.id];
+    if (!artId) return foeSVG(f);
+    return '<div class="evb-foe-art-wrap"><img class="evb-foe-art" src="' + PFLX_ARCHIVE_ART_BASE + artId + '.web.jpg" alt="' + esc(f.name) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'" /><div class="evb-foe-art-fallback" style="display:none">' + foeSVG(f) + '</div></div>';
+  }
   window.xlBattleNew = function () {
     var sv = stats(), f = pickFoe(); if (!f) return;
     B = { foe: f, foeHp: f.hp, foeMax: f.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: f.id === 'drone', turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null };
@@ -8898,7 +8977,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var myCard = cardHTML(stage(), activeBuild());
     var myCls = (B.actMe ? ' act' : '') + (B.hitMe ? ' hit' : '');
     if (myCls) myCard = myCard.replace('class="evc', 'class="evc' + myCls);
-    var h = '<div class="evb-stage"><div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>' + (B.hive ? ('Hive unit ' + (B.hiveIdx + 1) + '/' + B.hiveFoes.length + ' · ') : ('Tier ' + f.tier + ' · ')) + esc(f.ability) + '</small>' + foeSVG(f) + // PATCH X-LIVE v0.54 -- show Hive unit progress instead of Tier during a swarm fight
+    var h = '<div class="evb-stage"><div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>' + (B.hive ? ('Hive unit ' + (B.hiveIdx + 1) + '/' + B.hiveFoes.length + ' · ') : ('Tier ' + f.tier + ' · ')) + esc(f.ability) + '</small>' + foeArt(f) + // PATCH X-LIVE v0.54 -- show Hive unit progress instead of Tier during a swarm fight
       '<div class="evb-row"><span>HP</span><b>' + B.foeHp + ' / ' + B.foeMax + '</b></div><div class="evb-bar hp' + (B.foeHp < B.foeMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.foeHp / B.foeMax) + '%"></i></div></div>';
     h += '<div class="evb-panel"><h3>Your move</h3><div class="evb-float" style="max-width:190px;margin:0 auto">' + myCard + '</div>' +
       '<div class="evb-row"><span>' + esc(cardName(stage(), activeBuild())) + ' HP</span><b>' + B.hp + ' / ' + B.max + '</b></div><div class="evb-bar hp' + (B.hp < B.max * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.hp / B.max) + '%"></i></div>' +
