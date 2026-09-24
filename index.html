@@ -5,6 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.58, Sept 24 2026 — PATCH X-LIVE v0.58: X-Rush real player
+     identity. xrush.html (the actual deployed static page in
+     pflx-arena-check, see that repo's own Handoff entry) has no login
+     of its own -- it is only ever opened from here, a new tab per
+     player, per the confirmed Decision 1 -- and reads identity off
+     ?pid=&pname= URL params. Before this patch neither xlXRushLaunch
+     nor xlXRushJoin passed any identity at all, so X-Rush could not
+     tell two racers apart. New xlXRushIdParams() reads L.me.id/
+     L.me.brand (falling back to an empty pid and "Player" name if
+     L.me is unset, e.g. a preview/no-login context) and both launch
+     functions now append it to the opened URL.
+     Verified: syntax gate clean (5 blocks); test_xrush_launch_v057.js
+     rewritten for the new behavior (15 cases, up from 13 -- two added:
+     a missing-L.me safe fallback, and correct URL-encoding of a player
+     name with an apostrophe and an ampersand) -- all PASS; full
+     regression suite re-run, same pre-existing failures unchanged
+     (test_subapp_embed 2, test_v029 1, test_xlive_gameshow_v035 1,
+     test_xlive_story_embed_v040 3, plus the 2 documented pre-existing
+     Node-crash files test_v022/test_v028 -- none introduced by this
+     patch).
+     ARCHITECTURE NOTE (correcting the record from v0.57's own entry):
+     v0.57's Handoff text described the real race engine as living in
+     pflx-arena-check/app/lib/xrush.ts (a Next.js app/ file). That was
+     wrong relative to what's actually deployed -- pflx-arena-check's
+     own vercel.json disables the Next.js build entirely
+     (framework: null, buildCommand: "") and serves a static
+     public/preview.html instead, so nothing under app/ is reachable in
+     production. The real, live X-Rush surface is a new static
+     public/xrush.html, ported byte-for-byte (types stripped) from the
+     already-tested xrush.ts engine and re-verified against the same 63
+     test cases on the ported version. See pflx-arena-check's own
+     Handoff entry for the full detail; this note exists so a future
+     session reading v0.57's entry isn't misled about where the real
+     code lives.
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.57, Sept 24 2026 — PATCH X-LIVE v0.57: Battle Arena Games
      Expansion Phase D -- X-Rush, a Mario-Kart/Quizlet-Live-style team
      quiz race. Per the confirmed build order (A cinematics -> B boss
@@ -4734,10 +4771,20 @@ async function xlXRushPollActive() {
     XL_XRUSH_ACTIVE = rows.length ? rows[0].data : null;
   } catch (e) { /* leave XL_XRUSH_ACTIVE as-is on a transient network error */ }
 }
-window.xlXRushLaunch = function () { window.open(XL_XRUSH_BASE, '_blank'); };
+// PATCH X-LIVE v0.58 -- pass real player identity through to X-Rush.
+// xrush.html has no login of its own (it's only ever opened from here,
+// a new tab per player per the confirmed launch decision) -- it reads
+// ?pid=&pname= off the URL. Without this, X-Rush could not tell two
+// racers apart at all.
+function xlXRushIdParams() {
+  var id = (L.me && L.me.id) || '';
+  var name = (L.me && L.me.brand) || 'Player';
+  return 'pid=' + encodeURIComponent(id) + '&pname=' + encodeURIComponent(name);
+}
+window.xlXRushLaunch = function () { window.open(XL_XRUSH_BASE + '?' + xlXRushIdParams(), '_blank'); };
 window.xlXRushJoin = function () {
   if (!XL_XRUSH_ACTIVE || !XL_XRUSH_ACTIVE.raceId) return;
-  window.open(XL_XRUSH_BASE + '?race=' + encodeURIComponent(XL_XRUSH_ACTIVE.raceId), '_blank');
+  window.open(XL_XRUSH_BASE + '?race=' + encodeURIComponent(XL_XRUSH_ACTIVE.raceId) + '&' + xlXRushIdParams(), '_blank');
 };
 function xlXRushBannerHTML() {
   if (!XL_XRUSH_ACTIVE || !XL_XRUSH_ACTIVE.raceId) return '';
