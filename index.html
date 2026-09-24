@@ -5,6 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.65, Sept 24 2026 -- PATCH X-LIVE v0.65: host-adjustable
+     question timer for Archive Battle / Spar's shared ask() quiz gate.
+     Was hardcoded at a fixed 12 seconds; now a real per-class Setup-tab
+     slider (5–60s), following the exact L.cfg/DEFAULT_CFG/loadCfg()/
+     saveCfg() host-settings pattern already used elsewhere in this file.
+     New DEFAULT_CFG.archiveBattle = { questionTimerSecs: 12 } field, a
+     new single-source-of-truth helper pflxQuestionTimerSecs() (clamps
+     to 5–60, falls back to 12 on anything non-numeric/missing/zero),
+     a loadCfg() migration line mirroring the existing L.cfg.boards
+     merge idiom, a new host slider control in rSetup() right after the
+     Avatar-style select, and ask() now reads the real configured
+     seconds (both in its countdown span's initial display and in its
+     qTimer interval) instead of a hardcoded 12. ask() is confirmed
+     genuinely shared between Archive Battle and Spar (only two call
+     sites) -- a single class-wide setting is the correct minimal fix,
+     not two separate timers.
+     Verified: syntax gate clean (5 blocks). New 23-case unit test
+     (test_question_timer_v065.js) extracts the REAL shipped
+     pflxQuestionTimerSecs() verbatim and asserts the full 5–60 clamp
+     behavior (below-5/above-60/exact-bounds/non-numeric/zero/null/
+     missing-key all fall back or clamp correctly), plus static checks
+     confirming DEFAULT_CFG/loadCfg()/rSetup()/ask() all wire the real
+     value through end to end -- all 23 PASS. Full regression suite
+     re-run: identical to the documented baseline (test_subapp_embed.js
+     2, test_v029.js 1, test_xlive_gameshow_v035.js 1,
+     test_xlive_story_embed_v040.js 3, plus the 2 pre-existing
+     Node-crash files test_v022.js/test_v028.js) -- zero new
+     regressions.
+     Still ahead in the confirmed presentation-first order: a larger
+     player Evo card + card entrance/idle animations, SFX announcer
+     voice lines -- then the larger pieces (Archive-side stats applying
+     to combat, level/progression scaling, 4-player team battle, hosting
+     as an X-Live session activity, Battle Arena Side Quests, removing
+     live quiz_duel/team_clash from Battle Arena, the Quick Launch
+     system, Edpuzzle-like and Flipgrid-style features).
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.64, Sept 24 2026 -- PATCH X-LIVE v0.64: Ennis: "in this mode
      the Player has a move and then the Archive or opposite player has a
      move. There should be a animation representing a swing....then an
@@ -1567,8 +1605,18 @@ const DEFAULT_CFG = {
   goal: { label: 'Class Reward Party', target: 10000 },
   boards: { showRanks: true, top5Only: false },
   avatarMode: 'photo', // 'photo' = real uploaded photo takes priority (EXO/initials fallback); 'exo' = EXO mascot takes priority (photo/initials fallback)
+  archiveBattle: { questionTimerSecs: 12 }, // PATCH X-LIVE v0.65 -- host-adjustable question timer for Archive Battle/Spar's shared ask() quiz gate (5-60s; was a hardcoded 12s constant)
   updatedAt: 0
 };
+// PATCH X-LIVE v0.65 -- Ennis: "Host-adjustable question timer, up to 60
+// seconds." Single source of truth for the clamp so ask()'s live
+// countdown and the Setup tab's slider always agree on the same range.
+function pflxQuestionTimerSecs() {
+  var raw = L.cfg && L.cfg.archiveBattle && L.cfg.archiveBattle.questionTimerSecs;
+  var n = parseInt(raw, 10);
+  if (!n || isNaN(n)) n = 12;
+  return Math.max(5, Math.min(60, n));
+}
 
 // ── identity (same platform contract as Battle Arena) ──
 function adoptFromParams() {
@@ -1900,6 +1948,7 @@ async function loadCfg() {
   L.cfg = Object.assign({}, DEFAULT_CFG, d || {});
   L.cfg.teams = Object.assign({ names: [], assign: {} }, L.cfg.teams || {});
   L.cfg.boards = Object.assign({}, DEFAULT_CFG.boards, L.cfg.boards || {});
+  L.cfg.archiveBattle = Object.assign({}, DEFAULT_CFG.archiveBattle, L.cfg.archiveBattle || {}); // PATCH X-LIVE v0.65
   // PATCH X-LIVE v0.26 -- migrate the legacy single cohort string to
   // cohorts[] once, so an existing selection isn't silently lost.
   L.cfg.cohorts = Array.isArray(L.cfg.cohorts) ? L.cfg.cohorts : [];
@@ -5957,6 +6006,9 @@ function rSetup() {
     '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (L.cfg.boards.top5Only ? 'checked' : '') + ' onchange="L.cfg.boards.top5Only=this.checked;saveCfg()"/> Top 5 only</label></div>' +
     '<label style="margin-top:10px">Avatar style</label>' +
     '<select onchange="L.cfg.avatarMode=this.value;saveCfg();render()"><option value="photo"' + ((L.cfg.avatarMode || 'photo') === 'photo' ? ' selected' : '') + '>Real photos (EXO/initials if none)</option><option value="exo"' + (L.cfg.avatarMode === 'exo' ? ' selected' : '') + '>EXO mascots (photo/initials if none built)</option></select>' +
+    '<label style="margin-top:10px">Archive Battle / Spar question timer</label>' + // PATCH X-LIVE v0.65
+    '<div style="display:flex;align-items:center;gap:10px"><input type="range" min="5" max="60" step="1" value="' + pflxQuestionTimerSecs() + '" oninput="document.getElementById(\'ab-timer-val\').textContent=this.value+\'s\'" onchange="L.cfg.archiveBattle.questionTimerSecs=Math.max(5,Math.min(60,parseInt(this.value)||12));saveCfg()" style="flex:1"/><span id="ab-timer-val" style="font-family:Audiowide;font-weight:700;min-width:34px;text-align:right;color:#ffd166">' + pflxQuestionTimerSecs() + 's</span></div>' +
+    '<div style="font-size:10.5px;color:#5c6488;margin:2px 0 4px">How long players have to answer each Archive Battle / Spar question (5–60 seconds; today’s default is 12s).</div>' +
     '</div>' +
     (typeof xlLiveKitSetupHtml === 'function' ? xlLiveKitSetupHtml() : '') + // PATCH X-LIVE v0.37
     '<div class="card"><div class="cardT">Quick Buttons</div>' + presetEditor('awards') + presetEditor('fines') +
@@ -10081,10 +10133,11 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var opts = wrong.concat([right]).sort(function () { return Math.random() - .5; });
     var askDef = Math.random() < 0.5;
     var q = document.getElementById('evb-q'); if (!q) { q = document.createElement('div'); q.id = 'evb-q'; q.className = 'evb-q'; document.body.appendChild(q); }
-    q.innerHTML = '<div class="box"><div class="k"><span>' + esc(bank.name) + ' bank · ' + (askDef ? 'which term matches' : 'which definition matches') + '</span><span id="evb-qt">12</span></div><h2>' + esc(askDef ? right[1] : right[0]) + '</h2><div class="opts" id="evb-qo">' +
+    var secs = pflxQuestionTimerSecs(); // PATCH X-LIVE v0.65 -- host-adjustable, was a hardcoded 12
+    q.innerHTML = '<div class="box"><div class="k"><span>' + esc(bank.name) + ' bank · ' + (askDef ? 'which term matches' : 'which definition matches') + '</span><span id="evb-qt">' + secs + '</span></div><h2>' + esc(askDef ? right[1] : right[0]) + '</h2><div class="opts" id="evb-qo">' +
       opts.map(function (o, k) { return '<button data-i="' + k + '">' + esc(askDef ? o[0] : o[1]) + '</button>'; }).join('') + '</div><div class="timer"><i id="evb-qb" style="width:100%"></i></div></div>';
     q.classList.add('on');
-    var secs = 12, left = secs, done = false;
+    var left = secs, done = false;
     function end(ok, btn) { if (done) return; done = true; clearInterval(qTimer);
       if (btn) btn.classList.add(ok ? 'right' : 'wrong');
       [].forEach.call(document.getElementById('evb-qo').children, function (b, k) { if (opts[k] === right) b.classList.add('right'); b.disabled = true; });
