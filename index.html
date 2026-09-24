@@ -5,6 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.59, Sept 24 2026 — PATCH X-LIVE v0.59: firmed up the
+     Archive art mapping Ennis flagged ("Fix it") after v0.56 shipped
+     it as a stated default. Re-read
+     pflx-arena-check/docs/EVO-ARCHIVE-STORYBOARD.md's own "Enemy
+     foundation designs" table directly rather than re-guessing: it
+     names Scout/Interceptor/Sentry as its three "Base unit" designs in
+     that order and Elite as its "Advanced hunter" one tier up -- the
+     shipped foe ladder's own first four tiers (scout -> drone ->
+     warden -> overseer) are base/base/base/advanced in that exact
+     same order, so the v0.56 mapping (drone->interceptor,
+     warden->sentry, overseer->elite) is confirmed by the storyboard's
+     own stated design, not a guess that needs further confirmation.
+     New this patch: core (id "core", "The Archive Core", the
+     exhibitOnly season-boss slot in SMF_SEASON.evoGame.archive --
+     confirmed via grep that nothing currently selects it, so this
+     mapping is inert until that encounter is built) now maps to the
+     agent-glitch art, since the storyboard names Agent Glitch as the
+     leader "confronted" at the season's climax -- exactly what an
+     exhibitOnly finale slot is for. Confirmed unchanged and NOT a bug:
+     the Hack Guild (breach/wraith/vector) and nightmare stay
+     unmapped, because the storyboard states outright the Hack Guild
+     "is a faction/order, not yet a single illustrated character" and
+     nightmare has no corresponding foe id in the current roster (it
+     sits narratively between Trojan and the Core, a rung the shipped
+     ladder doesn't have yet) -- there is no individual art to assign
+     them, so leaving them on the procedural SVG is correct, not
+     pending.
+     Also re-verified there is no rendering bug: foeArt()'s call site,
+     CSS (.evb-foe-art-wrap/.evb-foe-art/.evb-foe-art-fallback), and
+     all 225 Evo + 24 Archive asset URLs (every file the live manifest
+     references, not a sample) were individually curled against
+     pflx-battle-arena.vercel.app and all returned 200.
+     Verified: syntax gate clean (5 blocks). test_archive_art_v056.js
+     extended to 20 cases (was 19) -- new core->agent-glitch assertion,
+     and the Hack Guild fallback cases relabeled to state the "no art
+     exists yet" fact instead of the old "membership undecided" hedge
+     -- all PASS. Full regression suite re-run, same pre-existing
+     failures unchanged, nothing new.
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.58, Sept 24 2026 — PATCH X-LIVE v0.58: X-Rush real player
      identity. xrush.html (the actual deployed static page in
      pflx-arena-check, see that repo's own Handoff entry) has no login
@@ -9092,22 +9133,40 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   // PATCH X-LIVE v0.56 -- real illustrated Archive character art (Sept
   // 24), served from Battle Arena's own deploy (pflx-battle-arena.vercel
   // .app/assets/archive/<id>.web.jpg) rather than duplicated into this
-  // repo. Documented, deliberate id mapping -- NOT a 1:1 art-to-foe
-  // match (the art set was generated as a broader story concept, see
-  // docs/EVO-ARCHIVE-STORYBOARD.md in pflx-arena-check): scout and
-  // trojan match the shipped foe id exactly; drone/warden/overseer are
-  // mapped onto interceptor/sentry/elite by tier and role (both are
-  // tier-matched base/mid roster slots); The Hive's single collective
-  // swarm image is shown for ANY hive unit during a swarm fight (there
-  // is no per-unit hive-drone/hive-sentinel/hive-matron art yet); the
-  // Hack Guild (breach/wraith/vector) and the new nightmare/agent-glitch
-  // designs are intentionally left UNMAPPED -- the Hack Guild's real
-  // membership is still undecided per the storyboard doc, so those stay
-  // on the procedural SVG rather than guessing a lore assignment. Any
-  // foe without a mapped/loading image falls back to foeSVG() exactly
-  // as before -- this is additive, never a required dependency.
+  // repo. PATCH X-LIVE v0.59 firmed this mapping up against
+  // pflx-arena-check/docs/EVO-ARCHIVE-STORYBOARD.md's own "Enemy
+  // foundation designs" table, which is not a guess -- it states the
+  // eight images' intended roles directly: Scout/Interceptor/Sentry
+  // are its three named "Base unit" designs (in that order), Elite is
+  // its "Advanced hunter" (one tier up), Trojan/Nightmare/Agent Glitch
+  // are boss-tier. The shipped foe ladder's own first four tiers
+  // (scout -> drone -> warden -> overseer) are base/base/base/advanced
+  // in that exact same order, so scout/drone/warden/overseer map onto
+  // scout/interceptor/sentry/elite one tier at a time -- confirmed by
+  // the storyboard's own ordering, not a role-matching guess anymore.
+  // trojan matches the shipped foe id exactly. core (id "core", "The
+  // Archive Core" -- flagged exhibitOnly in SMF_SEASON.evoGame.archive,
+  // not yet reachable through pickFoe() or any other selection code,
+  // i.e. this mapping is inert until that encounter is actually built)
+  // maps onto agent-glitch: the storyboard's own escalation notes name
+  // Agent Glitch as the leader "confronted" at the season's climax,
+  // which is exactly what an exhibitOnly season-boss slot is for.
+  // The Hive's single collective swarm image is shown for ANY hive
+  // unit during a swarm fight (there is no per-unit hive-drone/hive-
+  // sentinel/hive-matron art yet). The Hack Guild (breach/wraith/
+  // vector) and nightmare stay intentionally UNMAPPED -- this is not
+  // an open question, the storyboard says outright "The Hack Guild is
+  // a faction/order, not yet a single illustrated character... Do not
+  // count the eight foundation designs as a completed full boss
+  // roster," so there is no individual Hack Guild art to assign yet,
+  // and nightmare has no corresponding foe id in the current roster
+  // (it sits narratively between Trojan and the Core per the
+  // storyboard's escalation notes, a rung the shipped ladder doesn't
+  // have yet). Any foe without a mapped/loading image falls back to
+  // foeSVG() exactly as before -- this is additive, never a required
+  // dependency.
   var PFLX_ARCHIVE_ART_BASE = 'https://pflx-battle-arena.vercel.app/assets/archive/';
-  var PFLX_ARCHIVE_ART_MAP = { scout: 'scout', drone: 'interceptor', warden: 'sentry', overseer: 'elite', trojan: 'trojan' };
+  var PFLX_ARCHIVE_ART_MAP = { scout: 'scout', drone: 'interceptor', warden: 'sentry', overseer: 'elite', trojan: 'trojan', core: 'agent-glitch' };
   function foeArt(f) {
     var artId = (B && B.hive) ? 'hive' : PFLX_ARCHIVE_ART_MAP[f.id];
     if (!artId) return foeSVG(f);

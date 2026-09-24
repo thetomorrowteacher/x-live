@@ -1,4 +1,4 @@
-// PATCH X-LIVE v0.56 -- Archive character art. Extracts the real
+// PATCH X-LIVE v0.56 + v0.59 -- Archive character art. Extracts the real
 // shipped foeSVG/foeArt/PFLX_ARCHIVE_ART_MAP from index.html (brace
 // counting, same technique used all session) and tests them against
 // realistic foe fixtures. Run: node test_archive_art_v056.js index.html
@@ -82,19 +82,27 @@ const fBreach = { id: 'breach', name: 'Breach', tier: 5, glow: '#0f0', ability: 
 const fWraith = { id: 'wraith', name: 'Wraith', tier: 6, glow: '#0f0', ability: 'Phase' };
 const fVector = { id: 'vector', name: 'Vector', tier: 7, glow: '#0f0', ability: 'Strike' };
 const fHiveDrone = { id: 'hive-drone', name: 'Hive Drone', tier: 2, glow: '#0f0', ability: 'Swarm' };
+const fCore = { id: 'core', name: 'The Archive Core', tier: 5, glow: '#0f0', ability: 'Season boss' };
 
 bRef.current = null;
 
 ok(X.foeArt(fScout).indexOf('scout.web.jpg') !== -1, 'scout maps to its own art id (exact match)');
 ok(X.foeArt(fTrojan).indexOf('trojan.web.jpg') !== -1, 'trojan maps to its own art id (exact match)');
-ok(X.foeArt(fDrone).indexOf('interceptor.web.jpg') !== -1, 'drone maps to the interceptor art (documented tier/role mapping)');
+ok(X.foeArt(fDrone).indexOf('interceptor.web.jpg') !== -1, 'drone maps to the interceptor art (base-unit tier ordering, confirmed against the storyboard\'s own Enemy foundation designs table)');
 ok(X.foeArt(fWarden).indexOf('sentry.web.jpg') !== -1, 'warden maps to the sentry art');
-ok(X.foeArt(fOverseer).indexOf('elite.web.jpg') !== -1, 'overseer maps to the elite art');
+ok(X.foeArt(fOverseer).indexOf('elite.web.jpg') !== -1, 'overseer maps to the elite art (the storyboard\'s "Advanced hunter", one tier above its three base units)');
+
+// PATCH X-LIVE v0.59 -- core (the exhibitOnly season-boss slot) maps to
+// the agent-glitch art: the storyboard names Agent Glitch as the leader
+// "confronted" at the season's climax, matching an exhibitOnly finale.
+ok(X.foeArt(fCore).indexOf('agent-glitch.web.jpg') !== -1, 'core (the season-boss/exhibit slot) maps to the agent-glitch art (v0.59)');
 
 // Unmapped Hack Guild foes fall back to the real procedural SVG, not a broken/empty image.
+// This is a confirmed, stated fact (the storyboard says the Hack Guild
+// has no individual illustrated character yet), not an open guess.
 for (const f of [fBreach, fWraith, fVector]) {
   const out = X.foeArt(f);
-  ok(out.indexOf('<svg') !== -1 && out.indexOf('.web.jpg') === -1, 'unmapped foe ' + f.id + ' falls back to the procedural SVG (Hack Guild membership left undecided, not guessed)');
+  ok(out.indexOf('<svg') !== -1 && out.indexOf('.web.jpg') === -1, 'unmapped Hack Guild foe ' + f.id + ' falls back to the procedural SVG (no individual Hack Guild art exists yet per the storyboard, confirmed not guessed)');
 }
 
 // The Hive: ANY unit shown during a swarm fight uses the collective hive art, overriding the per-id map.
