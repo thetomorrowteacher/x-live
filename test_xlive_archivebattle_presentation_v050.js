@@ -31,9 +31,14 @@ function extractFn(startNeedle) {
 const flashOffSrc = extractFn('function flashOff(keys, ms) {');
 const resolveSrc = extractFn('function resolve(a, correct) {');
 const foeAttackSrc = extractFn('function foeAttack(scale) {');
+// PATCH X-LIVE v0.67 forward-compat -- resolve() now calls foeDefenseMult(),
+// a real shipped dependency this sandbox must provide, same as every other
+// helper resolve() calls (say/finish/render/etc.). Extracted, not reimplemented.
+const foeDefenseMultSrc = extractFn('function foeDefenseMult(f) {');
 check('flashOff() extracted', !!flashOffSrc);
 check('resolve() extracted', !!resolveSrc);
 check('foeAttack() extracted', !!foeAttackSrc);
+check('foeDefenseMult() extracted (PATCH X-LIVE v0.67 dependency)', !!foeDefenseMultSrc);
 
 // --- CSS structural checks (cheap, no sandbox needed) ---
 check('.evb-stage star-field rule exists', /\.evb \.evb-stage\{position:relative;overflow:hidden\}/.test(src));
@@ -79,6 +84,7 @@ try {
     function stage() { return deps.stageVal; }
     function story() { return deps.storyVal; }
     function activeBuild() { return deps.buildVal; }
+    ${foeDefenseMultSrc}
     ${flashOffSrc}
     ${resolveSrc}
     ${foeAttackSrc}
@@ -89,7 +95,8 @@ try {
       getStreak: function () { return streak; },
       resolve: resolve,
       foeAttack: foeAttack,
-      flashOff: flashOff
+      flashOff: flashOff,
+      foeDefenseMult: foeDefenseMult
     };
   `);
   const calls = { say: [], finish: [], render: 0, saveStory: 0 };
@@ -166,9 +173,15 @@ if (sandbox) {
     B = sandbox.getB();
     check('a 3-hit streak sets B.critFoe (alongside B.hitFoe)', B.critFoe === true && B.hitFoe === true);
     check('streak resets to 0 after a crit fires', sandbox.getStreak() === 0);
-    const normalDmg = Math.round(strikeAbility().power * (1 + 10 / 20)); // POWER=10 stat, no crit mult
-    const critDmg = Math.round(strikeAbility().power * (1 + 10 / 20) * 1.5);
-    check('crit damage is 1.5x a normal hit\'s damage (real multiplier, not just a flag)', (before - B.foeHp) === critDmg && critDmg > normalDmg);
+    // PATCH X-LIVE v0.67 forward-compat -- the real resolve() now also
+    // multiplies the landed damage by foeDefenseMult(B.foe) (Archive-side
+    // defense, tier 1 for freshB()'s scout = 0.96x). Compute the expected
+    // values through the REAL extracted foeDefenseMult(), not a hardcoded
+    // constant, so this stays correct if that formula is ever retuned.
+    const fdm = sandbox.foeDefenseMult(freshB().foe);
+    const normalDmg = Math.round(Math.round(strikeAbility().power * (1 + 10 / 20)) * fdm); // POWER=10 stat, no crit mult
+    const critDmg = Math.round(Math.round(strikeAbility().power * (1 + 10 / 20) * 1.5) * fdm);
+    check('crit damage is 1.5x a normal hit\'s damage (real multiplier, not just a flag), Archive-side defense applied to both equally', (before - B.foeHp) === critDmg && critDmg > normalDmg);
 
     // 5) A wrong answer still lands a reduced (0.4x) strike -- real game
     //    design per resolve()'s `mult = correct ? 1 : 0.4` -- so hitFoe DOES
@@ -179,7 +192,7 @@ if (sandbox) {
     const beforeWrong = sandbox.getB().hp;
     sandbox.resolve(strikeAbility(), false);
     B = sandbox.getB();
-    const wrongDmg = Math.round(strikeAbility().power * (1 + 10 / 20) * 0.4); // 6
+    const wrongDmg = Math.round(Math.round(strikeAbility().power * (1 + 10 / 20) * 0.4) * sandbox.foeDefenseMult(freshB().foe)); // PATCH X-LIVE v0.67 forward-compat -- mitigated by Archive-side defense too
     check('a wrong answer lands a reduced-power hit (0.4x) and sets hitFoe, never critFoe', B.foeHp === (70 - wrongDmg) && B.hitFoe === true && !B.critFoe);
     check('a wrong answer still damages the player (free hit + normal counter, unchanged game logic)', B.hp < beforeWrong);
     check('streak resets to 0 on a wrong answer', sandbox.getStreak() === 0);

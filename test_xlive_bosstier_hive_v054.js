@@ -80,6 +80,8 @@ function extractAssign(marker) {
 const flashOffSrc = extractFn('function flashOff(keys, ms) {');
 const resolveSrc = extractFn('function resolve(a, correct) {');
 const foeAttackSrc = extractFn('function foeAttack(scale) {');
+// PATCH X-LIVE v0.67 forward-compat -- resolve() now calls foeDefenseMult().
+const foeDefenseMultSrc = extractFn('function foeDefenseMult(f) {');
 const finishSrc = extractFn('function finish(win) {');
 const pickFoeSrc = extractFn('function pickFoe() {');
 const pickHiveSrc = extractFn('function pickHive() {');
@@ -88,6 +90,7 @@ const xlHiveNewSrc = extractAssign('window.xlHiveNew = function () {');
 check('flashOff() extracted', flashOffSrc.length > 10);
 check('resolve() extracted', resolveSrc.length > 10);
 check('foeAttack() extracted', foeAttackSrc.length > 10);
+check('foeDefenseMult() extracted (PATCH X-LIVE v0.67 dependency)', foeDefenseMultSrc.length > 10);
 check('finish() extracted', finishSrc.length > 10);
 check('pickFoe() extracted', pickFoeSrc.length > 10);
 check('pickHive() extracted', pickHiveSrc.length > 10);
@@ -133,6 +136,7 @@ function buildSandbox(extraState) {
     function saveExo(patch) { calls.saveExo.push(patch); Object.assign(deps.exoVal, patch); }
     function liteLog(id, kind, label, xc) { calls.liteLog.push([id, kind, label, xc]); }
     function xlSfx(name, gain) { calls.sfx.push(name); }
+    ${foeDefenseMultSrc}
     ${flashOffSrc}
     ${resolveSrc}
     ${foeAttackSrc}
@@ -169,7 +173,7 @@ function freshB(overrides) {
 function strikeAbility() { return { id: 'quill-flick', type: 'strike', power: 10, cost: 0 }; }
 function guardAbility() { return { id: 'ink-veil-guard', type: 'guard', power: 0, cost: 2 }; }
 
-const canRunBehavioral = flashOffSrc && resolveSrc && foeAttackSrc && finishSrc && pickFoeSrc && pickHiveSrc && hiveUnlockedSrc && xlHiveNewSrc;
+const canRunBehavioral = flashOffSrc && resolveSrc && foeAttackSrc && foeDefenseMultSrc && finishSrc && pickFoeSrc && pickHiveSrc && hiveUnlockedSrc && xlHiveNewSrc;
 if (canRunBehavioral) {
   const realSetTimeout = global.setTimeout;
   global.setTimeout = function () {};

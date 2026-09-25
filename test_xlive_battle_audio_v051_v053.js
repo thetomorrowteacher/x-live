@@ -54,12 +54,16 @@ function extractFn(marker) {
 const flashOffSrc = extractFn('function flashOff(keys, ms) {');
 const resolveSrc = extractFn('function resolve(a, correct) {');
 const foeAttackSrc = extractFn('function foeAttack(scale) {');
+// PATCH X-LIVE v0.67 forward-compat -- resolve() now calls foeDefenseMult(),
+// a real shipped dependency this sandbox must provide too.
+const foeDefenseMultSrc = extractFn('function foeDefenseMult(f) {');
 check('flashOff() extracted', flashOffSrc.length > 10);
 check('resolve() extracted', resolveSrc.length > 10);
 check('foeAttack() extracted', foeAttackSrc.length > 10);
+check('foeDefenseMult() extracted (PATCH X-LIVE v0.67 dependency)', foeDefenseMultSrc.length > 10);
 
 let sandbox = null;
-if (flashOffSrc && resolveSrc && foeAttackSrc) {
+if (flashOffSrc && resolveSrc && foeAttackSrc && foeDefenseMultSrc) {
   const factory = new Function('deps', `
     let B = null, streak = 0;
     const calls = deps.calls;
@@ -72,6 +76,7 @@ if (flashOffSrc && resolveSrc && foeAttackSrc) {
     function activeBuild() { return deps.buildVal; }
     function story() { return deps.storyVal; }
     function xlSfx(name, gain) { calls.sfx.push(name); }
+    ${foeDefenseMultSrc}
     ${flashOffSrc}
     ${resolveSrc}
     ${foeAttackSrc}
@@ -118,6 +123,7 @@ if (sandbox) {
       function activeBuild() { return deps.buildVal; }
       function story() { return deps.storyVal; }
       function xlSfx(name, gain) { calls.sfx.push(name); }
+      ${foeDefenseMultSrc}
       ${flashOffSrc}
       ${resolveSrc}
       ${foeAttackSrc}

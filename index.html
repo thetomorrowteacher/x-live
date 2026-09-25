@@ -5,6 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.67, Sept 25 2026 -- PATCH X-LIVE v0.67: Archive-side stats
+     now apply to combat, not just the player's. Ennis (Sept 24 follow-on
+     list, item 8): "Archive-side stats applying to combat too."
+     Investigated resolve()/foeAttack() first: the player's own sv stats
+     already fully drove combat both ways -- POWER/GUARD/HACK set the
+     player's own damage output (resolve()'s `stat` lookup), and the
+     player's sv.GUARD already mitigated the Archive's incoming damage
+     (foeAttack()'s `1 - Math.min(0.4, sv.GUARD * 0.02)` term). The
+     Archive's own per-unit `attack` field was already real and wired
+     (foeAttack() uses f.attack directly) -- but nothing on the Archive
+     side ever mitigated the PLAYER's landed damage. That was the real,
+     provable gap: Archive-side stats affected how hard they hit, never
+     how much they could shrug off.
+     THE FIX: a new `foeDefenseMult(f)` helper (right after pickFoe())
+     mirrors foeAttack()'s own mitigation formula exactly -- same 0.02
+     rate expressed as tier*0.04, same 40% cap -- but reads the foe's
+     real, already-existing `tier` field (which already drives hp/attack
+     scaling in SMF_SEASON.evoGame.archive/hive) as its defense rating.
+     No new season-spec schema field was added: tier already IS each
+     foe's power level, so this is derived from real data, not guessed
+     or invented. resolve() now applies it to `dmg` at the exact point
+     damage lands on B.foeHp (after the marked/wraith-phase checks, so a
+     Wraith phase-through or a Volt Track mark still behave exactly as
+     before) -- boss-tier Archives (Hack Guild, Trojan) now genuinely
+     mitigate incoming damage, not just hit harder, closing the loop
+     Ennis asked for.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.66, Sept 25 2026 -- PATCH X-LIVE v0.66: a larger player
      Evo card + card entrance/idle animations during battle. Ennis (Sept
      24 follow-on list): "A larger player Evo card; card animations
@@ -9573,6 +9601,15 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   var xlBattleIntro = null, xlBattleIntroTimer = null;
   function bankFor() { var st = story(); var g = xlStoryStage ? xlStoryStage(st) : null; var actId = g && g.act ? g.act.id : 'act1'; var gate = (S().interludes || []).filter(function (i) { return i.after === actId; })[0]; return (S().banks || {})[gate ? gate.bank : 'alterego'] || { name: 'Alter Ego', cards: [] }; }
   function pickFoe() { var g = G(), st = story(); var c = g.archive.filter(function (f) { return f.stages.indexOf(stage()) >= 0 && !f.exhibitOnly; }); return c[Math.min(c.length - 1, Math.floor((st.wins || 0) / 2))] || c[0]; }
+  // PATCH X-LIVE v0.67 -- Archive-side stats now apply to combat, not just
+  // the player's. Mirrors foeAttack()'s existing sv.GUARD mitigation
+  // exactly (same 0.02-per-point rate, same 40% cap) but on the Archive
+  // side: each foe's tier (already a real per-unit field driving hp/attack
+  // scaling in SMF_SEASON.evoGame.archive/hive) doubles as its defense
+  // rating, so higher-tier/boss Archives now genuinely mitigate incoming
+  // player damage, not just hit harder. No new SMF_SEASON schema field --
+  // tier already IS the foe's power level, so this is derived, not guessed.
+  function foeDefenseMult(f) { return 1 - Math.min(0.4, ((f && f.tier) || 0) * 0.04); }
   // PATCH X-LIVE v0.54 -- The Hive: a fixed 3-unit swarm roster, kept in
   // its own g.hive array (never seen by pickFoe()/the normal ladder).
   // Unlocks once the player has beaten Trojan at least once -- wins>=9 is
@@ -9757,6 +9794,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
           if (B.foe.id === 'wraith' && a.type === 'strike' && B.turn % 3 === 1) {
             say(me + ' uses ' + a.name + ' but Wraith phases through it.', 'fo');
           } else {
+            dmg = Math.round(dmg * foeDefenseMult(B.foe)); // PATCH X-LIVE v0.67 -- Archive-side defense now mitigates the player's landed damage
             B.foeHp = Math.max(0, B.foeHp - dmg);
             B.hitFoe = true; if (crit) B.critFoe = true; flashOff(crit ? ['hitFoe', 'critFoe'] : ['hitFoe'], 480); // PATCH X-LIVE v0.50 -- real hit/crit animation (was dead code)
             if (typeof xlSfx === 'function') xlSfx(crit ? 'battleCrit' : 'battleHit'); // PATCH X-LIVE v0.52 -- Dragon Ball punch SFX on every landed strike
