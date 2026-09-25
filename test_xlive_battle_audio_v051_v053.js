@@ -29,7 +29,7 @@ check('XL_SFX.battleFoeHit points at the cut Dragon Ball impact_029 clip', /batt
 check('resolve() calls xlSfx with battleCrit/battleHit right where hitFoe/critFoe get set',
   /B\.hitFoe = true; if \(crit\) B\.critFoe = true; flashOff\([^)]*\], 480\); \/\/ PATCH X-LIVE v0\.50[^\n]*\n\s*if \(typeof xlSfx === 'function'\) xlSfx\(crit \? 'battleCrit' : 'battleHit'\)/.test(src));
 check('foeAttack() calls xlSfx with battleFoeHit right where hitMe gets set',
-  /B\.hitMe = true; flashOff\(\['hitMe'\], 480\); \/\/ PATCH X-LIVE v0\.50[^\n]*\n\s*if \(typeof xlSfx === 'function'\) xlSfx\('battleFoeHit'\)/.test(src));
+  /B\.hitMe = true;[^\n]*flashOff\([^)]*\][^)]*\); \/\/ PATCH X-LIVE v0\.50[^\n]*\n\s*if \(typeof xlSfx === 'function'\) xlSfx\('battleFoeHit'\)/.test(src)); // PATCH X-LIVE v0.69 widened to tolerate the new B.critMe assignment + variable flashOff clear/delay list
 
 // ---- v0.53: smoother hover/click ----
 check('XL_SFX.uiHover now points at click_030 (crest factor 1.7 -- was ui_hover_soft.mp3)', /uiHover:\s*'pflx-library\/01_UI_Clicks\/click_030\.mp3'/.test(src));

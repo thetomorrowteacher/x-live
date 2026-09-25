@@ -38,12 +38,16 @@ function makeFakeDom() {
   FakeClassList.prototype.toggle = function (c, on) { if (on) this.set.add(c); else this.set.delete(c); };
   FakeClassList.prototype.contains = function (c) { return this.set.has(c); };
 
+  function FakeStyle() {}
+  FakeStyle.prototype.setProperty = function (k, v) { this[k] = v; };
+  FakeStyle.prototype.getPropertyValue = function (k) { return this[k] || ''; };
+
   function FakeEl(tag) {
     this.tag = tag;
     this.children = [];
     this.attrs = {};
     this._text = '';
-    this.style = {};
+    this.style = new FakeStyle();
     this.classList = new FakeClassList(this);
     this.id = '';
     this._html = '';

@@ -35,7 +35,7 @@ const foeAttackSrc = extractFunction(src, 'function foeAttack(scale) {');
 const resolveSrc = extractFunction(src, 'function resolve(a, correct) {');
 
 // ---- static checks on the extracted real source ----
-ok(foeAttackSrc.indexOf("if (typeof xlSfx === 'function') xlSfx('freeze');") !== -1, 'the dodge branch now plays a real SFX cue (freeze)');
+ok(foeAttackSrc.indexOf("xlSfx('battleDodge');") !== -1, 'the dodge branch now plays a real SFX cue (updated PATCH X-LIVE v0.69: battleDodge, a dedicated swoosh, not the old generic freeze cue)');
 ok(foeAttackSrc.indexOf("window.PflxFx.slam('MISS', { sub: 'DODGED', tint: 'cyan' });") !== -1, 'the dodge branch now shows a real MISS/DODGED banner');
 ok(foeAttackSrc.indexOf("say(f.name + ' attacks and misses.', 'fo');") !== -1, 'the original dodge text-log line is untouched (regression guard)');
 ok(foeAttackSrc.indexOf('var foeCrit = false;') !== -1, 'a foeCrit flag now exists');
@@ -72,7 +72,7 @@ function makeSandbox(overrides) {
   s.foeAttack(1);
   ok(s.B.dodge === 0, 'dodge counter decremented on a dodge');
   ok(s.B.hp === 100, 'no damage applied on a dodge');
-  ok(s.calls.xlSfx.indexOf('freeze') !== -1, 'freeze SFX fired on a dodge');
+  ok(s.calls.xlSfx.indexOf('battleDodge') !== -1, 'battleDodge SFX fired on a dodge (updated PATCH X-LIVE v0.69: was freeze)');
   ok(s.calls.slam.length === 1 && s.calls.slam[0].text === 'MISS' && s.calls.slam[0].opts.sub === 'DODGED' && s.calls.slam[0].opts.tint === 'cyan', 'exactly one MISS/DODGED/cyan slam banner fired on a dodge');
   ok(s.calls.xlSfx.indexOf('battleFoeHit') === -1, 'battleFoeHit SFX never fires on a dodge (regression guard -- dodge and landed-hit paths stay mutually exclusive)');
 }

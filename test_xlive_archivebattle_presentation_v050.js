@@ -41,20 +41,20 @@ check('foeAttack() extracted', !!foeAttackSrc);
 check('foeDefenseMult() extracted (PATCH X-LIVE v0.67 dependency)', !!foeDefenseMultSrc);
 
 // --- CSS structural checks (cheap, no sandbox needed) ---
-check('.evb-stage star-field rule exists', /\.evb \.evb-stage\{position:relative;overflow:hidden\}/.test(src));
+check('.evb-stage star-field rule exists', /\.evb \.evb-stage\{position:relative;overflow:hidden;background:radial-gradient/.test(src)); // PATCH X-LIVE v0.69 -- .evb-stage gained a real nebula background alongside the pre-existing star-field pseudo-elements
 check('two independently-panning star layers exist (::before/::after)', /\.evb \.evb-stage::before,\.evb \.evb-stage::after\{/.test(src));
 check('evbstars1/evbstars2 keyframes exist', /@keyframes evbstars1\{/.test(src) && /@keyframes evbstars2\{/.test(src));
 check('evbfloat keyframe + foe/card float rules exist', /@keyframes evbfloat\{/.test(src) && /\.evb \.evb-foe\{animation:evbfloat/.test(src) && /\.evb \.evb-float\{animation:evbfloat/.test(src));
 check('critflash keyframe exists (crit gets a real visual, not just text)', /@keyframes critflash\{/.test(src));
-check('compound act+hit CSS rule exists for the player card', /\.evb \.evc\.act\.hit\{animation:act \.4s, hit \.35s\}/.test(src));
-check('compound act+hit+crit CSS rule exists for the foe', /\.evb \.evb-foe\.act\.hit\.crit svg\{animation:act \.4s, hit \.35s, critflash \.5s\}/.test(src));
-check('.evb-foe.act svg rule exists (was missing before this patch)', /\.evb \.evb-foe\.act svg\{animation:act \.4s\}/.test(src));
+check('compound act+hit CSS rule exists for the player card', /\.evb \.evc\.act\.hit\{animation:actLungeMe \.42s ease, hit \.35s\}/.test(src)); // PATCH X-LIVE v0.69 -- act now uses the directional actLungeMe lunge, not the old generic 'act' keyframe
+check('compound act+hit+crit CSS rule exists for the foe', /\.evb \.evb-foe\.act\.hit\.crit svg,\.evb \.evb-foe\.act\.hit\.crit \.evb-foe-art-wrap\{animation:actLungeFoe \.42s ease, hitBig \.5s, critflash \.5s\}/.test(src)); // PATCH X-LIVE v0.69 -- now also matches the real .evb-foe-art-wrap img path, and a real crit uses the bigger hitBig shake
+check('.evb-foe.act svg rule exists (was missing before this patch)', /\.evb \.evb-foe\.act svg,\.evb \.evb-foe\.act \.evb-foe-art-wrap\{animation:actLungeFoe \.42s ease\}/.test(src)); // PATCH X-LIVE v0.69 -- now also matches the real .evb-foe-art-wrap img path, uses the directional actLungeFoe lunge
 
 // --- xlBattleHTML() wiring checks ---
 check('xlBattleHTML wraps the no-Evo hint in .evb-stage', /'<div class="evb-stage"><div class="card"><div class="cardT">/.test(src));
 check('xlBattleHTML wraps the pre-battle FIGHT prompt in .evb-stage', /'<div class="evb-stage"><div class="card" style="text-align:center">/.test(src));
 check('xlBattleHTML builds foeCls from actFoe\\/hitFoe\\/critFoe (now also folding in v0.66\'s one-shot entrance class)', /var foeCls = \(B\.actFoe \? ' act' : ''\) \+ \(B\.hitFoe \? ' hit' : ''\) \+ \(B\.critFoe \? ' crit' : ''\) \+ enterCls;/.test(src));
-check('xlBattleHTML injects act\\/hit classes onto the real cardHTML() output via the call site (not by editing cardHTML itself)', /var myCard = cardHTML\(stage\(\), activeBuild\(\)\);[\s\S]{0,200}myCard = myCard\.replace\('class="evc', 'class="evc' \+ myCls\);/.test(src));
+check('xlBattleHTML injects act\\/hit classes onto the real cardHTML() output via the call site (not by editing cardHTML itself)', /var myCard = cardHTML\(stage\(\), activeBuild\(\)\);[\s\S]{0,400}myCard = myCard\.replace\('class="evc', 'class="evc' \+ myCls\);/.test(src));
 check('cardHTML() function itself is untouched (still the shared shop\\/deck renderer)', /function cardHTML\(n, b, chip, locked\) \{/.test(src));
 check('the player\'s card wrapper gets the evb-float class (v0.66 grew it to 260px and added the entrance-class slot)', /<div class="evb-float' \+ enterCls \+ '" style="max-width:260px;margin:0 auto">/.test(src));
 check('xlBattleHTML() return value closes the new .evb-stage wrapper', /return h \+ '<\/div>';\s*\};/.test(src));

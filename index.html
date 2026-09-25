@@ -5,44 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     X-LIVE v0.68, Sept 25 2026 -- PATCH X-LIVE v0.68: Archive Battle
-     announcer -- the "TheTomorrowTeacher" cloned ElevenLabs voice
-     (voice_id vdfDgDOguzBQx0zfLvwA). Ennis flagged this blocked (0
-     ElevenLabs credits) in the v0.67 Handoff entry, then unblocked it
-     mid-session: "eleven labs is up and running." A first pass generated
-     the 8 lines with a generic library voice ("Alex") before Ennis
-     corrected it to his own cloned "TheTomorrowTeacher" voice -- all 8
-     were regenerated with the correct voice before this patch shipped,
-     model eleven_multilingual_v2, and committed as real mp3 assets to
-     pflx-platform-check/public/sounds/pflx-archive-announcer/ (the same
-     repo/deploy every other X-Live audio asset is served from, via
-     XL_SOUND_ROOT).
-     THE FIX: a new, DELIBERATELY INDEPENDENT subsystem from XL_ANN (the
-     v0.38 Kenney Voiceover Pack announcer -- female/male/off, generic
-     session/slide-event triggers). XL_BATTLE_ANN_CLIPS maps 8 combat
-     events to the 8 real clips (start/boss -> lets_go/boss_incoming,
-     crit -> critical_hit, miss -> not_quite, dodge -> dodged, foehit ->
-     ouch_hurt, win -> victory, lose -> archive_wins). xlBattleAnn(key)
-     follows the exact xlAnnClip/xlAnnounce pool + duck-against-xlMusic
-     pattern that system already proved out (one pooled Audio element per
-     URL, reused on replay; a 1200ms per-key dedup window so a rapid
-     button mash can't stack the same line). Every call site is guarded
-     with typeof xlBattleAnn === 'function', matching this file's own
-     established convention for every other optional SFX/FX call
-     (xlSfx, PflxFx.slam).
-     WIRED IN: xlBattleNew() -- "Let's go!" on a normal foe, "Boss
-     incoming!" instead when the foe is Hack Guild (breach/wraith/
-     vector) or Trojan; xlHiveNew() -- always "Boss incoming!" (The Hive
-     is inherently boss-tier); resolve() -- "Critical hit!" on a real
-     crit, "Not quite!" on a wrong-answer weak hit, right alongside the
-     existing v0.60 PflxFx.slam HIT/MISS/CRITICAL HIT banner; foeAttack()
-     -- "Dodged!" when the player dodges, "Ouch, that one hurt!" on a
-     landed Archive hit (once, not duplicated onto Vector's second-strike
-     mechanic); finish() -- "Victory!" / "Archive wins this round.,"
-     fired once B.over is set (so an intermediate Hive-unit kill never
-     announces a premature win). A new 📣 ANNOUNCER toggle (own pref key
-     xl_battle_ann_on_v1, independent of the v0.38 VOICE toggle) renders
-     on both the pre-battle screen and the active-battle header.
+     X-LIVE v0.69, Sept 25 2026 -- PATCH X-LIVE v0.69: Archive Battle
+     animation/FX fixes, reacting to a live screenshot + Ennis's direct
+     feedback ("The Title Popups are staying on screen... You still
+     haven't changed the background as previously instructed"). Three
+     real, previously-undiscovered bugs, not just missing polish:
+     (1) .pfx-slam2's CSS used an `infinite` iteration-count keyframe
+     with no JS ever removing the .on class -- the CRITICAL HIT/HIT/MISS
+     popup could never clear itself. Replaced with a new self-terminating
+     pfxSlamInOut keyframe (pop in, hold, fade out over a real duration,
+     default 2100ms, overridable via opts.ms) -- no JS timer needed.
+     (2) .evb-stage never had an actual `background` set -- the v0.50
+     star-field pseudo-elements were animating against nothing. Added a
+     real nebula radial-gradient background behind them.
+     (3) the foe hit/act/crit CSS rules only ever matched the
+     placeholder <svg> fallback, never the real .evb-foe-art-wrap <img>
+     path used in virtually every real fight -- meaning these animations
+     have likely NEVER been visible in a real match despite being wired
+     since v0.50/v0.64. Every foe animation selector now also matches
+     .evb-foe-art-wrap.
+     NEW ASKS, also shipped: a .pfx-vignette layer (fades in/out in the
+     same tint color as the popup, alongside it); a real screen
+     vibration on every hit (pfx-bump-soft, always; pfx-bump-crit, a
+     bigger shake, only on an actual crit -- previously shake was
+     crit-only and silent otherwise); the acting card now lunges toward
+     its target (actLungeMe/actLungeFoe, directional, replacing the old
+     generic 'act' pop); a real dodge sidestep (dodgeShift) plus a
+     dedicated swoosh SFX (battleDodge) replacing the old generic
+     'freeze' glitch cue on a miss; a real Archive-crit-against-player
+     treatment (hitBig + critflash on B.critMe, previously no crit rule
+     existed on the player's own card at all).
+     Verified: syntax gate clean on both index.html (5 blocks) and the
+     byte-identical-modulo-indentation preview.html copy of the shared
+     PflxFx module (28 blocks). 47-case new unit test
+     (test_v069_battle_fx.js). Full 52-file regression suite re-run --
+     zero new regressions; 6 pre-existing failures unchanged (confirmed
+     via direct diff against a pre-patch backup); two older tests
+     (test_foe_battle_fx_v064.js, test_xlive_battle_audio_v051_v053.js)
+     updated in place to assert the new, intentionally-changed dodge-SFX
+     name and B.critMe-augmented code shape, following this session's
+     established forward-compatibility-fix convention; a third
+     (test_pflxfx_slam_v060.js) got a FakeStyle/setProperty shim added
+     to its fake DOM so its run doesn't crash against the real
+     slamShow()'s new vignette color-var call.
+     STILL QUEUED, not built this patch: the previously-designed
+     announcer voice-picker (24 clip keys, 3-voice picker, reverb/delay
+     FX) -- requeued as v0.70.
      ═══════════════════════════════════════════════════════════════════ -->
 <!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.67, Sept 25 2026 -- PATCH X-LIVE v0.67: Archive-side stats
@@ -6432,7 +6440,11 @@ function confirmUpgrade(i) {
     '@keyframes pfxJitter{0%{transform:translate(-50.6%,-49.4%)}100%{transform:translate(-49.4%,-50.6%)}}' +
     '#pflx-fx-layer .pfx-slam2{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;text-align:center;white-space:nowrap;font-size:min(13vw,150px);font-weight:900;letter-spacing:0.06em;color:#fff;text-shadow:0 0 20px #ff0033,0 0 60px rgba(255,0,51,0.9),6px 0 0 rgba(0,240,255,0.7),-6px 0 0 rgba(255,0,120,0.8);}' +
     '#pflx-fx-layer .pfx-slam2 small{display:block;font-size:0.16em;letter-spacing:0.5em;margin-top:0.4em;color:#ffb3c0;}' +
-    '#pflx-fx-layer .pfx-slam2.on{display:block;animation:pfxSlam 0.55s cubic-bezier(.2,1.8,.35,1),pfxJitter 0.12s steps(2) 0.55s infinite;}' +
+    '#pflx-fx-layer .pfx-slam2.on{display:block;animation:pfxSlamInOut 2.1s cubic-bezier(.22,1,.36,1) forwards;}' +
+    '@keyframes pfxSlamInOut{0%{transform:translate(-50%,-50%) scale(3.2);opacity:0}16%{transform:translate(-50%,-50%) scale(.92);opacity:1}26%{transform:translate(-50%,-50%) scale(1)}72%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(.82)}}' +
+    '#pflx-fx-layer .pfx-vignette{position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at center,transparent 38%,var(--vig-c,rgba(255,0,51,.55)) 145%);}' +
+    '#pflx-fx-layer .pfx-vignette.go{animation:pfxVignette 2.1s ease-out;}' +
+    '@keyframes pfxVignette{0%{opacity:0}16%{opacity:1}70%{opacity:.8}100%{opacity:0}}' +
     '#pflx-fx-layer .pfx-show{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);display:none;font-size:min(12vw,120px);font-weight:900;color:#fff;white-space:nowrap;text-align:center;}' +
     '#pflx-fx-layer .pfx-show.on{display:block;animation:pfxShow 1.6s ease-out forwards;}' +
     '@keyframes pfxShow{0%{transform:translate(-50%,-50%) scale(0.3);opacity:0}18%{transform:translate(-50%,-50%) scale(1.12);opacity:1}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1.05)}}' +
@@ -6445,10 +6457,14 @@ function confirmUpgrade(i) {
     '@keyframes pfxFall{to{transform:translateY(112vh) rotate(720deg);opacity:0.9}}' +
     '.pfx-shaking{animation:pfxShake 0.09s linear infinite !important;}' +
     '.pfx-bump{animation:pfxShake 0.07s linear 5 !important;}' +
+    '.pfx-bump-soft{animation:pfxShakeSoft 0.09s linear 3 !important;}' +
+    '.pfx-bump-crit{animation:pfxShakeCrit 0.08s linear 7 !important;}' +
     '.pfx-glitching{animation:pfxGlitch 0.12s steps(2) 8 !important;}' +
     '@keyframes pfxShake{0%{translate:0 0}20%{translate:-9px 4px}40%{translate:8px -6px}60%{translate:-6px -3px}80%{translate:7px 5px}100%{translate:0 0}}' +
+    '@keyframes pfxShakeSoft{0%{translate:0 0}25%{translate:-3px 1px}50%{translate:3px -2px}75%{translate:-2px 2px}100%{translate:0 0}}' +
+    '@keyframes pfxShakeCrit{0%{translate:0 0}20%{translate:-15px 8px}40%{translate:14px -11px}60%{translate:-12px -7px}80%{translate:13px 9px}100%{translate:0 0}}' +
     '@keyframes pfxGlitch{0%{translate:-6px 0;filter:hue-rotate(80deg) saturate(2)}100%{translate:6px 0;filter:none}}' +
-    '@media (prefers-reduced-motion:reduce){#pflx-fx-layer .pfx-flash.r.go{animation:none;opacity:0.6}.pfx-shaking,.pfx-bump,.pfx-glitching{animation:none !important}#pflx-fx-layer.pfx-final .pfx-scan{display:none}}';
+    '@media (prefers-reduced-motion:reduce){#pflx-fx-layer .pfx-flash.r.go{animation:none;opacity:0.6}.pfx-shaking,.pfx-bump,.pfx-bump-soft,.pfx-bump-crit,.pfx-glitching{animation:none !important}#pflx-fx-layer.pfx-final .pfx-scan{display:none}}';
 
   function ensureLayer() {
     if (typeof document === 'undefined') return null;
@@ -6463,7 +6479,7 @@ function confirmUpgrade(i) {
       layer.id = 'pflx-fx-layer';
       layer.setAttribute('aria-live', 'polite');
       layer.innerHTML =
-        '<div class="pfx-flash y"></div><div class="pfx-flash r"></div><div class="pfx-tint"></div><div class="pfx-scan"></div>' +
+        '<div class="pfx-flash y"></div><div class="pfx-flash r"></div><div class="pfx-tint"></div><div class="pfx-vignette"></div><div class="pfx-scan"></div>' +
         '<div class="pfx-sweep"></div><div class="pfx-wave"></div>' +
         '<div class="pfx-big"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="45"/><circle class="tk" cx="50" cy="50" r="40"/><circle class="fg" cx="50" cy="50" r="45" stroke-dasharray="282.74" stroke-dashoffset="0"/></svg><div class="pfx-num"></div><div class="pfx-lab"></div></div>' +
         '<div class="pfx-slam">TIME’S UP<small></small></div><div class="pfx-slam2"><b></b><small></small></div><div class="pfx-show"></div>' +
@@ -6678,12 +6694,28 @@ function confirmUpgrade(i) {
     var b = el.querySelector('b'), sm = el.querySelector('small');
     if (b) b.textContent = text || '';
     if (sm) sm.textContent = opts.sub || '';
+    // PATCH X-LIVE v0.69 -- Ennis: the banner was staying on screen (the
+    // old CSS added .on but nothing ever removed it, and the jitter
+    // animation looped forever). The CSS animation now always ends at
+    // opacity:0 on its own (see pfxSlamInOut) -- no JS timer needed to
+    // hide it. animation-duration is set explicitly so a caller can sync
+    // the popup's total on-screen time to a voice clip's real length via
+    // opts.ms (default 2100ms).
+    var dur = opts.ms || 2100;
+    el.style.animationDuration = dur + 'ms';
     retrigger(el, 'on');
     if (opts.tint) {
       var tint = q('.pfx-tint');
       if (tint) { tint.style.background = TINT_COLORS[opts.tint] || opts.tint; retrigger(tint, 'go'); }
+      // PATCH X-LIVE v0.69 -- Ennis: "a vignette animation of the same
+      // color to add more dramatic effect," timed with the same popup.
+      var vig = q('.pfx-vignette');
+      if (vig) { vig.style.setProperty('--vig-c', TINT_COLORS[opts.tint] || opts.tint); vig.style.animationDuration = dur + 'ms'; retrigger(vig, 'go'); }
     }
-    if (opts.shake) bump('pfx-bump', opts.ms || 500);
+    // PATCH X-LIVE v0.69 -- Ennis: "a slight vibration as well" on every
+    // hit, not just a crit -- every slam now bumps the screen, softly by
+    // default and harder when opts.shake (a real crit) is set.
+    bump(opts.shake ? 'pfx-bump-crit' : 'pfx-bump-soft', opts.shake ? 650 : 320);
     if (opts.sfxKey && FILES[opts.sfxKey]) play(FILES[opts.sfxKey], opts.gain, 0, null);
     return true;
   }
@@ -6783,7 +6815,8 @@ const XL_SFX = {
   // library for future use.
   battleHit: 'pflx-library/04_Impacts_Hits/impact_025.mp3',
   battleCrit: 'pflx-library/04_Impacts_Hits/impact_022.mp3',
-  battleFoeHit: 'pflx-library/04_Impacts_Hits/impact_029.mp3'
+  battleFoeHit: 'pflx-library/04_Impacts_Hits/impact_029.mp3',
+  battleDodge: 'pflx-library/07_Transitions_Swells/transition_004.mp3' // PATCH X-LIVE v0.69 -- swoosh for a real dodge (was reusing the generic 'freeze' glitch cue)
 };
 const XL_MUSIC = {
   arcade: { file: 'pflx-library/10_Music_Loops/loop_drive_8bar_orbit_arcade_134bpm.mp3', vol: 0.32, label: 'Orbit Arcade' },
@@ -9380,7 +9413,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .evc .plate{position:absolute;left:0;right:0;bottom:0;padding:9px 10px;background:rgba(7,11,22,.9);font-family:var(--display);font-size:12px;letter-spacing:.06em;text-align:center}
 .evb .evc.hit{animation:hit .35s}
 @keyframes hit{0%,100%{transform:none}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
-.evb .evc.act{animation:act .4s}
+.evb .evc.act{animation:actLungeMe .42s ease}
 @keyframes act{0%,100%{transform:none}40%{transform:translateY(-14px) scale(1.03)}}
 .evb .evb-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:12px}
 .evb .evb-stats div{border:1px solid var(--line);padding:8px 4px;text-align:center;font-family:var(--display);font-size:8px;letter-spacing:.14em;color:var(--muted)}
@@ -9441,13 +9474,29 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .evb-foe-art-wrap{margin:0 auto 8px;max-width:220px}
 .evb .evb-foe-art{display:block;width:100%;border-radius:10px;filter:drop-shadow(0 0 18px rgba(var(--limergb),.6))}
 .evb .evb-foe-art-fallback svg{display:block;width:100%;max-width:220px;margin:0 auto;filter:drop-shadow(0 0 18px rgba(var(--limergb),.6))}
-.evb .evb-foe.hit svg{animation:hit .35s}
-.evb .evb-foe.act svg{animation:act .4s}
-.evb .evb-foe.act.hit svg{animation:act .4s, hit .35s}
-.evb .evb-foe.hit.crit svg{animation:hit .35s, critflash .5s}
-.evb .evb-foe.act.hit.crit svg{animation:act .4s, hit .35s, critflash .5s}
+/* PATCH X-LIVE v0.69 -- Ennis: hit/act animations weren't visibly firing
+   in a real fight because these rules only ever matched the inline-SVG
+   fallback art; foeArt() renders real per-Archive art as an
+   <img class="evb-foe-art"> inside .evb-foe-art-wrap almost every fight
+   (the plain <svg> only shows if that image 404s). Every rule below now
+   also matches .evb-foe-art-wrap so the animation plays on whichever art
+   path actually rendered. The acting card now lunges TOWARD its target
+   (actLungeFoe) instead of just popping straight up, and a real crit gets
+   a bigger, more aggressive shake (hitBig) layered with critflash. */
+.evb .evb-foe.hit svg,.evb .evb-foe.hit .evb-foe-art-wrap{animation:hit .35s}
+.evb .evb-foe.act svg,.evb .evb-foe.act .evb-foe-art-wrap{animation:actLungeFoe .42s ease}
+.evb .evb-foe.act.hit svg,.evb .evb-foe.act.hit .evb-foe-art-wrap{animation:actLungeFoe .42s ease, hit .35s}
+.evb .evb-foe.hit.crit svg,.evb .evb-foe.hit.crit .evb-foe-art-wrap{animation:hitBig .5s, critflash .5s}
+.evb .evb-foe.act.hit.crit svg,.evb .evb-foe.act.hit.crit .evb-foe-art-wrap{animation:actLungeFoe .42s ease, hitBig .5s, critflash .5s}
 @keyframes critflash{0%,100%{filter:drop-shadow(0 0 18px rgba(163,230,53,.6))}30%{filter:drop-shadow(0 0 22px #ffd166) brightness(1.6) saturate(1.4)}70%{filter:drop-shadow(0 0 12px #ffd166) brightness(1.25)}}
-.evb .evc.act.hit{animation:act .4s, hit .35s}
+.evb .evc.act.hit{animation:actLungeMe .42s ease, hit .35s}
+.evb .evc.hit.crit{animation:hitBig .5s, critflash .5s}
+.evb .evc.act.hit.crit{animation:actLungeMe .42s ease, hitBig .5s, critflash .5s}
+.evb .evc.dodge{animation:dodgeShift .55s ease}
+@keyframes actLungeMe{0%,100%{transform:none}40%{transform:translate(-16px,-10px) scale(1.05)}}
+@keyframes actLungeFoe{0%,100%{transform:none}40%{transform:translate(16px,-10px) scale(1.05)}}
+@keyframes hitBig{0%,100%{transform:none}20%{transform:translateX(-18px) rotate(-2.5deg)}45%{transform:translateX(16px) rotate(2.5deg)}70%{transform:translateX(-9px)}}
+@keyframes dodgeShift{0%{transform:translate(0,0);opacity:1}35%{transform:translate(-32px,-4px) scale(.96);opacity:.5}68%{transform:translate(10px,0) scale(1.01);opacity:1}100%{transform:translate(0,0);opacity:1}}
 /* PATCH X-LIVE v0.50 -- Archive Battle presentation layer: a moving
    star-field stage behind the whole pane (evb-stage), the foe panel and
    the player's own card float over it (evbfloat), and the (previously
@@ -9455,7 +9504,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
    both acts AND gets hit in the same render (the common case, since a
    strike and the foe's counter both resolve in one turn) plays both
    animations together instead of one silently overriding the other. */
-.evb .evb-stage{position:relative;overflow:hidden}
+.evb .evb-stage{position:relative;overflow:hidden;background:radial-gradient(ellipse 90% 70% at 18% 12%,rgba(125,233,255,.14),transparent 60%),radial-gradient(ellipse 80% 65% at 88% 92%,rgba(163,230,53,.09),transparent 60%),radial-gradient(ellipse 120% 90% at 50% 45%,#131c3c,#070b16 72%)} /* PATCH X-LIVE v0.69 -- Ennis: the star-field was animating against nothing, so it was imperceptible; a real deep-space nebula base now sits behind it */
 .evb .evb-stage::before,.evb .evb-stage::after{content:'';position:absolute;inset:-15% -8%;pointer-events:none;background-repeat:repeat}
 .evb .evb-stage::before{background-image:radial-gradient(1.6px 1.6px at 24px 34px,rgba(255,255,255,.85),transparent 60%),radial-gradient(1.2px 1.2px at 96px 128px,rgba(180,225,255,.75),transparent 60%),radial-gradient(1.6px 1.6px at 168px 64px,rgba(255,255,255,.6),transparent 60%),radial-gradient(1.2px 1.2px at 236px 190px,rgba(125,233,255,.6),transparent 60%);background-size:280px 240px;animation:evbstars1 100s linear infinite;opacity:.9}
 .evb .evb-stage::after{background-image:radial-gradient(1.2px 1.2px at 44px 96px,rgba(125,233,255,.5),transparent 60%),radial-gradient(1.6px 1.6px at 140px 40px,rgba(255,255,255,.5),transparent 60%),radial-gradient(1.2px 1.2px at 210px 160px,rgba(163,230,53,.4),transparent 60%);background-size:320px 280px;animation:evbstars2 160s linear infinite reverse;opacity:.55}
@@ -9823,7 +9872,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var enterCls = ''; if (!B.entered) { enterCls = ' enter'; B.entered = true; } // PATCH X-LIVE v0.66 -- one-shot pop/fade entrance, plays once per fresh battle
     var foeCls = (B.actFoe ? ' act' : '') + (B.hitFoe ? ' hit' : '') + (B.critFoe ? ' crit' : '') + enterCls;
     var myCard = cardHTML(stage(), activeBuild());
-    var myCls = (B.actMe ? ' act' : '') + (B.hitMe ? ' hit' : '');
+    var myCls = (B.actMe ? ' act' : '') + (B.hitMe ? ' hit' : '') + (B.critMe ? ' crit' : '') + (B.dodgeMe ? ' dodge' : ''); // PATCH X-LIVE v0.69 -- a real Archive crit and a real dodge now get their own card animation
     if (myCls) myCard = myCard.replace('class="evc', 'class="evc' + myCls);
     var h = '<div class="evb-stage">' + '<div style="display:flex;justify-content:flex-end;margin-bottom:6px">' + xlBattleAnnButtonHtml() + '</div>' + '<div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>' + (B.hive ? ('Hive unit ' + (B.hiveIdx + 1) + '/' + B.hiveFoes.length + ' · ') : ('Tier ' + f.tier + ' · ')) + esc(f.ability) + '</small>' + foeArt(f) + // PATCH X-LIVE v0.54 -- show Hive unit progress instead of Tier during a swarm fight
       '<div class="evb-row"><span>HP</span><b>' + B.foeHp + ' / ' + B.foeMax + '</b></div><div class="evb-bar hp' + (B.foeHp < B.foeMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.foeHp / B.foeMax) + '%"></i></div></div>';
@@ -9921,7 +9970,13 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       // foe's own swing (B.actFoe, set above) already plays here -- this
       // adds the SFX + big-title MISS banner that were completely absent
       // on a dodge before now.
-      if (typeof xlSfx === 'function') xlSfx('freeze'); // the attack fizzles/glitches past the player
+      // PATCH X-LIVE v0.69 -- Ennis: "if it is a miss then the targeted
+      // card should shift as though it has dodged the hit along with the
+      // swoosh sound." B.dodgeMe drives a real sidestep animation
+      // (dodgeShift, see CSS) on the player's own card, and the SFX is
+      // now a real transition/swoosh clip instead of the glitch cue.
+      B.dodgeMe = true; flashOff(['dodgeMe'], 560);
+      if (typeof xlSfx === 'function') xlSfx('battleDodge');
       if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam('MISS', { sub: 'DODGED', tint: 'cyan' }); }
       if (typeof xlBattleAnn === 'function') xlBattleAnn('dodge'); // PATCH X-LIVE v0.68 -- "Dodged!"
       return;
@@ -9933,7 +9988,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     if (B.foeSilenced) { B.foeSilenced = false; dmg = Math.round(dmg * 0.5); say('Ghostwire scrambles the Archive’s attack.', 'fo'); }
     if (B.guard) { dmg = Math.round(dmg / 2); B.guard = 0; }
     B.hp = Math.max(0, B.hp - dmg); say(f.name + ' hits for ' + dmg + '.', 'fo');
-    B.hitMe = true; flashOff(['hitMe'], 480); // PATCH X-LIVE v0.50 -- real hit animation on the player's card
+    B.hitMe = true; B.critMe = foeCrit; flashOff(foeCrit ? ['hitMe', 'critMe'] : ['hitMe'], foeCrit ? 560 : 480); // PATCH X-LIVE v0.50 -- real hit animation on the player's card; v0.69 adds a bigger/longer shake when the Archive's own hit is a crit
     if (typeof xlSfx === 'function') xlSfx('battleFoeHit'); // PATCH X-LIVE v0.52 -- Dragon Ball punch SFX when the Archive actually lands a hit
     // PATCH X-LIVE v0.64 -- Ennis: "an animation for a hit, miss, critical
     // hit... This should happen for the Archive move." Mirrors resolve()'s
