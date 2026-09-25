@@ -5,6 +5,55 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.66, Sept 25 2026 -- PATCH X-LIVE v0.66: a larger player
+     Evo card + card entrance/idle animations during battle. Ennis (Sept
+     24 follow-on list): "A larger player Evo card; card animations
+     during battle."
+     Found the player's own card was capped by an INLINE style
+     (max-width:190px on its .evb-float wrapper) well below the foe's
+     own .evc card cap of 300px -- grown to 260px, a real ~37% size
+     increase, while staying under the foe's cap so the Archive still
+     reads as the more imposing presence.
+     Also found the continuous idle-float animation (evbfloat) already
+     shipped in Phase A (v0.50-v0.53) and already applied to both the
+     foe panel and the player's card -- so "idle animations" was
+     already real. What was missing was an ENTRANCE animation: a
+     one-shot pop/fade-in (evbCardEnter) that plays once when a fresh
+     battle screen first renders, layered onto the same always-running
+     evbfloat bob via comma-separated CSS animations rather than
+     replacing it. Gated by a new B.entered flag (set false on every
+     fresh B construction in xlBattleNew()/xlHiveNew(), consumed and
+     flipped true the first time xlBattleHTML() renders that battle) so
+     the entrance never replays on later re-renders within the same
+     fight (move clicks, HP-bar updates, etc.).
+     Spar (a separate render path, xlSparHTML()) is untouched -- it has
+     its own scope already logged in the plan doc.
+     Verified: syntax gate clean (5 blocks). New 18-case unit test
+     (test_evocard_enter_v066.js) confirms the real shipped B.entered
+     gate: a fresh battle's first render gets the entrance class and
+     flips the flag, every render after that omits it (one-shot, not
+     re-triggered), both B-construction sites (xlBattleNew/xlHiveNew)
+     declare the flag, and the CSS layers the new keyframes onto the
+     existing evbfloat rule rather than replacing it -- all 18 PASS.
+     One pre-existing test (test_xlive_archivebattle_presentation_v050.js)
+     had two assertions pinned to the OLD exact foeCls/190px strings;
+     updated to match the real, now-extended shipped code (same
+     forward-compatibility maintenance every later patch this session
+     has needed on earlier version-specific tests) -- back to 45/45.
+     Full regression suite re-run: identical to the documented baseline
+     (test_subapp_embed.js 2, test_v029.js 1, test_xlive_gameshow_v035.js
+     1, test_xlive_story_embed_v040.js 3, plus the 2 pre-existing
+     Node-crash files test_v022.js/test_v028.js) -- zero new
+     regressions.
+     Still ahead in the confirmed presentation-first order: SFX
+     announcer voice lines -- then the larger pieces (Archive-side
+     stats applying to combat, level/progression scaling, 4-player team
+     battle, hosting as an X-Live session activity, Battle Arena Side
+     Quests, removing live quiz_duel/team_clash from Battle Arena, the
+     Quick Launch system, Edpuzzle-like and Flipgrid-style features).
+<!-- ═══════════════════════════════════════════════════════════════════
+
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.65, Sept 24 2026 -- PATCH X-LIVE v0.65: host-adjustable
      question timer for Archive Battle / Spar's shared ask() quiz gate.
      Was hardcoded at a fixed 12 seconds; now a real per-class Setup-tab
@@ -9303,6 +9352,15 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 @keyframes evbfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 .evb .evb-foe{animation:evbfloat 3.6s ease-in-out infinite}
 .evb .evb-float{animation:evbfloat 3.6s ease-in-out infinite;animation-delay:-1.8s}
+/* PATCH X-LIVE v0.66 -- Ennis: "a larger player Evo card; card
+   animations during battle." A one-shot pop/scale/fade-in entrance
+   (evbCardEnter) plays once when a fresh battle screen first renders
+   (gated by B.entered, set true right after use -- see xlBattleHTML()),
+   layered onto the SAME already-shipped continuous evbfloat idle bob
+   via comma-separated animations rather than replacing it. */
+@keyframes evbCardEnter{0%{opacity:0;transform:translateY(36px) scale(.82);filter:blur(6px)}60%{opacity:1;filter:none}100%{opacity:1;transform:none}}
+.evb .evb-foe.enter{animation:evbCardEnter .6s cubic-bezier(.2,1.2,.35,1) both,evbfloat 3.6s ease-in-out infinite}
+.evb .evb-float.enter{animation:evbCardEnter .6s cubic-bezier(.2,1.2,.35,1) both,evbfloat 3.6s ease-in-out infinite;animation-delay:0s,-1.8s}
 .evb .evb-log{border:1px solid var(--line);background:rgba(7,11,22,.6);padding:10px 12px;height:150px;overflow:auto;font-size:12.5px;display:flex;flex-direction:column-reverse;gap:4px}
 .evb .evb-log div{color:var(--muted)}.evb-log div.me{color:var(--ink)}.evb-log div.fo{color:var(--lime)}.evb-log div.win{color:var(--gold)}.evb-log div.bad{color:var(--red)}
 .evb .streak{font-family:var(--display);font-size:10px;letter-spacing:.2em;color:var(--gold)}
@@ -9526,7 +9584,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   window.xlHiveNew = function () {
     var sv = stats(), foes = pickHive(); if (!foes.length) return;
     var first = foes[0];
-    B = { hive: true, hiveFoes: foes, hiveIdx: 0, foe: first, foeHp: first.hp, foeMax: first.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: false, turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null };
+    B = { hive: true, hiveFoes: foes, hiveIdx: 0, foe: first, foeHp: first.hp, foeMax: first.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: false, turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null, entered: false }; // PATCH X-LIVE v0.66 -- one-shot card-entrance flag, consumed by xlBattleHTML()
     streak = 0; say('The Hive swarms in -- ' + foes.length + ' units, one health bar. ' + first.name + ' leads.', 'fo'); render();
   };
   function foeSVG(f) {
@@ -9579,7 +9637,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   }
   window.xlBattleNew = function () {
     var sv = stats(), f = pickFoe(); if (!f) return;
-    B = { foe: f, foeHp: f.hp, foeMax: f.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: f.id === 'drone', turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null };
+    B = { foe: f, foeHp: f.hp, foeMax: f.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: f.id === 'drone', turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null, entered: false }; // PATCH X-LIVE v0.66 -- one-shot card-entrance flag, consumed by xlBattleHTML()
     streak = 0; say('An ' + f.name + ' locks on. ' + f.ability, 'fo'); render();
   };
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
@@ -9638,13 +9696,14 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var f = B.foe, st = story(), m = mood();
     // PATCH X-LIVE v0.50 -- real hit/act/crit classes (see resolve()/
     // foeAttack()); previously B.hitFoe was read here but never set.
-    var foeCls = (B.actFoe ? ' act' : '') + (B.hitFoe ? ' hit' : '') + (B.critFoe ? ' crit' : '');
+    var enterCls = ''; if (!B.entered) { enterCls = ' enter'; B.entered = true; } // PATCH X-LIVE v0.66 -- one-shot pop/fade entrance, plays once per fresh battle
+    var foeCls = (B.actFoe ? ' act' : '') + (B.hitFoe ? ' hit' : '') + (B.critFoe ? ' crit' : '') + enterCls;
     var myCard = cardHTML(stage(), activeBuild());
     var myCls = (B.actMe ? ' act' : '') + (B.hitMe ? ' hit' : '');
     if (myCls) myCard = myCard.replace('class="evc', 'class="evc' + myCls);
     var h = '<div class="evb-stage"><div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>' + (B.hive ? ('Hive unit ' + (B.hiveIdx + 1) + '/' + B.hiveFoes.length + ' · ') : ('Tier ' + f.tier + ' · ')) + esc(f.ability) + '</small>' + foeArt(f) + // PATCH X-LIVE v0.54 -- show Hive unit progress instead of Tier during a swarm fight
       '<div class="evb-row"><span>HP</span><b>' + B.foeHp + ' / ' + B.foeMax + '</b></div><div class="evb-bar hp' + (B.foeHp < B.foeMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.foeHp / B.foeMax) + '%"></i></div></div>';
-    h += '<div class="evb-panel"><h3>Your move</h3><div class="evb-float" style="max-width:190px;margin:0 auto">' + myCard + '</div>' +
+    h += '<div class="evb-panel"><h3>Your move</h3><div class="evb-float' + enterCls + '" style="max-width:260px;margin:0 auto">' + myCard + '</div>' +
       '<div class="evb-row"><span>' + esc(cardName(stage(), activeBuild())) + ' HP</span><b>' + B.hp + ' / ' + B.max + '</b></div><div class="evb-bar hp' + (B.hp < B.max * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.hp / B.max) + '%"></i></div>' +
       '<div class="evb-row"><span>Orbs</span><b>' + (st.orbs || 0) + ' / ' + orbCap() + '</b></div><div class="evb-bar orb"><i style="width:' + Math.min(100, 100 * (st.orbs || 0) / orbCap()) + '%"></i></div>' +
       '<div class="evb-row"><span class="streak">' + (streak >= 2 ? 'Streak ' + streak + (streak >= 3 ? ' · crit ready' : '') : '') + '</span><span class="mood ' + m + '">' + (m === 'fed' ? 'Fed +10%' : (m === 'hungry' ? 'Hungry −10%' : 'Ready')) + '</span></div>' +

@@ -48,10 +48,10 @@ check('.evb-foe.act svg rule exists (was missing before this patch)', /\.evb \.e
 // --- xlBattleHTML() wiring checks ---
 check('xlBattleHTML wraps the no-Evo hint in .evb-stage', /'<div class="evb-stage"><div class="card"><div class="cardT">/.test(src));
 check('xlBattleHTML wraps the pre-battle FIGHT prompt in .evb-stage', /'<div class="evb-stage"><div class="card" style="text-align:center">/.test(src));
-check('xlBattleHTML builds foeCls from actFoe\\/hitFoe\\/critFoe', /var foeCls = \(B\.actFoe \? ' act' : ''\) \+ \(B\.hitFoe \? ' hit' : ''\) \+ \(B\.critFoe \? ' crit' : ''\);/.test(src));
+check('xlBattleHTML builds foeCls from actFoe\\/hitFoe\\/critFoe (now also folding in v0.66\'s one-shot entrance class)', /var foeCls = \(B\.actFoe \? ' act' : ''\) \+ \(B\.hitFoe \? ' hit' : ''\) \+ \(B\.critFoe \? ' crit' : ''\) \+ enterCls;/.test(src));
 check('xlBattleHTML injects act\\/hit classes onto the real cardHTML() output via the call site (not by editing cardHTML itself)', /var myCard = cardHTML\(stage\(\), activeBuild\(\)\);[\s\S]{0,200}myCard = myCard\.replace\('class="evc', 'class="evc' \+ myCls\);/.test(src));
 check('cardHTML() function itself is untouched (still the shared shop\\/deck renderer)', /function cardHTML\(n, b, chip, locked\) \{/.test(src));
-check('the player\'s card wrapper gets the evb-float class', /<div class="evb-float" style="max-width:190px;margin:0 auto">/.test(src));
+check('the player\'s card wrapper gets the evb-float class (v0.66 grew it to 260px and added the entrance-class slot)', /<div class="evb-float' \+ enterCls \+ '" style="max-width:260px;margin:0 auto">/.test(src));
 check('xlBattleHTML() return value closes the new .evb-stage wrapper', /return h \+ '<\/div>';\s*\};/.test(src));
 
 // --- Music zone wiring checks ---
