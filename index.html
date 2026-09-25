@@ -5,6 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.68, Sept 25 2026 -- PATCH X-LIVE v0.68: Archive Battle
+     announcer -- ElevenLabs "Alex" voice. Ennis flagged this blocked
+     (0 ElevenLabs credits) in the v0.67 Handoff entry, then unblocked it
+     mid-session: "eleven labs is up and running." 8 gameshow-announcer
+     lines were generated (voice_id dEc1rkm0ul0kDedEuETS, model
+     eleven_multilingual_v2) and committed as real mp3 assets to
+     pflx-platform-check/public/sounds/pflx-archive-announcer/ (the same
+     repo/deploy every other X-Live audio asset is served from, via
+     XL_SOUND_ROOT).
+     THE FIX: a new, DELIBERATELY INDEPENDENT subsystem from XL_ANN (the
+     v0.38 Kenney Voiceover Pack announcer -- female/male/off, generic
+     session/slide-event triggers). XL_BATTLE_ANN_CLIPS maps 8 combat
+     events to the 8 real clips (start/boss -> lets_go/boss_incoming,
+     crit -> critical_hit, miss -> not_quite, dodge -> dodged, foehit ->
+     ouch_hurt, win -> victory, lose -> archive_wins). xlBattleAnn(key)
+     follows the exact xlAnnClip/xlAnnounce pool + duck-against-xlMusic
+     pattern that system already proved out (one pooled Audio element per
+     URL, reused on replay; a 1200ms per-key dedup window so a rapid
+     button mash can't stack the same line). Every call site is guarded
+     with typeof xlBattleAnn === 'function', matching this file's own
+     established convention for every other optional SFX/FX call
+     (xlSfx, PflxFx.slam).
+     WIRED IN: xlBattleNew() -- "Let's go!" on a normal foe, "Boss
+     incoming!" instead when the foe is Hack Guild (breach/wraith/
+     vector) or Trojan; xlHiveNew() -- always "Boss incoming!" (The Hive
+     is inherently boss-tier); resolve() -- "Critical hit!" on a real
+     crit, "Not quite!" on a wrong-answer weak hit, right alongside the
+     existing v0.60 PflxFx.slam HIT/MISS/CRITICAL HIT banner; foeAttack()
+     -- "Dodged!" when the player dodges, "Ouch, that one hurt!" on a
+     landed Archive hit (once, not duplicated onto Vector's second-strike
+     mechanic); finish() -- "Victory!" / "Archive wins this round.,"
+     fired once B.over is set (so an intermediate Hive-unit kill never
+     announces a premature win). A new 📣 ANNOUNCER toggle (own pref key
+     xl_battle_ann_on_v1, independent of the v0.38 VOICE toggle) renders
+     on both the pre-battle screen and the active-battle header.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.67, Sept 25 2026 -- PATCH X-LIVE v0.67: Archive-side stats
      now apply to combat, not just the player's. Ennis (Sept 24 follow-on
      list, item 8): "Archive-side stats applying to combat too."
@@ -7028,6 +7065,51 @@ function xlAudioButtonsHtml() {
     '<button class="xl-audio-btn' + (s ? ' on' : '') + '" onclick="xlToggleSfx()" title="' + (s ? 'Sound effects on' : 'Sound effects off') + '">' + (s ? '\u{1F50A}' : '\u{1F508}') + '<span>SFX</span></button>' +
     '<button class="xl-audio-btn' + (xlAnnOn() ? ' on' : '') + '" id="xl-ann-btn" onclick="xlToggleAnn()" title="' + (xlAnnOn() ? 'Announcer voice on' : 'Announcer voice off') + '">' + (xlAnnOn() ? '\u{1F399}' : '\u{1F507}') + '<span>VOICE</span></button>';   // v0.38
 }
+// PATCH X-LIVE v0.68 -- Archive Battle announcer (ElevenLabs "Alex" voice,
+// Sept 25, Ennis: "eleven labs is up and running" -- unblocking the SFX
+// announcer voice lines flagged blocked-not-abandoned in the v0.67 Handoff
+// entry). Deliberately a NEW, independent subsystem from XL_ANN (the
+// v0.38 Kenney Voiceover Pack announcer, female/male/off, session/slide-
+// event triggers) -- different voice source, different clip vocabulary,
+// different trigger points (Archive Battle combat events specifically).
+// Served from the same pflx-platform-check deploy as every other X-Live
+// audio asset (XL_SOUND_ROOT), following the exact xlAnnClip/xlAnnounce
+// pool + duck-against-xlMusic pattern that system already proved out.
+const XL_BATTLE_ANN_ROOT = XL_SOUND_ROOT + 'pflx-archive-announcer/';
+const XL_BATTLE_ANN_PREF = 'xl_battle_ann_on_v1';
+const XL_BATTLE_ANN_CLIPS = {
+  start: 'lets_go.mp3', crit: 'critical_hit.mp3', miss: 'not_quite.mp3', dodge: 'dodged.mp3',
+  foehit: 'ouch_hurt.mp3', win: 'victory.mp3', lose: 'archive_wins.mp3', boss: 'boss_incoming.mp3'
+};
+function xlBattleAnnOn() { return xlPref(XL_BATTLE_ANN_PREF, true); }
+const xlBattleAnnPool = { last: {} };
+function xlBattleAnn(key, opts) {
+  opts = opts || {};
+  var file = XL_BATTLE_ANN_CLIPS[key];
+  if (!file || typeof Audio === 'undefined' || !xlBattleAnnOn() || !xlAudioHere) return false;
+  var now = Date.now();
+  if (!opts.force && xlBattleAnnPool.last[key] && now - xlBattleAnnPool.last[key] < 1200) return false;
+  xlBattleAnnPool.last[key] = now;
+  var url = XL_BATTLE_ANN_ROOT + file;
+  var a = xlBattleAnnPool[url];
+  if (!a) { a = new Audio(url); a.preload = 'auto'; xlBattleAnnPool[url] = a; }
+  try {
+    a.currentTime = 0; a.volume = 1;
+    xlMusic.duck('battleAnn', true);
+    var done = function () { xlMusic.duck('battleAnn', false); };
+    a.onended = done; a.onerror = done;
+    var p = a.play(); if (p && p.catch) p.catch(done);
+  } catch (e) { xlMusic.duck('battleAnn', false); return false; }
+  return true;
+}
+window.xlBattleAnn = xlBattleAnn;
+function xlToggleBattleAnn() { var on = !xlBattleAnnOn(); xlSetPref(XL_BATTLE_ANN_PREF, on); if (on) xlBattleAnn('start', { force: true }); render(); }
+window.xlToggleBattleAnn = xlToggleBattleAnn;
+function xlBattleAnnButtonHtml() {
+  var on = xlBattleAnnOn();
+  return '<button class="xl-audio-btn' + (on ? ' on' : '') + '" onclick="xlToggleBattleAnn()" title="' + (on ? 'Battle announcer on' : 'Battle announcer off') + '">' + (on ? '\u{1F4E3}' : '\u{1F507}') + '<span>ANNOUNCER</span></button>';
+}
+window.xlBattleAnnButtonHtml = xlBattleAnnButtonHtml;
 // Which music fits what is on screen right now (pure: returns a zone key or null).
 function xlMusicZone() {
   const proj = document.getElementById('proj');
@@ -9623,6 +9705,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var first = foes[0];
     B = { hive: true, hiveFoes: foes, hiveIdx: 0, foe: first, foeHp: first.hp, foeMax: first.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: false, turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null, entered: false }; // PATCH X-LIVE v0.66 -- one-shot card-entrance flag, consumed by xlBattleHTML()
     streak = 0; say('The Hive swarms in -- ' + foes.length + ' units, one health bar. ' + first.name + ' leads.', 'fo'); render();
+    if (typeof xlBattleAnn === 'function') xlBattleAnn('boss'); // PATCH X-LIVE v0.68 -- The Hive is always a boss-tier encounter
   };
   function foeSVG(f) {
     return '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="fg" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#1a2410"/><stop offset="1" stop-color="#05070c"/></radialGradient></defs>' +
@@ -9676,6 +9759,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var sv = stats(), f = pickFoe(); if (!f) return;
     B = { foe: f, foeHp: f.hp, foeMax: f.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: f.id === 'drone', turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null, entered: false }; // PATCH X-LIVE v0.66 -- one-shot card-entrance flag, consumed by xlBattleHTML()
     streak = 0; say('An ' + f.name + ' locks on. ' + f.ability, 'fo'); render();
+    if (typeof xlBattleAnn === 'function') xlBattleAnn(['breach', 'wraith', 'vector', 'trojan'].indexOf(f.id) >= 0 ? 'boss' : 'start'); // PATCH X-LIVE v0.68
   };
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
   // PATCH X-LIVE v0.61 -- Ennis: "the game should begin with a Title
@@ -9729,7 +9813,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var ex = exoRow(), g = G();
     if (!ex || !g) return '<div class="evb-stage"><div class="card"><div class="cardT">⚔️ EVO CLASH</div><div class="xl-hint" style="text-align:left">Hatch your Evo first. The Archive is waiting.</div></div></div>';
     if (xlBattleIntro) { var lab = xlBattleIntroLabel(xlBattleIntro); return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ ' + lab.title + '</div><div class="xl-hint">Get ready…</div><button class="bigbtn ghost" onclick="xlBattleSkipIntro()">SKIP ▶</button></div></div>'; } // PATCH X-LIVE v0.61 -- brief title card before every match
-    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ EVO CLASH</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">FIGHT THE ARCHIVE</button>' + (hiveUnlocked() ? ' <button class="bigbtn ghost" onclick="xlBattleStartSequence(\'hive\')">⚠ HIVE ALERT · FIGHT THE SWARM</button>' : '') + ' <button class="bigbtn ghost" onclick="xlBattleStartSequence(\'spar\')">⚔️ SPAR A PLAYER</button> <button class="bigbtn ghost" onclick="xlBattleTutorial()">❓ HOW TO PLAY</button></div></div>'; // PATCH X-LIVE v0.54 -- Hive entry point, unlocked after a Trojan win; v0.55 adds Spar; v0.61 routes through the title-screen intro sequence + adds a skippable tutorial
+    if (!B) return '<div class="evb-stage"><div class="card" style="text-align:center"><div class="cardT" style="text-align:left">⚔️ EVO CLASH</div><div class="xl-hint">Turn based. Every ability is a question from your act’s term bank; correct answers land at full power. Orbs are your energy.</div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">FIGHT THE ARCHIVE</button>' + (hiveUnlocked() ? ' <button class="bigbtn ghost" onclick="xlBattleStartSequence(\'hive\')">⚠ HIVE ALERT · FIGHT THE SWARM</button>' : '') + ' <button class="bigbtn ghost" onclick="xlBattleStartSequence(\'spar\')">⚔️ SPAR A PLAYER</button> <button class="bigbtn ghost" onclick="xlBattleTutorial()">❓ HOW TO PLAY</button><div style="margin-top:10px">' + xlBattleAnnButtonHtml() + '</div></div></div>'; // PATCH X-LIVE v0.54 -- Hive entry point, unlocked after a Trojan win; v0.55 adds Spar; v0.61 routes through the title-screen intro sequence + adds a skippable tutorial; v0.68 adds the battle-announcer toggle
     var f = B.foe, st = story(), m = mood();
     // PATCH X-LIVE v0.50 -- real hit/act/crit classes (see resolve()/
     // foeAttack()); previously B.hitFoe was read here but never set.
@@ -9738,7 +9822,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var myCard = cardHTML(stage(), activeBuild());
     var myCls = (B.actMe ? ' act' : '') + (B.hitMe ? ' hit' : '');
     if (myCls) myCard = myCard.replace('class="evc', 'class="evc' + myCls);
-    var h = '<div class="evb-stage"><div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>' + (B.hive ? ('Hive unit ' + (B.hiveIdx + 1) + '/' + B.hiveFoes.length + ' · ') : ('Tier ' + f.tier + ' · ')) + esc(f.ability) + '</small>' + foeArt(f) + // PATCH X-LIVE v0.54 -- show Hive unit progress instead of Tier during a swarm fight
+    var h = '<div class="evb-stage">' + '<div style="display:flex;justify-content:flex-end;margin-bottom:6px">' + xlBattleAnnButtonHtml() + '</div>' + '<div class="arena"><div class="evb-foe' + foeCls + '"><h4>' + esc(f.name) + '</h4><small>' + (B.hive ? ('Hive unit ' + (B.hiveIdx + 1) + '/' + B.hiveFoes.length + ' · ') : ('Tier ' + f.tier + ' · ')) + esc(f.ability) + '</small>' + foeArt(f) + // PATCH X-LIVE v0.54 -- show Hive unit progress instead of Tier during a swarm fight
       '<div class="evb-row"><span>HP</span><b>' + B.foeHp + ' / ' + B.foeMax + '</b></div><div class="evb-bar hp' + (B.foeHp < B.foeMax * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.foeHp / B.foeMax) + '%"></i></div></div>';
     h += '<div class="evb-panel"><h3>Your move</h3><div class="evb-float' + enterCls + '" style="max-width:260px;margin:0 auto">' + myCard + '</div>' +
       '<div class="evb-row"><span>' + esc(cardName(stage(), activeBuild())) + ' HP</span><b>' + B.hp + ' / ' + B.max + '</b></div><div class="evb-bar hp' + (B.hp < B.max * .3 ? ' low' : '') + '"><i style="width:' + (100 * B.hp / B.max) + '%"></i></div>' +
@@ -9804,6 +9888,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
             // already the real damage multiplier (1 / 0.4 / 1.5) computed
             // above, so the shown percentage is the real number, not a guess.
             if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam(crit ? 'CRITICAL HIT' : (correct ? 'HIT' : 'MISS'), { sub: Math.round(mult * 100) + '% DMG', tint: crit ? 'crit' : (correct ? 'cyan' : 'fail'), shake: crit }); }
+            if (typeof xlBattleAnn === 'function') xlBattleAnn(crit ? 'crit' : (correct ? null : 'miss')); // PATCH X-LIVE v0.68 -- "Critical hit!" / "Not quite!"
             say(me + ' uses ' + a.name + (correct ? '' : ' but the answer was wrong') + (crit ? ' · CRITICAL' : '') + ' for ' + dmg + '.', 'me');
           }
         }
@@ -9835,6 +9920,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       // on a dodge before now.
       if (typeof xlSfx === 'function') xlSfx('freeze'); // the attack fizzles/glitches past the player
       if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam('MISS', { sub: 'DODGED', tint: 'cyan' }); }
+      if (typeof xlBattleAnn === 'function') xlBattleAnn('dodge'); // PATCH X-LIVE v0.68 -- "Dodged!"
       return;
     }
     var dmg = Math.round(f.attack * scale * (1 - Math.min(0.4, sv.GUARD * 0.02)));
@@ -9851,6 +9937,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     // own v0.60 HIT/CRITICAL HIT/MISS banner treatment on the player's
     // side, which the foe's landed attack never had until now.
     if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam(foeCrit ? 'CRITICAL HIT' : 'HIT', { sub: dmg + ' DMG', tint: foeCrit ? 'crit' : 'fail', shake: foeCrit }); }
+    if (typeof xlBattleAnn === 'function') xlBattleAnn('foehit'); // PATCH X-LIVE v0.68 -- "Ouch, that one hurt!" on a landed Archive hit
     // PATCH X-LIVE v0.54 -- Vector (Hack Guild) strikes a second time on
     // its own main turn (scale === 1 only -- not on a wrong-answer free
     // hit, which passes a smaller scale).
@@ -9875,6 +9962,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       render(); return;
     }
     B.over = true;
+    if (typeof xlBattleAnn === 'function') xlBattleAnn(win ? 'win' : 'lose'); // PATCH X-LIVE v0.68 -- "Victory!" / "Archive wins this round."
     if (win) {
       // PATCH X-LIVE v0.54 -- a full Hive clear multiplies the reward by
       // the swarm size (fought on one health bar, no rest between units).
