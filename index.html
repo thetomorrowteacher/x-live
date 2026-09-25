@@ -5,52 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
-     X-LIVE v0.69, Sept 25 2026 -- PATCH X-LIVE v0.69: Archive Battle
-     animation/FX fixes, reacting to a live screenshot + Ennis's direct
-     feedback ("The Title Popups are staying on screen... You still
-     haven't changed the background as previously instructed"). Three
-     real, previously-undiscovered bugs, not just missing polish:
-     (1) .pfx-slam2's CSS used an `infinite` iteration-count keyframe
-     with no JS ever removing the .on class -- the CRITICAL HIT/HIT/MISS
-     popup could never clear itself. Replaced with a new self-terminating
-     pfxSlamInOut keyframe (pop in, hold, fade out over a real duration,
-     default 2100ms, overridable via opts.ms) -- no JS timer needed.
-     (2) .evb-stage never had an actual `background` set -- the v0.50
-     star-field pseudo-elements were animating against nothing. Added a
-     real nebula radial-gradient background behind them.
-     (3) the foe hit/act/crit CSS rules only ever matched the
-     placeholder <svg> fallback, never the real .evb-foe-art-wrap <img>
-     path used in virtually every real fight -- meaning these animations
-     have likely NEVER been visible in a real match despite being wired
-     since v0.50/v0.64. Every foe animation selector now also matches
-     .evb-foe-art-wrap.
-     NEW ASKS, also shipped: a .pfx-vignette layer (fades in/out in the
-     same tint color as the popup, alongside it); a real screen
-     vibration on every hit (pfx-bump-soft, always; pfx-bump-crit, a
-     bigger shake, only on an actual crit -- previously shake was
-     crit-only and silent otherwise); the acting card now lunges toward
-     its target (actLungeMe/actLungeFoe, directional, replacing the old
-     generic 'act' pop); a real dodge sidestep (dodgeShift) plus a
-     dedicated swoosh SFX (battleDodge) replacing the old generic
-     'freeze' glitch cue on a miss; a real Archive-crit-against-player
-     treatment (hitBig + critflash on B.critMe, previously no crit rule
-     existed on the player's own card at all).
-     Verified: syntax gate clean on both index.html (5 blocks) and the
-     byte-identical-modulo-indentation preview.html copy of the shared
-     PflxFx module (28 blocks). 47-case new unit test
-     (test_v069_battle_fx.js). Full 52-file regression suite re-run --
-     zero new regressions; 6 pre-existing failures unchanged (confirmed
-     via direct diff against a pre-patch backup); two older tests
-     (test_foe_battle_fx_v064.js, test_xlive_battle_audio_v051_v053.js)
-     updated in place to assert the new, intentionally-changed dodge-SFX
-     name and B.critMe-augmented code shape, following this session's
-     established forward-compatibility-fix convention; a third
-     (test_pflxfx_slam_v060.js) got a FakeStyle/setProperty shim added
-     to its fake DOM so its run doesn't crash against the real
-     slamShow()'s new vignette color-var call.
-     STILL QUEUED, not built this patch: the previously-designed
-     announcer voice-picker (24 clip keys, 3-voice picker, reverb/delay
-     FX) -- requeued as v0.70.
+     X-LIVE v0.70, Sept 25 2026 -- PATCH X-LIVE v0.70: hover SFX swapped
+     to a genuinely softer/smoother clip. Ennis: "The hover sfx should be
+     softer and smoother" -- v0.53's click_030.mp3 pick (crest factor 1.7,
+     the smoothest of the 92 UI clips measured at the time) was still too
+     sharp. Re-measured crest factor (ffmpeg astats, peak-to-average
+     ratio) across BOTH the 01_UI_Clicks and 02_UI_Blips packs together
+     (125 clips) rather than clicks alone -- blips are a categorically
+     softer, swell-shaped sound (longer attack/decay) vs. a click's sharp
+     transient. Picked blip_055.mp3 (crest 1.6, 0.576s -- smooth AND
+     short enough not to feel sluggish under rapid hovering against the
+     existing 70ms dedup window). Playback gain also trimmed 0.35->0.26.
+     XL_SFX.uiHover updated; the Console's PFLX_UI_SFX.hover updated to
+     the same file in the same pass (PATCH PLATFORM v246) so X-Live and
+     the Console still sound identical everywhere.
      ═══════════════════════════════════════════════════════════════════ -->
 <!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.67, Sept 25 2026 -- PATCH X-LIVE v0.67: Archive-side stats
@@ -6805,7 +6773,7 @@ const XL_SFX = {
   // as the Console's PATCH PLATFORM v243 -- see that comment for the
   // crest-factor reasoning). Kept in sync so X-Live and the Console sound
   // consistent everywhere.
-  uiHover: 'pflx-library/01_UI_Clicks/click_030.mp3',
+  uiHover: 'pflx-library/02_UI_Blips/blip_055.mp3', // PATCH X-LIVE v0.70 -- Ennis: "softer and smoother" -- swapped from a click-category clip (crest 1.7) to a blip/swell clip (crest 1.6, longer attack/decay), the smoothest reasonably-short candidate across a full re-measure of both UI packs
   uiClick: 'pflx-library/01_UI_Clicks/click_041.mp3',
   // PATCH X-LIVE v0.52 -- real Dragon Ball Z punch SFX for Archive Battle,
   // wired to the same hitFoe/critFoe/hitMe flags v0.50 already set for the
@@ -6890,7 +6858,7 @@ function xlUiOnOver(e) {
   if (e.relatedTarget && t.contains(e.relatedTarget)) return;
   xlUiLastHover = t;
   const now = Date.now(); if (now - xlUiLastHoverAt < 70) return;
-  xlUiLastHoverAt = now; xlUiPlay('uiHover', 0.35); // v0.37.3: file is already quiet + soft
+  xlUiLastHoverAt = now; xlUiPlay('uiHover', 0.26); // PATCH X-LIVE v0.70 -- gain trimmed 0.35->0.26 alongside the softer clip
 }
 function xlUiOnOut(e) { const t = xlUiTarget(e.target); if (t && t === xlUiLastHover && !(e.relatedTarget && t.contains(e.relatedTarget))) xlUiLastHover = null; }
 function xlUiOnDown(e) {

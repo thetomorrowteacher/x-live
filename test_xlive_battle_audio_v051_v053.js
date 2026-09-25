@@ -32,7 +32,7 @@ check('foeAttack() calls xlSfx with battleFoeHit right where hitMe gets set',
   /B\.hitMe = true;[^\n]*flashOff\([^)]*\][^)]*\); \/\/ PATCH X-LIVE v0\.50[^\n]*\n\s*if \(typeof xlSfx === 'function'\) xlSfx\('battleFoeHit'\)/.test(src)); // PATCH X-LIVE v0.69 widened to tolerate the new B.critMe assignment + variable flashOff clear/delay list
 
 // ---- v0.53: smoother hover/click ----
-check('XL_SFX.uiHover now points at click_030 (crest factor 1.7 -- was ui_hover_soft.mp3)', /uiHover:\s*'pflx-library\/01_UI_Clicks\/click_030\.mp3'/.test(src));
+check('XL_SFX.uiHover now points at blip_055 (crest factor 1.6, PATCH X-LIVE v0.70 -- click_030 was still not soft/smooth enough)', /uiHover:\s*'pflx-library\/02_UI_Blips\/blip_055\.mp3'/.test(src));
 check('XL_SFX.uiClick now points at click_041 (crest factor 2.6 -- was click_007.mp3, crest 8.5)', /uiClick:\s*'pflx-library\/01_UI_Clicks\/click_041\.mp3'/.test(src));
 check('the old harsh click_007 uiClick assignment is gone', !/uiClick:\s*'pflx-library\/01_UI_Clicks\/click_007\.mp3'/.test(src));
 check('the old ui_hover_soft.mp3 uiHover assignment is gone', !/uiHover:\s*'pflx-ui\/ui_hover_soft\.mp3'/.test(src));
