@@ -114,7 +114,7 @@ ok('resolve() announces crit/miss right after its PflxFx.slam call, before the l
 ok('foeAttack() announces dodge right after its MISS/DODGED slam call', /window\.PflxFx\.slam\('MISS', \{ sub: 'DODGED', tint: 'cyan' \}\); \}\s*\n\s*if \(typeof xlBattleAnn === 'function'\) xlBattleAnn\('dodge'\);/.test(src));
 ok('foeAttack() announces foehit right after the landed-hit slam call, before the Vector second-strike block', /window\.PflxFx\.slam\(foeCrit \? 'CRITICAL HIT' : 'HIT', \{ sub: dmg \+ ' DMG', tint: foeCrit \? 'crit' : 'fail', shake: foeCrit \}\); \}\s*\n\s*if \(typeof xlBattleAnn === 'function'\) xlBattleAnn\('foehit'\);\s*\/\/[^\n]*\n\s*\/\/ PATCH X-LIVE v0\.54 -- Vector/.test(src));
 ok('the foehit call fires exactly once (not duplicated onto the Vector second-strike hit)', (src.match(/xlBattleAnn\('foehit'\)/g) || []).length === 1);
-ok('finish() announces win/lose immediately after B.over = true, before the Hive-reward math', /B\.over = true;\s*\n\s*if \(typeof xlBattleAnn === 'function'\) xlBattleAnn\(win \? 'win' : 'lose'\);[^\n]*\n\s*if \(win\) \{\s*\n\s*\/\/ PATCH X-LIVE v0\.54 -- a full Hive clear/.test(src));
+ok('finish() announces win/lose immediately after B.over = true, before the v0.71 GAME OVER sequence and the Hive-reward math', /B\.over = true;\s*\n\s*if \(typeof xlBattleAnn === 'function'\) xlBattleAnn\(win \? 'win' : 'lose'\);[^\n]*\n\s*xlBattleGameOverSequence\(win\);[^\n]*\n\s*if \(win\) \{\s*\n\s*\/\/ PATCH X-LIVE v0\.54 -- a full Hive clear/.test(src));
 
 // ---- 4. Toggle + button markup ----
 ok('xlBattleAnnOn() reads the real pref via xlPref()', /function xlBattleAnnOn\(\) \{ return xlPref\(XL_BATTLE_ANN_PREF, true\); \}/.test(src));

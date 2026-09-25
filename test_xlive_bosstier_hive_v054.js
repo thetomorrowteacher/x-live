@@ -113,7 +113,7 @@ const HIVE_FIXTURE = [
 const REWARDS = { win: { xc: 40, orbs: 15, syncXp: 30, perTier: { xc: 10, orbs: 5, syncXp: 10 } }, lose: { syncXp: 5 } };
 
 function buildSandbox(extraState) {
-  const calls = { say: [], render: 0, saveStory: 0, sfx: [], earnXc: [], saveExo: [], liteLog: [] };
+  const calls = { say: [], render: 0, saveStory: 0, sfx: [], earnXc: [], saveExo: [], liteLog: [], gameOverSeq: [], arcadeCountdown: 0 };
   const storyVal = Object.assign({ orbs: 50, wins: 0 }, (extraState && extraState.story) || {});
   const exoVal = Object.assign({ sync_xp: 0 }, (extraState && extraState.exo) || {});
   const factory = new Function('deps', `
@@ -136,6 +136,15 @@ function buildSandbox(extraState) {
     function saveExo(patch) { calls.saveExo.push(patch); Object.assign(deps.exoVal, patch); }
     function liteLog(id, kind, label, xc) { calls.liteLog.push([id, kind, label, xc]); }
     function xlSfx(name, gain) { calls.sfx.push(name); }
+    // PATCH X-LIVE v0.71 forward-compat stub -- finish() now calls these
+    // two real functions unconditionally (no typeof guard, unlike xlBattleAnn).
+    // Stubbed here (not reimplemented) so this pre-existing sandbox can still
+    // exercise the real finish()/Hive logic this test targets; the real
+    // xlBattleGameOverSequence()/xlBattleContinueHtml() bodies are covered by
+    // their own dedicated test, test_v071_arcade_flow.js.
+    function xlBattleGameOverSequence(win) { calls.gameOverSeq.push(win); }
+    function xlBattleContinueHtml() { return ''; }
+    function xlBattleArcadeCountdown() { calls.arcadeCountdown++; }
     ${foeDefenseMultSrc}
     ${flashOffSrc}
     ${resolveSrc}

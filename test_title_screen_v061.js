@@ -59,7 +59,7 @@ const startSeqSrc = extractWindowFn('xlBattleStartSequence');
 ok(startSeqSrc.indexOf('clearTimeout(xlBattleIntroTimer)') !== -1, 'starting a new intro sequence cancels any prior pending auto-advance timer (never two intros racing)');
 ok(startSeqSrc.indexOf("mode || 'fight'") !== -1, 'a missing/falsy mode safely defaults to a fight intro rather than showing a blank state');
 ok(startSeqSrc.indexOf('window.PflxFx.slam') !== -1, 'the intro reuses the real PflxFx.slam() primitive shipped in v0.60, not a separate new animation');
-ok(startSeqSrc.indexOf('setTimeout(function () { xlBattleAdvanceIntro(); }, 1600)') !== -1, 'the intro auto-advances into the real match after a real, fixed 1.6s beat');
+ok(startSeqSrc.indexOf("setTimeout(function () { xlBattleShowAutoTutorial(); }, 1600)") !== -1, 'PATCH X-LIVE v0.71 -- the intro now auto-opens the how-to-play tutorial 1.6s after the title card (previously it advanced straight into the match)');
 
 // ---- xlBattleSkipIntro: real wiring checks ----
 const skipSrc = extractWindowFn('xlBattleSkipIntro');
@@ -74,11 +74,25 @@ ok(advanceSrc.indexOf('else xlBattleNew();') !== -1, 'a plain fight intro (the e
 ok(advanceSrc.indexOf('xlBattleIntro = null; xlBattleIntroTimer = null;') !== -1, 'advancing always clears both intro state vars so the intro never lingers/re-triggers');
 
 // ---- xlBattleTutorial: real modal wiring ----
+// PATCH X-LIVE v0.71 -- the tutorial's actual content moved into a new
+// shared xlBattleTutorialHtml(confirmOnclick, confirmLabel) builder,
+// reused identically by both this manual-open path and the new
+// auto-tutorial path (xlBattleShowAutoTutorial). xlBattleTutorial() itself
+// is now just a thin caller of that shared builder.
 const tutorialSrc = extractWindowFn('xlBattleTutorial');
 ok(tutorialSrc.indexOf('modal(') !== -1, 'the tutorial reuses the real, existing modal() primitive rather than a bespoke popup');
-ok(tutorialSrc.indexOf('HOW TO PLAY') !== -1, 'the tutorial modal has a real title');
-ok(tutorialSrc.indexOf('onclick=\\"modalClose()\\"') !== -1 || tutorialSrc.indexOf("onclick=\\'modalClose()\\'") !== -1 || tutorialSrc.indexOf('modalClose()') !== -1, 'the tutorial is genuinely skippable/dismissible via the real modalClose()');
-ok(/1\. Pick a move.*2\. Answer the question.*3\. Watch for crits.*4\. Orbs are your energy.*5\. Win to level up/s.test(tutorialSrc), 'the tutorial covers all 5 real steps in order (moves, questions, crits, orbs, progression)');
+ok(tutorialSrc.indexOf("xlBattleTutorialHtml('modalClose()', 'GOT IT')") !== -1, 'the manual tutorial open reuses the shared xlBattleTutorialHtml builder, dismissible via the real modalClose()');
+function extractPlainFn(name) {
+  const idx = src.indexOf('function ' + name + '(');
+  if (idx === -1) throw new Error('not found: ' + name);
+  const braceStart = src.indexOf('{', idx);
+  let depth = 0, i = braceStart;
+  for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}') { depth--; if (depth === 0) break; } }
+  return src.slice(idx, i + 1);
+}
+const tutHtmlSrc = extractPlainFn('xlBattleTutorialHtml');
+ok(tutHtmlSrc.indexOf('HOW TO PLAY') !== -1, 'the shared tutorial builder has a real title');
+ok(/1\. Pick a move.*2\. Answer the question.*3\. Watch for crits.*4\. Orbs are your energy.*5\. Win to level up/s.test(tutHtmlSrc), 'the shared tutorial builder covers all 5 real steps in order (moves, questions, crits, orbs, progression)');
 
 // ---- Landing card wiring: THIS is the exact bug class this patch shipped
 // and fixed once already (unescaped single quotes inside an onclick

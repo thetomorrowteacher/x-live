@@ -5,6 +5,75 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.71, Sept 25 2026 -- PATCH X-LIVE v0.71: Evo Clash
+     arcade-flow. Ennis: "Once I start a game like Evo Clash...The how to
+     play should popup after the title. It should stay on the screen for
+     10-15 secs. Everything in the background of the game should become
+     dim and the game should take place in a 'screen view'. There should
+     be a warp background with fast moving stars sort of like traveling
+     in space. If the Evo loses then there should be a game over...you
+     lose...title and announcement. If won then Game over...You win
+     happens. There should be a popup of try again or move to next round
+     with a 10 sec timer much like an arcade game."
+     THE FLOW: xlBattleStartSequence(mode) shows the real title card
+     (PflxFx.slam, unchanged from v0.60/v0.61) then, 1.6s later, auto-opens
+     the existing how-to-play tutorial via a new xlBattleShowAutoTutorial()
+     -- shared with the pre-existing manual TUTORIAL button through one
+     builder, xlBattleTutorialHtml(confirmOnclick, confirmLabel), so the
+     auto and manual paths can never drift apart. The tutorial auto-
+     advances into the real match after 13s (the middle of Ennis's
+     10-15s ask) unless skipped first. A new #evb-theater full-viewport
+     overlay (dim background + a pure-CSS warp starfield, two radial-
+     gradient layers panning at different speeds/directions) mirrors the
+     same xlBattleHTML() output the embedded pane already renders,
+     kept in sync by a new xlBattleTheaterSync(), hooked into the
+     already-existing, always-called xlAfterRender() -- the file's
+     app.innerHTML-per-render architecture ruled out reparenting the real
+     battle DOM into the overlay, so this mirrors its HTML instead. The
+     delegated ability-button click handler was widened to also match
+     #evb-theater-box so the mirrored buttons work identically to the
+     embedded ones.
+     On a real match end, finish() now calls a new
+     xlBattleGameOverSequence(win) -- a staggered two-beat title sequence
+     (GAME OVER at 900ms, then YOU WIN/YOU LOSE at 3100ms, both via the
+     real PflxFx.slam()) -- and both the win and lose result screens now
+     include a new xlBattleContinueHtml()/xlBattleArcadeCountdown(): a
+     real 10-second countdown (re-queried DOM node, guarded against a
+     stale/replaced B the same way flashOff() already guards its own
+     timers) that auto-continues into a new fight at 0, matching the
+     existing gold KEEP PLAYING/TRY AGAIN button's own action.
+     A CRITICAL SCOPE BUG caught during verification (NOT visible from a
+     syntax gate alone -- required tracing actual SCRIPT-tag
+     boundaries): xlBattleTheaterSync() was first written as a plain
+     top-level `function xlBattleTheaterSync(){}`, local to the Archive
+     Battle module's own wrapping IIFE (a different SCRIPT tag than
+     xlAfterRender()). Since JS scripts don't share lexical scope across
+     separate SCRIPT tags, xlAfterRender()'s `typeof xlBattleTheaterSync ===
+     'function'` check would have silently always read 'undefined' --
+     theater mode would never have activated, with no error anywhere.
+     Fixed before shipping by exposing it as window.xlBattleTheaterSync,
+     matching the pattern window.xlBattleTheaterActive/Exit already used.
+     JUDGMENT CALLS (Ennis's request left these ambiguous, documented
+     rather than silently assumed): the auto-tutorial shows on EVERY
+     match start, not just the first time ever (no "seen it before" flag
+     exists to gate on, and re-showing costs nothing since it's fully
+     skippable); the 13s auto-tutorial timer is the middle of the
+     10-15s range; the arcade countdown's timeout action is "continue"
+     (same as the gold button), not "exit to EVO BAY"; both the WIN and
+     LOSE title-sequence slams get shake:true on their second beat (a
+     judgment call for dramatic weight, not explicitly requested).
+     Verified: syntax gate clean; 55-case unit test
+     (test_v071_arcade_flow.js) extracting every real shipped function
+     (brace/marker matching) including behavioral runs of the arcade
+     countdown and game-over sequence against fake timers/DOM, all
+     passing; full 53-file regression suite re-run against a pre-patch
+     backup -- 3 genuine, intentional test-assertion updates (the title
+     screen/tutorial refactor, the battle-announcer call-site shift, a
+     sandbox forward-compat stub for the two newly-added unconditional
+     calls in finish()), zero new regressions, same 6 pre-existing
+     failures unchanged.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.70, Sept 25 2026 -- PATCH X-LIVE v0.70: hover SFX swapped
      to a genuinely softer/smoother clip. Ennis: "The hover sfx should be
      softer and smoother" -- v0.53's click_030.mp3 pick (crest factor 1.7,
@@ -1615,6 +1684,7 @@
 <div id="app"></div>
 <div id="tray"></div>
 <div id="modal"><div id="modalBox"></div></div>
+<div id="evb-theater"><div class="evb-warp"></div><div id="evb-theater-box"></div></div> <!-- PATCH X-LIVE v0.71 -- Ennis: "Everything in the background of the game should become dim and the game should take place in a screen view." A dimmed, fixed full-viewport overlay (same technique as #modal) that mirrors the live Evo Clash/Spar battle content while a match sequence is running; .evb-warp is the fast-travel starfield behind it. -->
 <div id="proj"></div>
 <div id="toastBox"></div>
 <script>
@@ -2664,6 +2734,7 @@ function xlAfterRender() {
   try { if (typeof xlHubAfterRender === 'function') xlHubAfterRender(); } catch (e) {}
   // PATCH X-LIVE v0.37 -- players watch whatever screen the host shares
   try { if (!L.isHost && (L.screen === 'livenative' || L.pipMode) && typeof xlShareSync === 'function') xlShareSync(nativeSessionAppliesToMe()); } catch (e) {}
+  try { if (typeof xlBattleTheaterSync === 'function') xlBattleTheaterSync(); } catch (e) {} // PATCH X-LIVE v0.71 -- dim/screen-view overlay tracks the live match state on every render
 }
 function go(s) { if (L.screen === 'tools' && s !== 'tools' && typeof noiseState !== 'undefined' && noiseState.active) stopNoiseMeter(); L.screen = s; clearSel(); render(); }
 
@@ -9473,6 +9544,17 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
    strike and the foe's counter both resolve in one turn) plays both
    animations together instead of one silently overriding the other. */
 .evb .evb-stage{position:relative;overflow:hidden;background:radial-gradient(ellipse 90% 70% at 18% 12%,rgba(125,233,255,.14),transparent 60%),radial-gradient(ellipse 80% 65% at 88% 92%,rgba(163,230,53,.09),transparent 60%),radial-gradient(ellipse 120% 90% at 50% 45%,#131c3c,#070b16 72%)} /* PATCH X-LIVE v0.69 -- Ennis: the star-field was animating against nothing, so it was imperceptible; a real deep-space nebula base now sits behind it */
+#evb-theater{position:fixed;inset:0;z-index:115;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(3,5,14,.92);overflow:auto} /* PATCH X-LIVE v0.71 -- dims/hides everything else while a match sequence runs; sits below #modal (z-index 120) so the auto-tutorial modal still layers on top of it */
+#evb-theater.on{display:flex}
+#evb-theater-box{position:relative;width:100%;max-width:640px;max-height:96vh;overflow:auto;z-index:1}
+.evb-warp{position:absolute;inset:-40%;pointer-events:none;overflow:hidden;z-index:0}
+.evb-warp::before,.evb-warp::after{content:'';position:absolute;inset:0;background-image:radial-gradient(1.4px 1.4px at 10% 15%,rgba(255,255,255,.95),transparent 60%),radial-gradient(1.1px 1.1px at 30% 65%,rgba(125,233,255,.9),transparent 60%),radial-gradient(1.6px 1.6px at 55% 25%,rgba(255,255,255,.85),transparent 60%),radial-gradient(1.1px 1.1px at 72% 80%,rgba(163,230,53,.8),transparent 60%),radial-gradient(1.4px 1.4px at 88% 45%,rgba(125,233,255,.9),transparent 60%),radial-gradient(1.1px 1.1px at 15% 90%,rgba(255,255,255,.8),transparent 60%);background-size:220px 220px;animation:evbWarp1 2.4s linear infinite}
+.evb-warp::after{background-size:340px 340px;animation:evbWarp2 3.6s linear infinite reverse;opacity:.6}
+@keyframes evbWarp1{0%{transform:scale(1) translateY(0)}100%{transform:scale(2.6) translateY(220px)}}
+@keyframes evbWarp2{0%{transform:scale(1) translateY(0)}100%{transform:scale(2.2) translateY(-340px)}}
+@media (prefers-reduced-motion: reduce){.evb-warp::before,.evb-warp::after{animation:none}}
+.evb-continue{margin-top:12px;font-family:var(--display);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#7de9ff;text-align:center}
+#evb-continue-countdown{color:#ffd600;font-weight:700}
 .evb .evb-stage::before,.evb .evb-stage::after{content:'';position:absolute;inset:-15% -8%;pointer-events:none;background-repeat:repeat}
 .evb .evb-stage::before{background-image:radial-gradient(1.6px 1.6px at 24px 34px,rgba(255,255,255,.85),transparent 60%),radial-gradient(1.2px 1.2px at 96px 128px,rgba(180,225,255,.75),transparent 60%),radial-gradient(1.6px 1.6px at 168px 64px,rgba(255,255,255,.6),transparent 60%),radial-gradient(1.2px 1.2px at 236px 190px,rgba(125,233,255,.6),transparent 60%);background-size:280px 240px;animation:evbstars1 100s linear infinite;opacity:.9}
 .evb .evb-stage::after{background-image:radial-gradient(1.2px 1.2px at 44px 96px,rgba(125,233,255,.5),transparent 60%),radial-gradient(1.6px 1.6px at 140px 40px,rgba(255,255,255,.5),transparent 60%),radial-gradient(1.2px 1.2px at 210px 160px,rgba(163,230,53,.4),transparent 60%);background-size:320px 280px;animation:evbstars2 160s linear infinite reverse;opacity:.55}
@@ -9781,6 +9863,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     streak = 0; say('An ' + f.name + ' locks on. ' + f.ability, 'fo'); render();
     if (typeof xlBattleAnn === 'function') xlBattleAnn(['breach', 'wraith', 'vector', 'trojan'].indexOf(f.id) >= 0 ? 'boss' : 'start'); // PATCH X-LIVE v0.68
   };
+  var xlBattleTutorialTimer = null; // PATCH X-LIVE v0.71 -- auto-tutorial's 10-15s auto-advance timer
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
   // PATCH X-LIVE v0.61 -- Ennis: "the game should begin with a Title
   // screen and animation before the match starts." Shows a brief
@@ -9795,14 +9878,32 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   }
   window.xlBattleStartSequence = function (mode) {
     if (xlBattleIntroTimer) { clearTimeout(xlBattleIntroTimer); xlBattleIntroTimer = null; }
+    if (xlBattleTutorialTimer) { clearTimeout(xlBattleTutorialTimer); xlBattleTutorialTimer = null; }
     xlBattleIntro = mode || 'fight';
     var lab = xlBattleIntroLabel(xlBattleIntro);
     if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') { window.PflxFx.slam(lab.title, { sub: lab.sub, tint: lab.tint }); }
     render();
-    xlBattleIntroTimer = setTimeout(function () { xlBattleAdvanceIntro(); }, 1600);
+    xlBattleIntroTimer = setTimeout(function () { xlBattleShowAutoTutorial(); }, 1600); // PATCH X-LIVE v0.71 -- Ennis: "The how to play should popup after the title."
   };
   window.xlBattleSkipIntro = function () {
     if (xlBattleIntroTimer) { clearTimeout(xlBattleIntroTimer); xlBattleIntroTimer = null; }
+    if (xlBattleTutorialTimer) { clearTimeout(xlBattleTutorialTimer); xlBattleTutorialTimer = null; }
+    modalClose();
+    xlBattleAdvanceIntro();
+  };
+  // PATCH X-LIVE v0.71 -- Ennis: the how-to-play modal should auto-open
+  // right after the title card, stay up 10-15s (here: 13s, the middle of
+  // that range), and be skippable -- same SKIP philosophy as the title
+  // card itself. Shares xlBattleTutorialHtml() with the manual ❓ HOW TO
+  // PLAY button so the instructional copy is never duplicated.
+  window.xlBattleShowAutoTutorial = function () {
+    if (xlBattleTutorialTimer) { clearTimeout(xlBattleTutorialTimer); xlBattleTutorialTimer = null; }
+    modal(xlBattleTutorialHtml('xlBattleTutorialAdvance()', 'START ▶'));
+    xlBattleTutorialTimer = setTimeout(function () { xlBattleTutorialAdvance(); }, 13000);
+  };
+  window.xlBattleTutorialAdvance = function () {
+    if (xlBattleTutorialTimer) { clearTimeout(xlBattleTutorialTimer); xlBattleTutorialTimer = null; }
+    modalClose();
     xlBattleAdvanceIntro();
   };
   function xlBattleAdvanceIntro() {
@@ -9815,9 +9916,31 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   // file). No video yet -- that needs Ennis-supplied clips, see the
   // Handoff backlog -- so this ships the text instructions now rather
   // than faking a video player with nothing to play.
-  window.xlBattleTutorial = function () {
-    modal(
-      '<div class="cardT">\u2753 HOW TO PLAY \u2014 EVO CLASH</div>' +
+  // PATCH X-LIVE v0.71 -- Ennis: "Everything in the background of the
+  // game should become dim and the game should take place in a 'screen
+  // view'." True whenever an intro/tutorial/live-fight/live-spar/result
+  // sequence is in flight; xlBattleTheaterSync() (called from the global
+  // xlAfterRender on every render, regardless of which hub tab is
+  // showing) mirrors the same xlBattleHTML() output the embedded pane
+  // already renders into the dimmed full-screen overlay, and widens the
+  // click delegation (above) so its buttons/moves work identically.
+  window.xlBattleTheaterActive = function () { return !!(xlBattleIntro || B || sparView); };
+  window.xlBattleTheaterExit = function () {
+    B = null; sparView = null;
+    if (sparPoll) { clearInterval(sparPoll); sparPoll = null; }
+  };
+  window.xlBattleTheaterSync = function () {
+    var el = document.getElementById('evb-theater'); if (!el) return;
+    var active = xlBattleTheaterActive();
+    el.classList.toggle('on', active);
+    if (active) { var box = document.getElementById('evb-theater-box'); if (box) box.innerHTML = (typeof xlBattleHTML === 'function') ? xlBattleHTML() : ''; }
+  };
+  // PATCH X-LIVE v0.71 -- the instructional copy itself is unchanged;
+  // pulled into a shared builder so both the manual ❓ HOW TO PLAY button
+  // and the new auto-popup (xlBattleShowAutoTutorial) render the exact
+  // same text with only the confirm button's action/label differing.
+  function xlBattleTutorialHtml(confirmOnclick, confirmLabel) {
+    return '<div class="cardT">\u2753 HOW TO PLAY \u2014 EVO CLASH</div>' +
       '<div style="font-size:13px;color:#aeb6d8;line-height:1.7">' +
         '<b style="color:#fff">1. Pick a move.</b> Each move costs orbs (or is free) and has a type \u2014 strike, guard, hack, or support.<br>' +
         '<b style="color:#fff">2. Answer the question.</b> Every move fires a real question from your act\u2019s term bank. Answer correctly and it lands at full power; a wrong answer still lands, just weaker \u2014 and the Archive gets a free hit back.<br>' +
@@ -9825,9 +9948,9 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
         '<b style="color:#fff">4. Orbs are your energy.</b> They refill between fights \u2014 spend them wisely on your strongest moves.<br>' +
         '<b style="color:#fff">5. Win to level up.</b> Beating tougher Archives unlocks stronger boss encounters \u2014 the Hack Guild, Trojan, and eventually The Hive.' +
       '</div>' +
-      '<div style="margin-top:14px"><button class="bigbtn gold" onclick="modalClose()">GOT IT \u25b6</button></div>'
-    );
-  };
+      '<div style="margin-top:14px"><button class="bigbtn gold" onclick="' + confirmOnclick + '">' + confirmLabel + ' \u25b6</button></div>';
+  }
+  window.xlBattleTutorial = function () { modal(xlBattleTutorialHtml('modalClose()', 'GOT IT')); };
   window.xlBattleHTML = function () {
     if (sparView) return xlSparHTML();
     var ex = exoRow(), g = G();
@@ -9854,7 +9977,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     return h + '</div>';
   };
   document.addEventListener('click', function (e) {
-    var b = e.target.closest('#evb-battle [data-ab]'); if (!b || !B || B.over) return;
+    var b = e.target.closest('#evb-battle [data-ab], #evb-theater-box [data-ab]'); if (!b || !B || B.over) return; // PATCH X-LIVE v0.71 -- also accept clicks from the theater-mode mirror
     var a = abilities().filter(function (x) { return x.id === b.getAttribute('data-ab'); })[0]; if (!a || a.cost > (story().orbs || 0)) return;
     ask(function (correct) { resolve(a, correct); });
   });
@@ -9989,6 +10112,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     }
     B.over = true;
     if (typeof xlBattleAnn === 'function') xlBattleAnn(win ? 'win' : 'lose'); // PATCH X-LIVE v0.68 -- "Victory!" / "Archive wins this round."
+    xlBattleGameOverSequence(win); // PATCH X-LIVE v0.71 -- Ennis: "there should be a game over...you lose/win...title and announcement"
     if (win) {
       // PATCH X-LIVE v0.54 -- a full Hive clear multiplies the reward by
       // the swarm size (fought on one health bar, no rest between units).
@@ -10000,13 +10124,49 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       if (nt && nxp >= nt && stage() < 4) { patch.stage = stage() + 1; toast('✨ Your Evo evolved into ' + stageName(patch.stage) + '.'); }
       saveExo(patch); liteLog(myId(), 'award', 'Evo Clash: ' + (B.hive ? 'The Hive' : f.name) + ' down', xc);
       say('The ' + f.name + ' breaks apart. +' + xc + ' XC, +' + orbs + ' orbs waiting at the Bay, +' + xp + ' Sync XP.', 'win');
-      B.result = '<h2>' + (B.hive ? 'The Hive is down' : 'Archive unit down') + '</h2><p>Rewards post through X-Coin. The orbs wait in the Bay until your rest timer clears.</p><div class="r"><div>+' + xc + '<span>XC</span></div><div>+' + orbs + '<span>Orbs</span></div><div>+' + xp + '<span>Sync XP</span></div></div><div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">KEEP PLAYING · NEXT UNIT</button> <button class="bigbtn ghost" onclick="xlHubGo(1)">EVO BAY</button></div>';
+      B.result = '<h2>' + (B.hive ? 'The Hive is down' : 'Archive unit down') + '</h2><p>Rewards post through X-Coin. The orbs wait in the Bay until your rest timer clears.</p><div class="r"><div>+' + xc + '<span>XC</span></div><div>+' + orbs + '<span>Orbs</span></div><div>+' + xp + '<span>Sync XP</span></div></div>' + xlBattleContinueHtml(true) + '<div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">KEEP PLAYING · NEXT UNIT</button> <button class="bigbtn ghost" onclick="xlBattleTheaterExit();xlHubGo(1)">EVO BAY</button></div>';
     } else {
       saveExo({ sync_xp: (ex.sync_xp || 0) + rw.lose.syncXp });
       say('Your Evo is down. +' + rw.lose.syncXp + ' Sync XP for the attempt.', 'bad');
-      B.result = '<h2>Evo down</h2><p>No XC lost. Feed up and try the term bank again.</p><div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">TRY AGAIN</button> <button class="bigbtn ghost" onclick="xlHubGo(1)">EVO BAY</button></div>';
+      B.result = '<h2>Evo down</h2><p>No XC lost. Feed up and try the term bank again.</p>' + xlBattleContinueHtml(false) + '<div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">TRY AGAIN</button> <button class="bigbtn ghost" onclick="xlBattleTheaterExit();xlHubGo(1)">EVO BAY</button></div>';
     }
     render();
+    xlBattleArcadeCountdown();
+  }
+  // PATCH X-LIVE v0.71 -- "much like an arcade game": a small ticking
+  // countdown line sits above the TRY AGAIN/KEEP PLAYING · NEXT UNIT and
+  // EVO BAY buttons (both already existing). Re-queries the DOM every
+  // tick rather than trusting a stored node, and is guarded against a
+  // battle object being replaced/cleared mid-countdown (ref = B, the
+  // same async-safety idiom flashOff() already uses elsewhere in this
+  // module) so a fast EVO BAY click or a fresh fight starting can never
+  // leave a stray timer ticking against the wrong battle.
+  function xlBattleContinueHtml() {
+    return '<div class="evb-continue">Continuing in <span id="evb-continue-countdown">10</span>s\u2026</div>';
+  }
+  function xlBattleArcadeCountdown() {
+    var ref = B, secs = 10;
+    (function tick() {
+      if (B !== ref || !B || !B.over) return;
+      var el = document.getElementById('evb-continue-countdown'); if (el) el.textContent = secs;
+      var elT = document.querySelector('#evb-theater #evb-continue-countdown'); if (elT) elT.textContent = secs;
+      if (secs <= 0) { xlBattleStartSequence('fight'); return; } // same call the gold KEEP PLAYING/TRY AGAIN button already makes -- see finish() above
+      secs--; setTimeout(tick, 1000);
+    })();
+  }
+  // PATCH X-LIVE v0.71 -- Ennis: "If the Evo loses then there should be a
+  // game over...you lose...title and announcement. If won then Game
+  // over...You win happens." A real GAME OVER card first (matches an
+  // arcade cabinet showing GAME OVER on every match end, win or lose),
+  // then the specific outcome title -- both via the already-proven
+  // PflxFx.slam() popup, staggered so each is actually readable rather
+  // than stomping the final hit's own HIT/CRITICAL HIT/MISS banner.
+  // Guarded (ref = B) against the battle object changing mid-sequence.
+  function xlBattleGameOverSequence(win) {
+    var ref = B;
+    var slam = function (text, opts) { if (B !== ref) return; if (typeof window !== 'undefined' && window.PflxFx && typeof window.PflxFx.slam === 'function') window.PflxFx.slam(text, opts); };
+    setTimeout(function () { slam('GAME OVER', { sub: win ? 'VICTORY' : 'DEFEAT', tint: win ? 'win' : 'fail' }); }, 900);
+    setTimeout(function () { slam(win ? 'YOU WIN' : 'YOU LOSE', { sub: win ? 'ARCHIVE DOWN' : 'EVO DOWN', tint: win ? 'win' : 'fail', shake: true }); }, 3100);
   }
 
   /* ---------- Spar: PvP practice duel (PATCH X-LIVE v0.55) ---------- */
