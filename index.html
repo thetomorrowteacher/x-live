@@ -5,6 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.72, Sept 25 2026 -- PATCH X-LIVE v0.72: Archive Battle
+     announcer voice-picker (3 voices, 24 lines each). This was the
+     requeued item flagged at the end of the v0.71 Handoff entry --
+     Ennis authorized "re-design it now, your best judgment" for the
+     whole build (script, voice picks, FX chain), to be reviewed after
+     shipping rather than pre-approved. Documenting every judgment call
+     here for that review:
+     VOICES (3, ElevenLabs): TheTomorrowTeacher (reused from v0.68, zero
+     new cost) + Kuya Boy Baskebolista (NBA-Jam-style hype sports
+     commentator) + Cera - Energetic American Radio DJ (picked over
+     Cora/Blondie/Milly as the clearest "energetic...announcer/host"
+     match, and the only female pick of the 3 -- deliberate hype
+     contrast against the two male voices).
+     SCRIPT: 12 semantic keys, all-new copy (no NBA Jam catchphrases):
+     start(2)/boss(1, now Hive-only)/guildIntro(1, NEW)/trojanIntro(1,
+     NEW)/crit(4)/miss(2)/dodge(2)/foehit(3)/win(2)/lose(2)/
+     hiveUnitDown(2, NEW)/hiveClear(2, NEW) = 24 lines/voice, 72 files
+     total. guildIntro fires for the Hack Guild (breach/wraith/vector),
+     trojanIntro for Trojan specifically -- both split out of the old
+     single "boss" line, which is now reserved for The Hive (still
+     fired by xlHiveNew(), unchanged). hiveUnitDown fires when one
+     swarm unit falls but the fight continues; hiveClear replaces the
+     generic "win" line on an actual full Hive clear.
+     SPAR SCOPE CUT (deliberate, not an oversight): Spar's two-client
+     synced-replay-log architecture (sparStep/sparReplay against a
+     shared Supabase row) wasn't understood well enough this pass to
+     wire audio into safely without risking desync/double-firing across
+     the two players' clients. The 2 line-slots originally earmarked
+     for Spar were redistributed as extra variety lines instead (crit
+     4 instead of 2, foehit 3 instead of 2).
+     CODE: XL_BATTLE_ANN_CLIPS went from a flat 8-key {key: filename}
+     object to {key: [filenames]}, one array per voice folder
+     (pflx-archive-announcer/{ttt,kuya,cera}/{key}_{n}.mp3);
+     xlBattleAnn() now picks a random variant per play via
+     xlBattleAnnPick(). A new xlBattleAnnVoice()/xlSetBattleAnnVoice()
+     pair replaces the old binary on/off pref with a 4-state OFF/TTT/
+     KUYA/CERA choice (xl_battle_ann_voice_v1), migrating a pre-v0.72
+     install's legacy xl_battle_ann_on_v1 boolean once rather than
+     silently resetting existing testers. xlBattleAnnButtonHtml() is
+     now a <select>, still returning plain HTML so both existing call
+     sites (the pre-fight screen and the in-battle header) work
+     unchanged. xlToggleBattleAnn() is kept as a back-compat alias that
+     cycles OFF->TTT->KUYA->CERA->OFF.
+     FX CHAIN (new, additive, opt-in): xlBattleAnnFx() routes a playing
+     clip's <audio> element through a lazily-created shared
+     AudioContext -- a synthesized noise-decay ConvolverNode (no real
+     impulse-response file exists to fetch) for a light plate-reverb
+     tail, plus a short ~120ms low-feedback slap DelayNode, both mixed
+     under the dry signal via GainNodes. Called AFTER a.play() already
+     fired in xlBattleAnn(), so a thrown error, a blocked AudioContext,
+     or an unsupported browser degrades silently back to the exact
+     plain-<audio> playback this file already had -- the FX chain can
+     only add polish, never break the underlying line from playing.
+     A WeakMap guards against calling createMediaElementSource() twice
+     on the same pooled <audio> element (which throws).
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.71, Sept 25 2026 -- PATCH X-LIVE v0.71: Evo Clash
      arcade-flow. Ennis: "Once I start a game like Evo Clash...The how to
      play should popup after the title. It should stay on the screen for
@@ -7151,21 +7208,58 @@ function xlAudioButtonsHtml() {
 // audio asset (XL_SOUND_ROOT), following the exact xlAnnClip/xlAnnounce
 // pool + duck-against-xlMusic pattern that system already proved out.
 const XL_BATTLE_ANN_ROOT = XL_SOUND_ROOT + 'pflx-archive-announcer/';
-const XL_BATTLE_ANN_PREF = 'xl_battle_ann_on_v1';
-const XL_BATTLE_ANN_CLIPS = {
-  start: 'lets_go.mp3', crit: 'critical_hit.mp3', miss: 'not_quite.mp3', dodge: 'dodged.mp3',
-  foehit: 'ouch_hurt.mp3', win: 'victory.mp3', lose: 'archive_wins.mp3', boss: 'boss_incoming.mp3'
+const XL_BATTLE_ANN_PREF = 'xl_battle_ann_on_v1'; // PATCH X-LIVE v0.72 -- legacy on/off flag, kept write-through for back-compat; the real state now lives in XL_BATTLE_ANN_VOICE_PREF
+const XL_BATTLE_ANN_VOICE_PREF = 'xl_battle_ann_voice_v1'; // 'off' | 'ttt' | 'kuya' | 'cera'
+const XL_BATTLE_ANN_VOICES = { // PATCH X-LIVE v0.72 -- 3 voices, see the v0.72 header comment for the full pick rationale
+  ttt: { label: 'TheTomorrowTeacher', icon: '\u{1F4E3}' },
+  kuya: { label: 'Kuya', icon: '\u{1F3C0}' },
+  cera: { label: 'Cera', icon: '\u{1F4FB}' }
 };
-function xlBattleAnnOn() { return xlPref(XL_BATTLE_ANN_PREF, true); }
+// PATCH X-LIVE v0.72 -- each key now maps to an ARRAY of same-folder variant
+// filenames (was a single filename) so xlBattleAnn() can pick a random
+// variant per play instead of always the same clip; guildIntro/trojanIntro/
+// hiveUnitDown/hiveClear are new keys, boss is now Hive-only (see call sites).
+const XL_BATTLE_ANN_CLIPS = {
+  start: ['start_1.mp3', 'start_2.mp3'],
+  boss: ['boss_1.mp3'],
+  guildIntro: ['guild_intro.mp3'],
+  trojanIntro: ['trojan_intro.mp3'],
+  crit: ['crit_1.mp3', 'crit_2.mp3', 'crit_3.mp3', 'crit_4.mp3'],
+  miss: ['miss_1.mp3', 'miss_2.mp3'],
+  dodge: ['dodge_1.mp3', 'dodge_2.mp3'],
+  foehit: ['foehit_1.mp3', 'foehit_2.mp3', 'foehit_3.mp3'],
+  win: ['win_1.mp3', 'win_2.mp3'],
+  lose: ['lose_1.mp3', 'lose_2.mp3'],
+  hiveUnitDown: ['hive_down_1.mp3', 'hive_down_2.mp3'],
+  hiveClear: ['hive_clear_1.mp3', 'hive_clear_2.mp3']
+};
+// PATCH X-LIVE v0.72 -- reads the new 4-state voice pref, migrating a
+// pre-v0.72 install's legacy on/off boolean the first time (on -> 'ttt',
+// off -> 'off') so an existing tester's choice isn't silently reset.
+function xlBattleAnnVoice() {
+  var raw = xlPref(XL_BATTLE_ANN_VOICE_PREF, null);
+  if (raw === 'off' || XL_BATTLE_ANN_VOICES[raw]) return raw;
+  return xlPref(XL_BATTLE_ANN_PREF, true) ? 'ttt' : 'off';
+}
+function xlBattleAnnOn() { return xlBattleAnnVoice() !== 'off'; }
 const xlBattleAnnPool = { last: {} };
+// PATCH X-LIVE v0.72 -- pure: picks a random filename from a key's variant
+// pool, or null for an unknown key / empty pool.
+function xlBattleAnnPick(key) {
+  var pool = XL_BATTLE_ANN_CLIPS[key];
+  if (!pool || !pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 function xlBattleAnn(key, opts) {
   opts = opts || {};
-  var file = XL_BATTLE_ANN_CLIPS[key];
-  if (!file || typeof Audio === 'undefined' || !xlBattleAnnOn() || !xlAudioHere) return false;
+  var voice = xlBattleAnnVoice();
+  if (voice === 'off' || typeof Audio === 'undefined' || !xlAudioHere) return false;
+  var file = xlBattleAnnPick(key);
+  if (!file) return false;
   var now = Date.now();
   if (!opts.force && xlBattleAnnPool.last[key] && now - xlBattleAnnPool.last[key] < 1200) return false;
   xlBattleAnnPool.last[key] = now;
-  var url = XL_BATTLE_ANN_ROOT + file;
+  var url = XL_BATTLE_ANN_ROOT + voice + '/' + file; // PATCH X-LIVE v0.72 -- per-voice subfolder
   var a = xlBattleAnnPool[url];
   if (!a) { a = new Audio(url); a.preload = 'auto'; xlBattleAnnPool[url] = a; }
   try {
@@ -7174,17 +7268,87 @@ function xlBattleAnn(key, opts) {
     var done = function () { xlMusic.duck('battleAnn', false); };
     a.onended = done; a.onerror = done;
     var p = a.play(); if (p && p.catch) p.catch(done);
+    if (typeof xlBattleAnnFx === 'function') xlBattleAnnFx(a); // PATCH X-LIVE v0.72 -- opt-in reverb/delay chain; safely no-ops on any failure, a.play() above has already fired regardless
   } catch (e) { xlMusic.duck('battleAnn', false); return false; }
   return true;
 }
 window.xlBattleAnn = xlBattleAnn;
-function xlToggleBattleAnn() { var on = !xlBattleAnnOn(); xlSetPref(XL_BATTLE_ANN_PREF, on); if (on) xlBattleAnn('start', { force: true }); render(); }
+// PATCH X-LIVE v0.72 -- the real voice picker. Writes both the new voice
+// pref AND the legacy on/off pref (kept in sync for anything still reading
+// XL_BATTLE_ANN_PREF directly) and plays a sample line on switching to a
+// real voice, matching the old toggle's "confirm it's on" behavior.
+function xlSetBattleAnnVoice(v) {
+  if (!v || (v !== 'off' && !XL_BATTLE_ANN_VOICES[v])) v = 'off';
+  xlSetPref(XL_BATTLE_ANN_VOICE_PREF, v);
+  xlSetPref(XL_BATTLE_ANN_PREF, v !== 'off');
+  if (v !== 'off') xlBattleAnn('start', { force: true });
+  render();
+}
+window.xlSetBattleAnnVoice = xlSetBattleAnnVoice;
+// PATCH X-LIVE v0.72 -- kept as a back-compat alias for any old call site
+// still invoking a plain toggle; cycles OFF -> TTT -> KUYA -> CERA -> OFF.
+function xlToggleBattleAnn() {
+  var order = ['off', 'ttt', 'kuya', 'cera'];
+  var idx = order.indexOf(xlBattleAnnVoice());
+  if (idx < 0) idx = 0;
+  xlSetBattleAnnVoice(order[(idx + 1) % order.length]);
+}
 window.xlToggleBattleAnn = xlToggleBattleAnn;
+// PATCH X-LIVE v0.72 -- 4-state voice picker (OFF / TheTomorrowTeacher /
+// Kuya / Cera) replacing the old binary on/off <button>. Still returns
+// plain HTML so both existing call sites (the pre-fight screen and the
+// in-battle header, neither touched by this patch) work unchanged.
 function xlBattleAnnButtonHtml() {
-  var on = xlBattleAnnOn();
-  return '<button class="xl-audio-btn' + (on ? ' on' : '') + '" onclick="xlToggleBattleAnn()" title="' + (on ? 'Battle announcer on' : 'Battle announcer off') + '">' + (on ? '\u{1F4E3}' : '\u{1F507}') + '<span>ANNOUNCER</span></button>';
+  var voice = xlBattleAnnVoice();
+  var opts = ['<option value="off"' + (voice === 'off' ? ' selected' : '') + '>\u{1F507} Announcer: Off</option>'];
+  Object.keys(XL_BATTLE_ANN_VOICES).forEach(function (k) {
+    var v = XL_BATTLE_ANN_VOICES[k];
+    opts.push('<option value="' + k + '"' + (voice === k ? ' selected' : '') + '>' + v.icon + ' ' + v.label + '</option>'); // fixed, hardcoded labels -- no escaping needed, and esc() isn't in scope in this SCRIPT tag (see v0.71 Handoff's cross-tag-scope note)
+  });
+  return '<select class="xl-audio-btn' + (voice !== 'off' ? ' on' : '') + '" onchange="xlSetBattleAnnVoice(this.value)" title="Battle announcer voice">' + opts.join('') + '</select>';
 }
 window.xlBattleAnnButtonHtml = xlBattleAnnButtonHtml;
+// PATCH X-LIVE v0.72 -- a small, additive, opt-in reverb/delay FX chain for
+// the battle announcer only. Called AFTER a.play() has already fired in
+// xlBattleAnn(), so this can only ever add polish on top of already-working
+// plain <audio> playback -- if AudioContext is unavailable, blocked by
+// autoplay policy, or anything throws, it silently no-ops and the listener
+// just hears the plain clip exactly as before this patch.
+var xlBattleAnnAudioCtx = null;
+var xlBattleAnnFxWired = typeof WeakMap === 'function' ? new WeakMap() : null; // guards against calling createMediaElementSource() twice on the same pooled <audio> element, which throws
+// Synthesizes a short (~900ms) exponentially-decaying stereo noise buffer as
+// a cheap plate-reverb impulse response -- there is no real IR file to load.
+function xlBattleAnnImpulse(ctx) {
+  var rate = ctx.sampleRate, len = Math.floor(rate * 0.9);
+  var buf = ctx.createBuffer(2, len, rate);
+  for (var ch = 0; ch < 2; ch++) {
+    var d = buf.getChannelData(ch);
+    for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+  }
+  return buf;
+}
+function xlBattleAnnFx(audioEl) {
+  if (typeof window === 'undefined' || (!window.AudioContext && !window.webkitAudioContext) || !xlBattleAnnFxWired) return false;
+  if (xlBattleAnnFxWired.get(audioEl)) return true; // already wired, nothing more to do
+  try {
+    if (!xlBattleAnnAudioCtx) xlBattleAnnAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var ctx = xlBattleAnnAudioCtx;
+    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') { var r = ctx.resume(); if (r && r.catch) r.catch(function () {}); }
+    var src = ctx.createMediaElementSource(audioEl);
+    var dry = ctx.createGain(); dry.gain.value = 0.82;
+    var wet = ctx.createGain(); wet.gain.value = 0.22;
+    var conv = ctx.createConvolver(); conv.buffer = xlBattleAnnImpulse(ctx);
+    var delay = ctx.createDelay(0.5); delay.delayTime.value = 0.12; // ~120ms slap
+    var fb = ctx.createGain(); fb.gain.value = 0.16; // low feedback -- a slap, not a repeating echo
+    var delayMix = ctx.createGain(); delayMix.gain.value = 0.16;
+    src.connect(dry); dry.connect(ctx.destination);
+    src.connect(conv); conv.connect(wet); wet.connect(ctx.destination);
+    src.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(delayMix); delayMix.connect(ctx.destination);
+    xlBattleAnnFxWired.set(audioEl, true);
+    return true;
+  } catch (e) { return false; }
+}
+window.xlBattleAnnFx = xlBattleAnnFx;
 // Which music fits what is on screen right now (pure: returns a zone key or null).
 function xlMusicZone() {
   const proj = document.getElementById('proj');
@@ -9861,7 +10025,10 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var sv = stats(), f = pickFoe(); if (!f) return;
     B = { foe: f, foeHp: f.hp, foeMax: f.hp, hp: 60 + (sv.GUARD || 5) * 8, max: 60 + (sv.GUARD || 5) * 8, guard: 0, dodge: 0, shield: f.id === 'drone', turn: 0, twice: false, marked: false, disabled: null, over: false, sv: sv, log: [], result: null, entered: false }; // PATCH X-LIVE v0.66 -- one-shot card-entrance flag, consumed by xlBattleHTML()
     streak = 0; say('An ' + f.name + ' locks on. ' + f.ability, 'fo'); render();
-    if (typeof xlBattleAnn === 'function') xlBattleAnn(['breach', 'wraith', 'vector', 'trojan'].indexOf(f.id) >= 0 ? 'boss' : 'start'); // PATCH X-LIVE v0.68
+    if (typeof xlBattleAnn === 'function') { // PATCH X-LIVE v0.72 -- Hack Guild gets its own "guildIntro" line, Trojan its own "trojanIntro" line; plain "boss" is now reserved for The Hive (fired separately by xlHiveNew())
+      var annKey = f.id === 'trojan' ? 'trojanIntro' : (['breach', 'wraith', 'vector'].indexOf(f.id) >= 0 ? 'guildIntro' : 'start');
+      xlBattleAnn(annKey);
+    }
   };
   var xlBattleTutorialTimer = null; // PATCH X-LIVE v0.71 -- auto-tutorial's 10-15s auto-advance timer
   function say(t, cls) { if (B) B.log.unshift({ t: t, c: cls || '' }); }
@@ -10108,10 +10275,11 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       B.hiveIdx++; var nf = B.hiveFoes[B.hiveIdx];
       B.foe = nf; B.foeHp = nf.hp; B.foeMax = nf.hp; B.shield = false; B.marked = false; B.foeSilenced = false; B.disabled = null; B.turn = 0;
       say('The ' + f.name + ' breaks apart. The next Hive unit locks on: ' + nf.name + '.', 'win');
+      if (typeof xlBattleAnn === 'function') xlBattleAnn('hiveUnitDown'); // PATCH X-LIVE v0.72 -- one swarm unit down, more still incoming
       render(); return;
     }
     B.over = true;
-    if (typeof xlBattleAnn === 'function') xlBattleAnn(win ? 'win' : 'lose'); // PATCH X-LIVE v0.68 -- "Victory!" / "Archive wins this round."
+    if (typeof xlBattleAnn === 'function') xlBattleAnn(win ? (B.hive ? 'hiveClear' : 'win') : 'lose'); // PATCH X-LIVE v0.72 -- a full Hive clear gets its own "hiveClear" line instead of the generic "win"
     xlBattleGameOverSequence(win); // PATCH X-LIVE v0.71 -- Ennis: "there should be a game over...you lose/win...title and announcement"
     if (win) {
       // PATCH X-LIVE v0.54 -- a full Hive clear multiplies the reward by
