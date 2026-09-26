@@ -5,6 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.74, Sept 26 2026 — PATCH X-LIVE v0.74: Quick Launch --
+     fire an activity at a cohort with no live session already running.
+     Ennis (Sept 24): host clicks GO LIVE on an activity/tool immediately;
+     it pops a notification + join link to the chosen cohort; selecting
+     it auto-navigates the player in; the ad hoc session stays open up to
+     1 week unless the host ends it sooner (a player leaving does NOT end
+     it for everyone -- confirmed via AskUserQuestion, Sept 26).
+     A quick-launch session is a perfectly normal session object -- it's
+     created and gone-live in one motion via the EXISTING primitives
+     (newLiveSession/liveAddSlide/liveGoLiveSession), not a parallel
+     session type. New: xlQuickLaunchOpen() (cohort-picker modal) ->
+     xlQuickLaunchNext() (builds the session, sets quickLaunch:true and
+     scheduledEnd = pflxQuickLaunchExpiry(), now+7 days) -> the existing
+     Add Activity flow (liveAddSlide/renderSlideTypeModal/renderSlideModal)
+     -> liveSaveSlideForm()'s new branch (L.quickLaunchPending) skips the
+     normal "keep editing" return and calls xlQuickLaunchGoLive(s), which
+     saveSession()s then liveGoLiveSession()s the brand-new session.
+     Needed ZERO new player-side code: nativeSessionsForMe()/
+     nativeLiveSessionBanner()/liveJoinSession() already notify+join+
+     auto-navigate off status==='active' + cohort scope generically, and
+     liveParticipants was already append-only everywhere -- nothing ever
+     ended a session based on its size, so "a player leaving doesn't end
+     it" needed no code change, only verification. The 1-week ceiling
+     reuses the existing pflxLiveAutoLifecycleCheck()/pflxLiveAutoEnd()
+     scheduled-end auto-stop (Sept 9 patch) with zero new lifecycle code
+     -- setting scheduledEnd at creation is the whole mechanism.
+     Verified: syntax gate clean; new unit test
+     (test_v074_quicklaunch.js) against the real extracted functions;
+     full regression suite re-run against a pre-patch backup, zero new
+     regressions. See docs/HANDOFF.md PATCH X-LIVE v0.74 for full detail.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.73, Sept 26 2026 — PATCH X-LIVE v0.73: Evo Bay Card Deck
      shows the Evo's FULL card inventory (all 5 stages), not just the
      current stage + a locked preview of the next one. Ennis: "I should
@@ -4300,7 +4332,8 @@ function newLiveSession() {
     scheduledStart: '', scheduledEnd: '', // PATCH X-LIVE -- session scheduling; informational only, see comment above
     rewards: { attendanceXc: 0, attendanceBadgeId: '', completionXc: 0, completionBadgeId: '' },
     status: 'scheduled', liveParticipants: [], awardedTo: [],
-    createdAt: Date.now(), updatedAt: Date.now()
+    createdAt: Date.now(), updatedAt: Date.now(),
+    quickLaunch: false // PATCH X-LIVE v0.74 -- true for a host-triggered instant launch, see xlQuickLaunchOpen()
   };
 }
 function liveNewSession() {
@@ -4355,6 +4388,89 @@ function liveToggleCohort(c, checked) {
   if (checked && i === -1) s.cohorts.push(c);
   if (!checked && i !== -1) s.cohorts.splice(i, 1);
 }
+// PATCH X-LIVE v0.74 -- Quick Launch: fire an activity at a cohort with no
+// live session already running. A quick-launch session is a perfectly
+// normal session object (status/slides/cohorts all work exactly the same
+// as an authored one) -- it's just created and gone-live in one motion via
+// the EXISTING primitives (newLiveSession/liveAddSlide/liveGoLiveSession)
+// instead of authored ahead of time. Player-side notify+join+auto-navigate
+// needs ZERO new code: nativeSessionsForMe()/nativeLiveSessionBanner()/
+// liveJoinSession() already work generically off status==='active' plus
+// cohort scope, which a quick-launch session satisfies the moment it goes
+// live. Likewise "a player leaving does NOT end the session for everyone"
+// needs no new code either -- liveParticipants is already append-only
+// everywhere in this file; nothing ever ends a session based on its size.
+function pflxQuickLaunchExpiry(nowMs) {
+  // Pure helper -- the confirmed "1-week ceiling": a quick-launch session
+  // ends when the host ends it, OR when this ceiling is reached, whichever
+  // comes first. Formatted to match the <input type="datetime-local">
+  // value shape scheduledEnd is already stored/read as everywhere else in
+  // this file, so it renders correctly if a host opens EDIT on it later.
+  var d = new Date((nowMs || Date.now()) + 7 * 24 * 60 * 60 * 1000);
+  function pad(n) { return String(n).padStart(2, '0'); }
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+window.pflxQuickLaunchExpiry = pflxQuickLaunchExpiry;
+function xlQuickLaunchOpen() {
+  const scoped = !!(L.hostCapabilities && L.hostCapabilities.scopedToCohorts);
+  L.quickLaunchDraft = {
+    allCohorts: !scoped,
+    cohorts: scoped ? ((L.me && Array.isArray(L.me.managedCohorts)) ? L.me.managedCohorts.slice() : []) : []
+  };
+  renderQuickLaunchCohortModal();
+}
+window.xlQuickLaunchOpen = xlQuickLaunchOpen;
+function xlQuickLaunchToggleCohort(c, checked) {
+  const d = L.quickLaunchDraft; if (!d) return;
+  d.cohorts = d.cohorts || [];
+  const i = d.cohorts.indexOf(c);
+  if (checked && i === -1) d.cohorts.push(c);
+  if (!checked && i !== -1) d.cohorts.splice(i, 1);
+  renderQuickLaunchCohortModal();
+}
+window.xlQuickLaunchToggleCohort = xlQuickLaunchToggleCohort;
+function renderQuickLaunchCohortModal() {
+  const d = L.quickLaunchDraft; if (!d) return;
+  const scoped = !!(L.hostCapabilities && L.hostCapabilities.scopedToCohorts);
+  const cs = scoped ? ((L.me && Array.isArray(L.me.managedCohorts)) ? L.me.managedCohorts.slice() : []) : cohortList();
+  modal(
+    '<div class="cardT">⚡ Quick Launch</div>' +
+    '<div style="font-size:11px;color:#8a93b8;margin:-4px 0 10px">Fires an activity live to a cohort right now — no session to build ahead of time. Ends only when you end it, or after 1 week, whichever comes first.</div>' +
+    '<label>Who is this for?</label>' +
+    (scoped
+      ? '<div style="font-size:12px;color:#8a93b8;margin-top:4px">🔒 Scoped to your assigned cohort(s).</div>'
+      : '<div style="display:flex;gap:14px;align-items:center;margin-top:4px"><label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:13px"><input type="checkbox" style="width:auto" ' + (d.allCohorts ? 'checked' : '') + ' onchange="L.quickLaunchDraft.allCohorts=this.checked;renderQuickLaunchCohortModal()"/> All players</label></div>') +
+    (!d.allCohorts ? ('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + cs.map(function (c) {
+      return '<label style="display:flex;gap:5px;align-items:center;font-size:12px;text-transform:none;font-family:inherit"><input type="checkbox" style="width:auto" ' + ((d.cohorts || []).indexOf(c) !== -1 ? 'checked' : '') + ' onchange="xlQuickLaunchToggleCohort(' + JSON.stringify(c) + ',this.checked)"/>' + esc(c) + '</label>';
+    }).join('') + '</div>') : '') +
+    '<div style="margin-top:14px;display:flex;gap:8px">' +
+    '<button class="bigbtn gold" onclick="xlQuickLaunchNext()">NEXT: PICK ACTIVITY →</button>' +
+    '<button class="bigbtn ghost" onclick="L.quickLaunchDraft=null;modalClose()">CANCEL</button>' +
+    '</div>'
+  );
+}
+window.renderQuickLaunchCohortModal = renderQuickLaunchCohortModal;
+function xlQuickLaunchNext() {
+  const d = L.quickLaunchDraft; if (!d) return;
+  if (!d.allCohorts && (!d.cohorts || !d.cohorts.length)) { toast('Pick at least one cohort, or All players'); return; }
+  const s = newLiveSession();
+  s.title = 'Quick Launch';
+  s.quickLaunch = true;
+  s.allCohorts = d.allCohorts;
+  s.cohorts = (d.cohorts || []).slice();
+  s.scheduledEnd = pflxQuickLaunchExpiry();
+  L.quickLaunchDraft = null;
+  L.liveEditingSession = s;
+  L.quickLaunchPending = true;
+  modalClose();
+  liveAddSlide();
+}
+window.xlQuickLaunchNext = xlQuickLaunchNext;
+async function xlQuickLaunchGoLive(s) {
+  await saveSession(s);
+  await liveGoLiveSession(s.id);
+}
+window.xlQuickLaunchGoLive = xlQuickLaunchGoLive;
 function badgeSelectHtml(selectedId, path) {
   return '<select onchange="' + path + '=this.value">' +
     '<option value="">None</option>' +
@@ -4459,6 +4575,15 @@ function liveSaveSlideForm() {
   const s = L.liveEditingSession; if (!s) { modalClose(); return; }
   if (ed.idx === -1) s.slides.push(sl); else s.slides[ed.idx] = sl;
   L.liveEditingSlide = null;
+  // PATCH X-LIVE v0.74 -- Quick Launch: the very first slide added to a
+  // quick-launch-in-progress session skips the normal "keep editing"
+  // return trip and goes straight live, cohort scope already chosen.
+  if (L.quickLaunchPending && s.quickLaunch) {
+    L.quickLaunchPending = false;
+    modalClose();
+    xlQuickLaunchGoLive(s);
+    return;
+  }
   modalClose(); render();
 }
 function liveDeleteSlide(idx) {
@@ -4560,7 +4685,7 @@ function rLiveList() {
     const partCount = (s.liveParticipants || []).length;
     const sched = pflxFormatSessionSchedule(s.scheduledStart, s.scheduledEnd);
     return '<div class="feedrow" style="align-items:center">' +
-      '<div style="flex:1;min-width:0"><b>' + esc(s.title || 'Untitled Session') + '</b>' +
+      '<div style="flex:1;min-width:0"><b>' + esc(s.title || 'Untitled Session') + '</b>' + (s.quickLaunch ? '<span style="margin-left:6px;font-size:9px;color:#ffd700;font-family:Audiowide">⚡ QUICK LAUNCH</span>' : '') +
       '<div style="font-size:10px;color:#8a93b8">' + slideCount + ' slide' + (slideCount === 1 ? '' : 's') + ' · ' + esc(scope) + (s.status === 'active' ? ' · ' + partCount + ' joined' : '') + '</div>' +
       (sched ? '<div style="font-size:10px;color:#7dd3fc">🗓️ ' + esc(sched) + '</div>' : '') +
       '</div>' +
@@ -4573,7 +4698,10 @@ function rLiveList() {
       '</span></div>';
   }
   return '<div class="card"><div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 Live Sessions' +
-    '<button class="bigbtn green" style="margin-left:auto;padding:8px 14px;font-size:10px" onclick="liveNewSession()">+ NEW SESSION</button></div>' +
+    '<span style="margin-left:auto;display:flex;gap:8px">' +
+    '<button class="bigbtn gold" style="padding:8px 14px;font-size:10px" onclick="xlQuickLaunchOpen()">⚡ QUICK LAUNCH</button>' +
+    '<button class="bigbtn green" style="padding:8px 14px;font-size:10px" onclick="liveNewSession()">+ NEW SESSION</button>' +
+    '</span></div>' +
     (groups.active.length ? ('<div style="font-size:10px;color:#7dffb8;margin:10px 0 4px;text-transform:uppercase;font-family:Audiowide">🟢 Active</div>' + groups.active.map(sessionRow).join('')) : '') +
     '<div style="font-size:10px;color:#8a93b8;margin:14px 0 4px;text-transform:uppercase;font-family:Audiowide">Scheduled</div>' +
     (groups.scheduled.length ? groups.scheduled.map(sessionRow).join('') : '<div style="font-size:12px;color:#5c6488;padding:10px 0">No sessions yet — build your first one.</div>') +
