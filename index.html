@@ -5,6 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.73, Sept 26 2026 — PATCH X-LIVE v0.73: Evo Bay Card Deck
+     shows the Evo's FULL card inventory (all 5 stages), not just the
+     current stage + a locked preview of the next one. Ennis: "I should
+     be able to swipe left on the evo cards and it should slide across
+     all cards for that Evo in the PFLX inventory." .evb-deckrow already
+     scrolls/snaps horizontally (v0.49) -- the row just never contained
+     more than 2 of the Evo's 5 stages, so there was nothing more to
+     swipe to. deckHTML(n, locked) gained a 3rd arg, historical, for a
+     stage the player has already evolved past: read-only (no BUY/EQUIP
+     button even on an owned card -- equipping only ever applies to the
+     CURRENT stage, see activeBuild()/xlEvoEquip), and a build the
+     player never bought at the time renders locked/"NOT COLLECTED"
+     rather than retroactively purchasable, since xlEvoBuy/
+     xlEvoBuyConfirm only ever price/id a purchase against stage(), the
+     CURRENT stage -- a past stage's unbought build was never actually
+     buyable here even before this patch. Also fixed a latent bug found
+     while making this change: deckHTML checked ownership via
+     owned(stage()) (always the CURRENT stage's owned list) instead of
+     owned(n) (the stage actually being rendered) -- harmless before
+     this patch since deckHTML was only ever called with n === stage()
+     or with locked=true (which short-circuits the ownership check
+     anyway), but it would have shown every historical stage as fully
+     unowned once real past-stage rendering was added. New
+     stageThreshold(k) generalizes nextThreshold()'s inline Sync XP
+     table lookup to any stage k, not just stage()+1, so every future
+     stage's divider can show its own real unlock threshold instead of
+     only the immediate next one.
+     Verified: syntax gate clean; new unit test extracting the real
+     shipped deckHTML/stageThreshold from source, covering a mid-game
+     Evo (stage 3, one bought branch card, one skipped) across all 5
+     stages -- past stages render read-only with correct owned/missed
+     split, current stage keeps its normal interactive buy/equip
+     behavior unchanged, future stages stay locked with the right
+     per-stage Sync XP threshold, and the existing owned()-defaults-the-
+     free-build behavior is preserved at every stage. Full regression
+     suite re-run against a pre-patch backup, zero new regressions.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.72, Sept 25 2026 -- PATCH X-LIVE v0.72: Archive Battle
      announcer voice-picker (3 voices, 24 lines each). This was the
      requeued item flagged at the end of the v0.71 Handoff entry --
@@ -9826,7 +9864,10 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   function owned(n) { var st = story(); st.owned = st.owned || {}; var k = String(n); if (!st.owned[k]) st.owned[k] = [n === 1 ? 'BASE' : (n < 4 ? 'A' : 'A1')]; return st.owned[k]; }
   function artUrl(n, b, size) { var cw = (exoRow() && exoRow().colorway) || 'default'; return ART_BASE + line() + '/' + n + '-' + String(b || 'BASE').toLowerCase() + '-' + cw + '-standard' + (size === 'thumb' ? '.thumb.jpg' : '.web.jpg'); }
   function artAlt(n, b, size) { return ART_BASE + line() + '/' + n + '-' + String(b || 'BASE').toLowerCase() + '-default-standard' + (size === 'thumb' ? '.thumb.jpg' : '.web.jpg'); }
-  function nextThreshold() { var n = stage(); var xp = (typeof EXO_STAGE_XP !== 'undefined') ? EXO_STAGE_XP : [0, 500, 2500, 8000, 20000]; return n < 5 ? xp[n] : null; }
+  function stageXpTable() { return (typeof EXO_STAGE_XP !== 'undefined') ? EXO_STAGE_XP : [0, 500, 2500, 8000, 20000]; }
+  function nextThreshold() { var n = stage(); var xp = stageXpTable(); return n < 5 ? xp[n] : null; }
+  // PATCH X-LIVE v0.73 -- the Sync XP threshold to REACH stage k (from k-1), for any k, not just stage()+1. Powers the full 5-stage Card Deck row below.
+  function stageThreshold(k) { var xp = stageXpTable(); return xp[k - 1] || 0; }
   function orbCap() { return 100 + 50 * (stage() - 1); }
   function demoTime() { return !!(L.demo); }
   function cooldownMs() { var g = G(); return demoTime() ? 30e3 : ((g && g.orbs.collectCooldownHours) || 4) * 3600e3; }
@@ -9902,21 +9943,41 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       '<div class="c"><b>Feed</b><p>Feed ' + g.orbs.feedCost + ' orbs for ' + g.orbs.feedSyncXp + ' Sync XP. A fed Evo fights 10 percent stronger. Feeding starts the same rest timer.</p><span class="t">' + (rest > 0 ? 'Resting · ' + fmtT(rest) : ((st.orbs || 0) >= g.orbs.feedCost ? 'Ready to feed' : 'Not enough orbs')) + '</span><button class="bigbtn ghost xl-sm" onclick="xlEvoFeed()"' + ((rest > 0 || (st.orbs || 0) < g.orbs.feedCost) ? ' disabled' : '') + '>FEED</button></div></div></div>';
     h += '<div class="evb-panel"><h3>Abilities on this card</h3><div class="abil">' + abilities().map(function (a) { return abHTML(a, false); }).join('') + '</div></div>';
     /* card deck: this stage's builds, then the next stage greyed out */
-    h += '<div class="evb-panel"><h3>Card deck</h3><div class="evb-deckrow">' + deckHTML(n, false) + (n < 5 ? '<div class="evb-divider">STAGE ' + (n + 1) + '<br>' + esc(stageName(n + 1).toUpperCase()) + '<br>unlocks at ' + (nt || 0).toLocaleString() + ' Sync XP</div>' + deckHTML(n + 1, true) : '') + '</div></div>';
+    /* PATCH X-LIVE v0.73 -- full 5-stage swipeable inventory, see header comment */
+    var deckRow = '';
+    for (var dk = 1; dk <= 5; dk++) {
+      deckRow += '<div class="evb-divider">STAGE ' + dk + '<br>' + esc(stageName(dk).toUpperCase()) +
+        (dk === n ? '<br><span style="color:var(--cyan)">CURRENT</span>' : (dk < n ? '' : '<br>unlocks at ' + stageThreshold(dk).toLocaleString() + ' Sync XP')) + '</div>' +
+        deckHTML(dk, dk > n, dk < n);
+    }
+    h += '<div class="evb-panel"><h3>Card deck</h3><div class="evb-deckrow">' + deckRow + '</div></div>';
     h += '</div></div>';
     return h;
   };
-  function deckHTML(n, locked) {
-    var g = G(), builds = (S().exo.builds || {})[String(n)] || ['BASE'], own = owned(stage()), cost = (g.cards.purchaseAt || {})[String(n)] || 0, act = activeBuild();
+  // PATCH X-LIVE v0.73 -- 3rd arg `historical`: renders a stage the
+  // player has already evolved past as read-only (no BUY/EQUIP button,
+  // even on an owned card -- equipping only ever applies to the CURRENT
+  // stage, see xlEvoEquip/activeBuild). Ownership is now checked
+  // against owned(n) (this stage's own list) instead of the old
+  // owned(stage()) (always the CURRENT stage's list) -- harmless before
+  // this patch since deckHTML was only ever called with n === stage()
+  // or with locked=true (which short-circuits isOwned anyway), but a
+  // real bug once historical/past stages render for real here.
+  function deckHTML(n, locked, historical) {
+    var g = G(), builds = (S().exo.builds || {})[String(n)] || ['BASE'], own = owned(n), cost = (g.cards.purchaseAt || {})[String(n)] || 0, act = activeBuild();
     var sig = g.abilities[line()] || {};
     return '<div class="shop">' + builds.map(function (b) {
-      var isOwned = !locked && own.indexOf(b) >= 0, isActive = !locked && act === b;
+      var isOwned = own.indexOf(b) >= 0;
+      var isLocked = locked || (historical && !isOwned); // a missed past-stage build stays locked forever -- it was never purchasable outside its own stage
+      var isActive = !isLocked && !historical && act === b;
       var a = b === 'BASE' ? sig.BASE[0] : sig[b[0]];
-      return '<div class="s' + (isOwned ? ' owned' : '') + (locked ? ' locked' : '') + '">' + cardHTML(n, b, locked ? 'locked' : (isActive ? 'active' : (isOwned ? 'owned' : cost + ' XC')), locked || (!isOwned)) +
+      var chip = isLocked ? 'locked' : (historical ? 'owned' : (isActive ? 'active' : (isOwned ? 'owned' : cost + ' XC')));
+      return '<div class="s' + (isOwned && !isLocked ? ' owned' : '') + (isLocked ? ' locked' : '') + '">' + cardHTML(n, b, chip, isLocked) +
         '<span class="n">' + esc(buildName(b)) + '</span><p>' + (a ? esc(a.name) + ': ' + esc(a.text) : '') + '</p>' +
-        (locked ? '<button class="bigbtn ghost xl-sm" disabled>REACH STAGE ' + n + '</button>'
-          : (isOwned ? '<button class="bigbtn ghost xl-sm" onclick="xlEvoEquip(\'' + b + '\')"' + (isActive ? ' disabled' : '') + '>' + (isActive ? 'ACTIVE' : 'USE THIS CARD') + '</button>'
-                     : '<button class="bigbtn gold xl-sm" onclick="xlEvoBuy(\'' + b + '\')"' + (xcOf() < cost ? ' disabled' : '') + '>BUY · ' + cost + ' XC</button>')) + '</div>';
+        (isLocked ? '<button class="bigbtn ghost xl-sm" disabled>' + (historical ? 'NOT COLLECTED' : 'REACH STAGE ' + n) + '</button>'
+          : (historical ? '<button class="bigbtn ghost xl-sm" disabled>COLLECTED</button>'
+            : (isOwned ? '<button class="bigbtn ghost xl-sm" onclick="xlEvoEquip(\'' + b + '\')"' + (isActive ? ' disabled' : '') + '>' + (isActive ? 'ACTIVE' : 'USE THIS CARD') + '</button>'
+                       : '<button class="bigbtn gold xl-sm" onclick="xlEvoBuy(\'' + b + '\')"' + (xcOf() < cost ? ' disabled' : '') + '>BUY · ' + cost + ' XC</button>'))) + '</div>';
     }).join('') + '</div>';
   }
   window.xlEvoCollect = function () { var st = story(); st.orbs = Math.min(orbCap(), (st.orbs || 0) + (st.pending || 0)); st.pending = 0; st.lastCare = Date.now(); saveStory(); render(); };

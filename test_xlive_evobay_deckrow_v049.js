@@ -27,19 +27,32 @@ check('xlEvoBayHTML() found', xlEvoBayStart !== -1);
 const slice = src.slice(xlEvoBayStart, xlEvoBayStart + 6000);
 check('Card deck panel wraps deckHTML output in a single .evb-deckrow',
   /<h3>Card deck<\/h3><div class="evb-deckrow">/.test(slice));
-check('current-stage deck (deckHTML(n, false)) is inside the unified row',
-  /<div class="evb-deckrow">' \+ deckHTML\(n, false\)/.test(slice));
-check('next-stage locked deck (deckHTML(n + 1, true)) is inside the SAME row (string-concatenated onto the same div, not a new panel)',
-  /deckHTML\(n, false\) \+ \(n < 5 \? '<div class="evb-divider">[\s\S]*?deckHTML\(n \+ 1, true\)/.test(slice));
-check('the row closes with a single </div></div> (one deckrow div + one panel div, not two panels)',
-  /deckHTML\(n \+ 1, true\) : ''\) \+ '<\/div><\/div>';/.test(slice));
+// PATCH X-LIVE v0.73 superseded the original 2-stage (current + next-locked)
+// row with a full 5-stage loop (deckRow built via `for (var dk = 1; dk <= 5;
+// dk++)`, each iteration appending its own divider + deckHTML(dk, ...)) so a
+// player can swipe across the Evo's ENTIRE card inventory, not just a preview
+// of the next stage. These three checks are updated to match that shipped,
+// verified (see test_v073_evobay_full_deck.js) structure -- the v0.49 CSS/
+// scroll-row/locked-card-styling checks below are untouched, since v0.73 only
+// changed which cards populate the row, not the row mechanism itself.
+check('the full 5-stage loop builds deckRow (dk from 1 to 5), not just current+next',
+  /for \(var dk = 1; dk <= 5; dk\+\+\)/.test(slice));
+check('each loop iteration appends its own divider + deckHTML(dk, dk > n, dk < n) (current/locked/historical all handled per stage)',
+  /deckHTML\(dk, dk > n, dk < n\)/.test(slice));
+check('the panel wraps the accumulated 5-stage deckRow in the same .evb-deckrow div',
+  /<div class="evb-panel"><h3>Card deck<\/h3><div class="evb-deckrow">' \+ deckRow \+ '<\/div><\/div>';/.test(slice));
 
 // 3) The inline divider label between the two groups still carries the same
 //    real information the old .evb-next label did (stage number, stage name,
 //    Sync XP threshold) -- just repositioned, not removed.
-check('inline divider still shows the next stage number', /'<div class="evb-divider">STAGE ' \+ \(n \+ 1\)/.test(slice));
-check('inline divider still shows the next stage name', /esc\(stageName\(n \+ 1\)\.toUpperCase\(\)\)/.test(slice));
-check('inline divider still shows the Sync XP unlock threshold', /unlocks at ' \+ \(nt \|\| 0\)\.toLocaleString\(\) \+ ' Sync XP/.test(slice));
+// PATCH X-LIVE v0.73: the divider is now built once per loop iteration (any
+// of the 5 stages), not just for "the next stage" -- it shows CURRENT for the
+// player's own stage, nothing extra for an already-reached historical stage,
+// or the real Sync XP unlock threshold (via the new stageThreshold(dk), see
+// test_v073_evobay_full_deck.js) for a still-locked future stage.
+check('divider label shows the stage number and name for every stage in the loop', /'<div class="evb-divider">STAGE ' \+ dk \+ '<br>' \+ esc\(stageName\(dk\)\.toUpperCase\(\)\)/.test(slice));
+check('divider marks the player\'s own stage as CURRENT', /dk === n \? '<br><span style="color:var\(--cyan\)">CURRENT<\/span>'/.test(slice));
+check('divider shows the real Sync XP unlock threshold (stageThreshold(dk)) for a locked future stage', /unlocks at ' \+ stageThreshold\(dk\)\.toLocaleString\(\) \+ ' Sync XP/.test(slice));
 
 // 4) CSS: the row is a real horizontally-scrollable flex row (same pattern
 //    as the Studio Hub's .hub-cardrow), and .shop's grid is neutralized
@@ -67,8 +80,14 @@ check('locked card text is still dimmed', /\.evb \.shop \.s\.locked \.n,\.evb \.
 // 6) deckHTML() itself (the function that actually builds each card, owned
 //    or locked) is untouched by this patch -- confirms the fix is purely a
 //    layout/wrapper change, not a rewrite of card-generation logic.
-check('deckHTML() function is unchanged (still builds .shop > .s cards, locked class driven by the `locked` param)',
-  /function deckHTML\(n, locked\) \{[\s\S]*?return '<div class="shop">'/.test(src));
+// PATCH X-LIVE v0.73 extended deckHTML() with a 3rd `historical` parameter
+// (read-only COLLECTED/NOT COLLECTED rendering for a past stage) -- it still
+// builds the same .shop > .s cards, just with one more parameter than v0.49
+// had. Full behavioral coverage of the new signature lives in
+// test_v073_evobay_full_deck.js; this check just confirms the card-building
+// shape (.shop > .s) survived the v0.73 extension.
+check('deckHTML() still builds .shop > .s cards, now with the v0.73 `historical` 3rd param',
+  /function deckHTML\(n, locked, historical\) \{[\s\S]*?return '<div class="shop">'/.test(src));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
