@@ -5,6 +5,39 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.75, Sept 26 2026 — PATCH X-LIVE v0.75: Studio Hub glow +
+     Evo Bay Card Deck scroll containment. Two requests from Ennis's
+     screenshots: (1) "There should be a glow around the Evo and the
+     Startup Studio logo should have a glow" -- both elements already had
+     a glow (.hub-logo's CSS drop-shadow from v0.46/47, the EVO card's
+     inline drop-shadow using the studio's own --srgb color), but at 6-22px
+     blur and 0.4-0.55 opacity it read as barely-there next to how
+     prominent it is in Ennis's reference -- strengthened both to a
+     3-layer glow (matching the dual/triple-layer treatment already used
+     for the X-Bot dock's own "bigger glow" ask, PATCH PLATFORM v248) at
+     roughly double the blur radius and opacity. The Evo card's glow still
+     derives from the same per-studio --srgb custom property, so each
+     Studio's Evo continues to glow in that Studio's own color, not a
+     fixed color. (2) "The cards should have its separate scroll" -- the
+     Evo Bay Card Deck row (.evb-deckrow) already had its own
+     overflow-x:auto/scroll-snap (v0.49), but its ancestor chain lacked
+     min-width:0: a CSS grid item (.evb-col, the 1fr track of .evb-grid)
+     and a flex item (.evb-panel) both default to min-width:auto, so the
+     deck row's full intrinsic content width blew out the whole column
+     instead of being contained in its own scrollable box -- exactly the
+     symptom in Ennis's screenshot (a card cut off hard at the browser
+     window's right edge, no scrollbar anywhere). Added min-width:0 to
+     both; the deck row's existing overflow-x:auto now actually takes
+     effect. Purely additive CSS (one filter value, two min-width
+     declarations) -- no markup or JS changed.
+     Verified: syntax gate clean; new unit test
+     (test_v075_glow_and_deckscroll.js) confirms the new glow values are
+     present, the old thinner glow values are gone, and both min-width:0
+     declarations are present on the correct selectors; full regression
+     suite re-run against a pre-patch backup, zero new regressions.
+     See docs/HANDOFF.md PATCH X-LIVE v0.75 for full detail.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.74, Sept 26 2026 — PATCH X-LIVE v0.74: Quick Launch --
      fire an activity at a cohort with no live session already running.
      Ennis (Sept 24): host clicks GO LIVE on an activity/tool immediately;
@@ -1547,7 +1580,7 @@
   /* PATCH X-LIVE v0.43 -- Studio Hub */
   .card.hub{margin-bottom:14px;border-color:rgba(var(--srgb),.45);background:linear-gradient(135deg, rgba(var(--srgb),.10), rgba(10,14,28,.85) 60%)}
   .hub-head{display:flex;gap:14px;align-items:center}
-  .hub-logo{width:clamp(96px,13vw,190px);height:clamp(96px,13vw,190px);flex:0 0 clamp(96px,13vw,190px);align-self:flex-start;background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain;filter:drop-shadow(0 0 6px rgba(0,240,255,.65)) drop-shadow(0 0 16px rgba(0,240,255,.4))}
+  .hub-logo{width:clamp(96px,13vw,190px);height:clamp(96px,13vw,190px);flex:0 0 clamp(96px,13vw,190px);align-self:flex-start;background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain;filter:drop-shadow(0 0 10px rgba(0,240,255,.8)) drop-shadow(0 0 28px rgba(0,240,255,.6)) drop-shadow(0 0 50px rgba(0,240,255,.35))}
   .hub-brandmark{position:absolute;right:clamp(12px,1.8vw,22px);bottom:clamp(12px,1.8vw,22px);width:clamp(28px,3.6vw,58px);height:clamp(28px,3.6vw,58px);border-radius:50%;background:rgba(6,14,26,.6);border:1px solid rgba(0,240,255,.4);display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,240,255,.35);z-index:2}
   .hub-brandmark span{display:block;width:clamp(16px,2vw,32px);height:clamp(16px,2vw,32px);background-color:#00f0ff;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;mask-repeat:no-repeat;mask-position:center;mask-size:contain}
   .hub-head .cardT{font-size:clamp(18px,2.4vw,30px);margin-bottom:6px}
@@ -6459,7 +6492,7 @@ function rMe() {
      scaled up + top-weighted (transform-origin 50% 30%) so it crops in
      tighter on the face, per Ennis, instead of showing the full figure. */
   let evo = '<div class="card" style="text-align:center"><div class="cardT" style="text-align:left">🧬 EVO</div>' +
-    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 22px rgba(' + rgb + ',0.55))">' +
+    '<div style="display:flex;justify-content:center;filter:drop-shadow(0 0 16px rgba(' + rgb + ',0.75)) drop-shadow(0 0 40px rgba(' + rgb + ',0.5)) drop-shadow(0 0 72px rgba(' + rgb + ',0.28))">' +
       '<div style="width:210px;height:210px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center">' +
         '<div style="transform:scale(1.35);transform-origin:' + (ex ? exoFaceFocalOrigin(ex) : '50% 40%') + '">' + exoAvatarHTML(p.id, 210, p.brand, p.image) + '</div>' +
       '</div>' +
@@ -9771,7 +9804,7 @@ window.SMF_ACT_ART = {
 --cyan:#7de9ff;--cyanrgb:125,233,255;--gold:#ffd166;--goldrgb:255,209,102;--lime:#a3e635;--limergb:163,230,53;--red:#ff5a5a;--green:#5ef0a3;
 --display:'Audiowide',system-ui,sans-serif;--body:'Exo 2',system-ui,sans-serif;color-scheme:dark}
 background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), transparent 45%),radial-gradient(circle at 10% 90%, rgba(var(--goldrgb),.06), transparent 40%)}
-.evb .evb-panel{background:rgba(15,23,48,.85);border:1px solid var(--line);padding:16px}
+.evb .evb-panel{background:rgba(15,23,48,.85);border:1px solid var(--line);padding:16px;min-width:0}
 .evb .evb-panel h3{font-family:var(--display);font-weight:400;font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--cyan);margin:0 0 12px}
 .evb .evc{position:relative;width:100%;max-width:300px;aspect-ratio:2/3;margin:0 auto;clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);background:linear-gradient(160deg,var(--frame,#9aa3b8),#2b3350 55%,var(--frame,#9aa3b8));padding:4px}
 .evb .evc > div{position:relative;width:100%;height:100%;clip-path:polygon(13px 0,100% 0,100% calc(100% - 13px),calc(100% - 13px) 100%,0 100%,0 13px);background:#0b1122;overflow:hidden}
@@ -9914,7 +9947,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 .evb .evb-result .r span{display:block;font-size:9px;letter-spacing:.22em;color:var(--dim)}
 .evb{--ground:#070b16;--panel:#0f1730;--line:rgba(125,233,255,.18);--ink:#eaf0ff;--muted:#8a93b8;--dim:#5c6690;--cyan:#7de9ff;--cyanrgb:125,233,255;--gold:#ffd166;--goldrgb:255,209,102;--lime:#a3e635;--limergb:163,230,53;--red:#ff5a5a;--green:#5ef0a3;--display:'Audiowide',system-ui,sans-serif;--body:'Exo 2',system-ui,sans-serif;color:var(--ink);font-family:var(--body);font-size:14px}
 .evb .evb-grid{display:grid;grid-template-columns:320px 1fr;gap:14px}
-.evb .evb-col{display:flex;flex-direction:column;gap:14px}
+.evb .evb-col{display:flex;flex-direction:column;gap:14px;min-width:0}
 @media (max-width:820px){.evb .evb-grid{grid-template-columns:1fr}}
 .evb .evc img{transition:filter .3s}
 .evb .evc.locked img{filter:grayscale(1) brightness(.45)}
