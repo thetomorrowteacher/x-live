@@ -15,7 +15,11 @@ let pass = 0, fail = 0;
 function ok(cond, label) { if (cond) pass++; else { fail++; console.log('FAIL:', label); } }
 
 function extractFn(name) {
-  const idx = src.indexOf('function ' + name + '(');
+  // v0.80 embeds Campaign Mode (which has its own reader finish()) before
+  // the Evo Clash block, so search the Evo Clash script first.
+  const evb = src.indexOf('<script id="xl-evb">');
+  let idx = evb >= 0 ? src.indexOf('function ' + name + '(', evb) : -1;
+  if (idx === -1) idx = src.indexOf('function ' + name + '(');
   if (idx === -1) throw new Error('not found: function ' + name);
   const braceStart = src.indexOf('{', idx);
   let depth = 0, i = braceStart;
