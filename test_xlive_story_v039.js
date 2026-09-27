@@ -43,14 +43,14 @@ vm.runInContext(blk.replace(/window\.xlStory/g, 'this.window.xlStory')
 const { xlStoryPct, xlStoryStage, xlStorySort, XL_STORY } = ctx.window;
 
 check('campaign index extracted', typeof xlStoryPct === 'function' && typeof xlStoryStage === 'function');
-check('the index carries all 28 quests', XL_STORY && XL_STORY.total === 28
-  && XL_STORY.acts.reduce((a, x) => a + x.q.length, 0) === 28,
+check('the index carries all 29 quests (v0.78 adds the Locator Key)', XL_STORY && XL_STORY.total === 29
+  && XL_STORY.acts.reduce((a, x) => a + x.q.length, 0) === 29,
   XL_STORY && XL_STORY.total);
 if (typeof xlStoryPct === 'function') {
   check('empty state is 0%', xlStoryPct({}) === 0, xlStoryPct({}));
   check('no state at all is 0%, not NaN', xlStoryPct(null) === 0, xlStoryPct(null));
   const two = { done: { 'a0-brief': 1, 'a0-studio': 1 } };
-  check('two of 28 quests is 7%', xlStoryPct(two) === 7, xlStoryPct(two));
+  check('two of 29 quests is 7%', xlStoryPct(two) === 7, xlStoryPct(two));
 
   const s0 = xlStoryStage({});
   check('a player who has not started shows no act', s0.act === null && s0.done === 0, s0);
