@@ -5,6 +5,58 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.84, Oct 1 2026 — PATCH X-LIVE v0.84: Chrono Shift, wired
+     for real ("wire it" -- the v0.83 Handoff entry flagged Chrono Shift
+     as a real, tested, XC-deducted purchase that was mechanically
+     INERT: nothing existed to actually extend a timer).
+     APPROACH: rather than build new per-player/per-team timer-lockout
+     infrastructure from scratch (what the original v0.83 note assumed
+     was missing), re-investigated the live session model and found
+     X-Live already has a real, working, host-synced SHARED countdown:
+     s.showTimer (session-wide, merge-safe last-write-wins by
+     updatedAt in mergeSession(), PATCH X-LIVE v0.35), auto-started for
+     ANY slide with a configured time limit via xlSlideAutoTimer()
+     (confirmed 'social' and 'project' slide types both have
+     hasTimer:true in their registry entries), rendered to every player
+     via xlPlayerStripHtml() and to the host via the run-control panel.
+     New pflxXModApplyChronoShift(s, sl, now): extends s.showTimer by
+     PFLX_XMOD_CHRONO_BONUS_SECONDS (120s) if it's already running for
+     THIS slide, or starts a fresh 120s clock bound to it otherwise --
+     the exact same running/not-running branch the host's own existing
+     "+30s" button (xlShowTimerAdd) already uses, just rewritten to
+     operate on a caller-supplied s/sl (safe to call from a PLAYER's own
+     client) instead of xlRunningSession() (which only ever resolves on
+     the host's device). Wired into liveTriggerXModUi(): on a successful
+     chrono_shift purchase, finds the purchasing slide via the real
+     result.event.slideId (pflxXModTrigger already stamps this), applies
+     the extension, and re-broadcasts via the existing xlCastCountdown()
+     so every connected client's countdown display updates immediately
+     -- not just a local state change. New toast message mirroring the
+     existing vault_deal/all_in custom-copy pattern.
+     ASSUMPTION STATED, NOT SILENTLY NARROWED: this is SESSION-WIDE, not
+     per-player -- no per-player timer-lockout concept exists anywhere
+     in X-Live today (only quiz_race has one, via raceExpired), so one
+     player's Chrono Shift purchase extends the clock for the WHOLE
+     CLASS, not just the purchaser. The original spec language ("that
+     team's timer") implied personal-only; this is the honest, buildable
+     version on real infrastructure -- flagged to Ennis in the Handoff
+     rather than overclaiming a per-player effect that doesn't exist.
+     Verified: syntax gate clean (9 blocks); new 33-case unit test
+     (test_chrono_shift_v084.js) extracts the real shipped
+     pflxXModApplyChronoShift/xlTimerInfo via brace-counting and the
+     real mergeSession showTimer-merge line (regex-verified to match
+     before use), covering extend-while-running, start-fresh (never
+     started / stopped / naturally expired / bound-to-a-different-slide),
+     null-safety, and a full mergeSession round-trip proving the
+     extension survives the existing last-write-wins merge unchanged in
+     both directions. Full regression suite (122 test_*.js files) re-run
+     against the real pre-patch device snapshot (md5
+     1a8289559ac85b59f384af8a229db045, staged this session before any
+     edit) -- byte-identical pass/fail outcome on every file, zero new
+     regressions (the 2 pre-existing failures, "FROM DECK button" and
+     "rStory() THE ROOM progress list", are unchanged and unrelated).
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.83, Oct 1 2026 — PATCH X-LIVE v0.83: X-Mods (COMPETITOR
      half only -- see Handoff for scope). Ennis's spec: "Build X-Mods
      into X-Live: one shared upgrade system for X-Live sessions that
@@ -4238,6 +4290,40 @@ function pflxXModTrigger(s, pid, key, opts, now) {
 }
 window.pflxXModTrigger = pflxXModTrigger;
 
+// PATCH X-LIVE v0.84 -- Chrono Shift, wired for real. Extends the slide's
+// shared clock (s.showTimer -- the SAME host-synced countdown timer/project/
+// social slides already run via xlSlideAutoTimer, rendered to every player
+// via xlPlayerStripHtml and to the host via the show-control panel) by
+// PFLX_XMOD_CHRONO_BONUS_SECONDS if it's currently running for THIS slide,
+// or starts a fresh bonus-length clock for it otherwise -- the exact same
+// running/not-running branch xlShowTimerAdd (the host's own "+30s" button,
+// above) already uses. Deliberately NOT scoped through xlRunningSession()
+// (which only ever resolves on the HOST's own client, via
+// L.liveRunningSessionId) since this is called from a PLAYER's client --
+// it mutates the caller's own already-loaded `s` directly, exactly like
+// every other X-Mod effect in this file. Session-wide, not per-player: no
+// per-player timer-lockout concept exists anywhere in X-Live today (only
+// quiz_race has one, via raceExpired), so this buys the WHOLE CLASS 2 extra
+// minutes on the clock, not just the purchaser -- stated here and in the
+// Handoff rather than silently narrowed, since the original spec language
+// ("that team's timer") implied personal-only and this is the honest,
+// buildable version on real infrastructure.
+var PFLX_XMOD_CHRONO_BONUS_SECONDS = 120;
+function pflxXModApplyChronoShift(s, sl, now) {
+  if (!s || !sl) return null;
+  now = now || Date.now();
+  var t = s.showTimer;
+  var info = (t && t.slideId === sl.id) ? xlTimerInfo(t, now) : null;
+  if (info && info.running) {
+    t.seconds += PFLX_XMOD_CHRONO_BONUS_SECONDS;
+    t.updatedAt = now;
+    return { mode: 'extended', timer: t };
+  }
+  s.showTimer = { id: 't' + now.toString(36) + '_cs', seconds: PFLX_XMOD_CHRONO_BONUS_SECONDS, startedAt: now, stoppedAt: null, slideId: sl.id, label: sl.title || (typeof slideTypeMeta === 'function' ? slideTypeMeta(sl.type).label : 'Timer'), updatedAt: now };
+  return { mode: 'started', timer: s.showTimer };
+}
+window.pflxXModApplyChronoShift = pflxXModApplyChronoShift;
+
 // ── Shared Quizlet/CSV deck importer ────────────────────────────────
 var PFLX_DECKS_KEY = 'pflx_ba_decks';
 
@@ -5627,6 +5713,13 @@ async function liveTriggerXModUi(key, opts) {
   if (!result.ok) { toast('Can’t use that: ' + result.reason.replace(/-/g, ' ')); return; }
   s.xmodEvents = s.xmodEvents || [];
   s.xmodEvents.push(result.event);
+  if (key === 'chrono_shift') {
+    var slForTimer = (s.slides || []).find(function (x) { return x.id === result.event.slideId; });
+    if (slForTimer) {
+      pflxXModApplyChronoShift(s, slForTimer, Date.now());
+      xlCastCountdown(xlTimerId(s, s.showTimer), s.showTimer.startedAt + s.showTimer.seconds * 1000, s.showTimer.label, xlSessionCohorts(s));
+    }
+  }
   await saveSession(s);
   postAward(p.id, { xc: -def.cost, reason: 'xlive.xmod.' + key });
   p.xc = Math.max(0, (p.xc || 0) - def.cost);
@@ -5643,6 +5736,8 @@ async function liveTriggerXModUi(key, opts) {
       : (result.event.won ? (def.icon + ' Vault Deal: risk paid off — +' + result.event.payout + ' XC!') : (def.icon + ' Vault Deal: risk didn’t pay off this time.'));
   } else if (key === 'all_in') {
     msg = result.event.won ? (def.icon + ' All In: locked in — doubled if your answer’s right!') : (def.icon + ' All In: risking it — you’ll lose it if your answer’s right.');
+  } else if (key === 'chrono_shift') {
+    msg = def.icon + ' Chrono Shift: +' + (PFLX_XMOD_CHRONO_BONUS_SECONDS) + 's added to the clock for everyone!';
   }
   toast(msg);
 }
