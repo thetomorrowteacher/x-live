@@ -5,6 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════════
+     X-LIVE v0.83, Oct 1 2026 — PATCH X-LIVE v0.83: X-Mods (COMPETITOR
+     half only -- see Handoff for scope). Ennis's spec: "Build X-Mods
+     into X-Live: one shared upgrade system for X-Live sessions that
+     turns on automatically for whatever activity is on screen." Reuses
+     the PFLX_POWERUPS/raceEvents pattern (registry + pure trigger
+     validator + append-only event log unioned by id in mergeSession())
+     but as a SEPARATE system: X-Mods spend real X-Coin (never Nitro,
+     never real money) and follow whatever slide type is on screen, not
+     quiz_race alone. New PFLX_XMODS registry (5 mods), new s.xmodEvents
+     array, pure pflxXModTrigger() validator, pflxXModTrayHtml() (player
+     tray, wired into rLiveNative() beside the X-Rush bars) and
+     pflxXModHostFeedHtml() (host toggle + live feed, wired into
+     rLiveRun()).
+     SCOPE, STATED NOT HIDDEN: the spec asks for 10 mods (5 AUDIENCE / 5
+     COMPETITOR). Only the 5 COMPETITOR mods (Cerebro Scan, Vault Deal,
+     Chrono Shift, Intercept, All In) are built this patch -- the 5
+     AUDIENCE mods all need a non-roster "logged-in member watching/
+     acting on a session they didn't join" surface that does not exist
+     anywhere in this codebase (confirmed via full-file search) and is
+     already a backlogged epic ("Phase 1e -- Audience mode"). Shipping
+     no-op audience mods would look done without being real.
+     ASSUMPTIONS MADE (flagged for Ennis, not silently decided): (1)
+     Intercept's effect follows the spec's own parenthetical ("absorbs
+     the current Steal") over its looser prose description -- it's a
+     Steal-specific shield that also redirects the stolen amount to the
+     defender, not a "next player answers" mechanic (no such relay
+     concept exists anywhere in X-Live today). (2) Vault Deal's "between
+     activities" trigger = the current slide is revealed/locked (the gap
+     before the host advances) -- there's no other "intermission" state
+     in the session model. (3) Chrono Shift is built as a real, tested,
+     visible purchase (tray button, event log, host feed) but is
+     HONESTLY NOT YET WIRED to anything -- timer/project/social slides
+     have no existing per-player/per-team lock-out to extend (only
+     quiz_race has one, via raceExpired), so there's nothing today for a
+     time bonus to attach to. Needs either new timer-enforcement
+     infrastructure or a simpler alternate behavior from Ennis before
+     it's a real mechanic, not just a line in the host feed. (4) All In
+     is scoped to quiz_race only, dropping the spec's "project" worksIn
+     entry -- Project Work has no scorable "result" to double/lose. (5)
+     Cerebro Scan is self-only and quiz_race-only; its "two wrong
+     answers" clamps to never strip the board down past 2 options. (6)
+     The daily 3-mods-per-player-per-day cap is DERIVED (never a
+     separately-mutable counter, per the persistence guardrail) by
+     scanning every session currently loaded into L.sessions for that
+     player's xmodEvents today -- a client that hasn't loaded one of
+     today's other sessions for that player can under-count; documented,
+     not hidden.
+     Verified: syntax gate clean (9 blocks); new 89-case unit test
+     (test_xmods.js) extracts the real shipped registry/validator/
+     derived-state functions (plus the modified pflxRaceTriggerPowerup,
+     pflxRacePowerupBonus, and mergeSession's xmodEvents union block) via
+     brace-counting and runs them in a vm sandbox against realistic
+     fixtures; full regression suite (59 test_*.js files) re-run against
+     a pre-patch backup pulled from git HEAD -- byte-identical pass/fail
+     outcome on every single file, zero new regressions.
+     NOT committed, pushed, or deployed -- per standing instruction,
+     waiting on explicit go-ahead.
+     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.82, Oct 1 2026 — PATCH X-LIVE v0.82: Next-Show Countdown
      (Task F, part 1 of 5 -- Ennis: "There should be an active counter for
      all users till the next X-Live show. There should be settings in the
@@ -2464,6 +2523,14 @@ function mergeSession(local, incoming) {
   (local.raceEvents || []).forEach(function (e) { raceEventById[e.id] = e; });
   merged.raceEvents = Object.keys(raceEventById).map(function (k) { return raceEventById[k]; });
 
+  // PATCH X-LIVE -- X-Mods: s.xmodEvents is append-only, unioned by event
+  // id -- identical discipline to raceEvents directly above, so a stale
+  // poll can never drop an X-Mod purchase another client already made.
+  const xmodEventById = {};
+  (incoming.xmodEvents || []).forEach(function (e) { xmodEventById[e.id] = e; });
+  (local.xmodEvents || []).forEach(function (e) { xmodEventById[e.id] = e; });
+  merged.xmodEvents = Object.keys(xmodEventById).map(function (k) { return xmodEventById[k]; });
+
   // PATCH X-LIVE v0.35 -- showTimer is last-write-wins on its OWN
   // updatedAt (a +30s can land between two session saves); fxEvents is
   // append-only, unioned by id, newest 30 kept.
@@ -3753,10 +3820,36 @@ function pflxRacePowerupBonus(s, pid) {
       if (ev.pid === pid) bonus += (ev.stolenAmount || 0);
       if (ev.targetPid === pid) bonus -= (ev.stolenAmount || 0);
     }
+    // PATCH X-LIVE -- X-Mods Intercept: a BLOCKED steal carrying
+    // interceptedBy redirects the would-be-stolen amount to the
+    // intercepting player -- the thief gets nothing (the `!ev.blocked`
+    // branch above already excludes them), the original target loses
+    // nothing (they were never actually hit). Only ever true when
+    // pflxRaceTriggerPowerup set interceptedBy (see above); undefined on
+    // every pre-existing steal event, so this is additive.
+    if (ev.key === 'steal' && ev.blocked && ev.interceptedBy === pid) bonus += (ev.stolenAmount || 0);
     if (ev.key === 'double_points' && ev.pid === pid && ev.slideId) {
       var sl = ((s && s.slides) || []).find(function (x) { return x.id === ev.slideId; });
       var resp = sl && sl.responses && sl.responses[pid];
       if (sl && sl.revealed && resp && resp.value === sl.correctIndex) bonus += pflxRaceScore(sl, resp);
+    }
+  });
+  // PATCH X-LIVE -- X-Mods All In: the X-Coin counterpart to Double
+  // Points (spec: "absorbs the current Double Points"), but read from
+  // s.xmodEvents (X-Coin currency) instead of s.raceEvents (Nitro), and
+  // risked 50/50 at purchase time (ev.won, resolved once in
+  // pflxXModTrigger, never recomputed here) rather than always doubling.
+  // Only has an effect when the player's own answer on that slide ends
+  // up correct -- "doubles or loses the next RESULT" needs a result to
+  // act on. A second, separate pass over a second array, so an empty/
+  // absent s.xmodEvents leaves this function's output unchanged.
+  ((s && s.xmodEvents) || []).forEach(function (ev) {
+    if (ev.key === 'all_in' && ev.pid === pid && ev.slideId) {
+      var sl2 = ((s && s.slides) || []).find(function (x) { return x.id === ev.slideId; });
+      var resp2 = sl2 && sl2.responses && sl2.responses[pid];
+      if (sl2 && sl2.revealed && resp2 && resp2.value === sl2.correctIndex) {
+        bonus += ev.won ? pflxRaceScore(sl2, resp2) : -pflxRaceScore(sl2, resp2);
+      }
     }
   });
   return bonus;
@@ -3830,7 +3923,22 @@ function pflxRaceTriggerPowerup(s, pid, key, targetPid, now) {
       if (blockedPids.length === targetPids.length) event.blocked = true;
     } else {
       var targetShielded = pflxRaceActiveEffects(s, targetPid, now).shieldActive;
-      if (targetShielded) event.blocked = true;
+      // PATCH X-LIVE -- X-Mods Intercept: per the spec's own parenthetical
+      // ("absorbs the current Steal"), an armed Intercept blocks a Steal
+      // exactly like Shield does, but ALSO redirects the would-be-stolen
+      // amount to the intercepting player instead of just preventing it.
+      // Only ever checked for key === 'steal'; every other sabotage is
+      // byte-identical to pre-patch. s.xmodEvents defaults to [] when the
+      // X-Mods patch hasn't touched a session, so this is a no-op on any
+      // pre-existing session/fixture.
+      var targetIntercepted = key === 'steal' && pflxXModInterceptActive(s, targetPid, now);
+      if (targetShielded) {
+        event.blocked = true;
+      } else if (targetIntercepted) {
+        event.blocked = true;
+        event.interceptedBy = targetPid;
+        event.stolenAmount = Math.min(def.stealAmount || 0, pflxRaceNitroBalance(s, targetPid));
+      }
     }
   }
   if (key === 'steal' && !event.blocked) {
@@ -3966,6 +4074,169 @@ function pflxPuzzleSolve(s, pid, slideId, answer, now) {
   return { ok: true, event: event };
 }
 window.pflxPuzzleSolve = pflxPuzzleSolve;
+
+// ═══ X-Mods -- one shared X-Coin upgrade system for X-Live sessions ═══
+// Per Ennis's spec (Sept 2026): "Build X-Mods into X-Live... one shared
+// upgrade system for X-Live sessions that turns on automatically for
+// whatever activity is on screen." Reuses the PFLX_POWERUPS/raceEvents
+// pattern directly above (registry + pure trigger validator + an
+// append-only event log unioned by id in mergeSession(), see there) --
+// X-Mods is a SEPARATE system from X-Rush's powerups because it spends
+// real X-Coin (never Nitro, never real money) and is NOT scoped to
+// quiz_race alone -- it follows whatever slide type the host currently
+// has on screen.
+//
+// SCOPE NOTE (explicit, not silent): the spec asks for 10 mods split
+// AUDIENCE (5) / COMPETITOR (5). The 5 AUDIENCE mods (Signal Link, Hive
+// Mind, Nexus Drop, Fan Surge, Overdrive) all require a non-roster
+// "audience" surface -- a logged-in PFLX member who is NOT a joined
+// participant of this session being able to view/act on it -- which does
+// not exist anywhere in this codebase (confirmed via full-file search)
+// and is already a backlogged, unbuilt epic ("Phase 1e -- Audience mode"
+// in the standing plan). Shipping no-op audience mods would look done
+// without being real, so only the 5 COMPETITOR mods are in this registry
+// this patch. Add the audience mods once that bridge exists.
+var PFLX_XMODS = {
+  cerebro_scan: { key: 'cerebro_scan', label: 'Cerebro Scan', icon: '🧠', cost: 30, role: 'competitor', worksIn: ['quiz_race'] },
+  vault_deal:   { key: 'vault_deal',   label: 'Vault Deal',   icon: '💼', cost: 20, role: 'competitor', worksIn: ['between'] },
+  chrono_shift: { key: 'chrono_shift', label: 'Chrono Shift', icon: '⏱️', cost: 30, role: 'competitor', worksIn: ['timer', 'project', 'social'] },
+  intercept:    { key: 'intercept',    label: 'Intercept',    icon: '🛡️', cost: 35, role: 'competitor', worksIn: ['quiz_race'] },
+  all_in:       { key: 'all_in',       label: 'All In',       icon: '🎲', cost: 40, role: 'competitor', worksIn: ['quiz_race'] }
+};
+window.PFLX_XMODS = PFLX_XMODS;
+
+// Per spec item 3: "No mods on google_slides, google_doc, html_embed,
+// screenshare or mindful (the tray stays dark)."
+var PFLX_XMOD_DARK_TYPES = ['google_slides', 'google_doc', 'html_embed', 'screenshare', 'mindful'];
+var PFLX_XMOD_VAULT_GUARANTEED = 15;
+var PFLX_XMOD_VAULT_RISK_WIN = 50;
+var PFLX_XMOD_DAILY_LIMIT = 3;
+
+// YYYY-MM-DD in the viewer's local time -- used only to bucket X-Mod
+// purchases into "today" for the daily cap, never persisted as its own
+// mutable field.
+function pflxXModDayStr(ts) {
+  var d = new Date(ts || Date.now());
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+window.pflxXModDayStr = pflxXModDayStr;
+
+// "Max 3 X-Mods per player per X-Live day" (spec item 4) is a CROSS-
+// SESSION cap. Rather than a new separately-mutable counter (which the
+// pflx-persistence-guardrail discipline specifically warns against), this
+// is derived by scanning every session's own append-only xmodEvents for
+// this player's purchases today -- the same "derive, never store a
+// balance" approach raceEvents already uses within one session, just
+// widened to every session currently loaded into L.sessions. Known,
+// documented limitation: a client that hasn't loaded one of today's
+// OTHER sessions for this player can under-count -- flagged in the patch
+// report, not hidden.
+function pflxXModDailyCount(sessionsList, pid, dayStr) {
+  var count = 0;
+  (sessionsList || []).forEach(function (sess) {
+    ((sess && sess.xmodEvents) || []).forEach(function (ev) {
+      if (ev.pid === pid && pflxXModDayStr(ev.at) === dayStr) count++;
+    });
+  });
+  return count;
+}
+window.pflxXModDailyCount = pflxXModDailyCount;
+
+// Whether `mod` can be used right now against slide `sl`. 'between'
+// (Vault Deal) is a special worksIn marker meaning "while the current
+// slide is revealed/locked, i.e. the gap before the host advances" --
+// every other mod matches sl.type against its worksIn list directly.
+// Cerebro Scan and All In additionally need an UNREVEALED quiz_race slide
+// (same "still live" gate the existing X-Rush powerup bar uses).
+function pflxXModUsableNow(mod, s, sl) {
+  if (!mod || !sl) return false;
+  if (PFLX_XMOD_DARK_TYPES.indexOf(sl.type) !== -1) return false;
+  if (mod.worksIn.indexOf('between') !== -1) return !!sl.revealed;
+  if (mod.worksIn.indexOf(sl.type) === -1) return false;
+  if ((mod.key === 'cerebro_scan' || mod.key === 'all_in') && sl.revealed) return false;
+  return true;
+}
+window.pflxXModUsableNow = pflxXModUsableNow;
+
+// Cerebro Scan's effect -- DERIVED, not stored: given a purchase event
+// exists for this (slide, player) pair, deterministically (seeded off
+// slideId+pid, via the already-shipped pflxSeededRand) picks up to 2 WRONG
+// option indices to eliminate, always leaving at least one wrong option
+// plus the correct one on screen. Pure -- same instance every re-render.
+function pflxXModEliminatedOptions(s, sl, pid) {
+  if (!sl || sl.type !== 'quiz_race' || sl.revealed) return [];
+  var ev = ((s && s.xmodEvents) || []).filter(function (e) { return e.key === 'cerebro_scan' && e.pid === pid && e.slideId === sl.id; })[0];
+  if (!ev) return [];
+  var opts = sl.options || [];
+  var wrongIdx = opts.map(function (_, i) { return i; }).filter(function (i) { return i !== sl.correctIndex; });
+  var maxElim = Math.max(0, opts.length - 2);
+  var n = Math.min(2, wrongIdx.length, maxElim);
+  if (n <= 0) return [];
+  var rand = pflxSeededRand(sl.id + '_' + pid + '_cerebro');
+  var pool = wrongIdx.slice(), picked = [];
+  for (var k = 0; k < n; k++) {
+    var idx = Math.floor(rand() * pool.length);
+    picked.push(pool[idx]);
+    pool.splice(idx, 1);
+  }
+  return picked;
+}
+window.pflxXModEliminatedOptions = pflxXModEliminatedOptions;
+
+// Intercept's "armed" state -- per the spec's own parenthetical
+// ("absorbs the current Steal"), Intercept is a Steal-specific defensive
+// mod: while armed, the next Steal aimed at this player is blocked AND
+// the amount redirects to them instead (see the pflxRaceTriggerPowerup
+// and pflxRacePowerupBonus edits below). Replays TWO append-only logs in
+// chronological order -- an intercept purchase (s.xmodEvents) arms it, a
+// raceEvents steal event carrying interceptedBy === pid consumes it --
+// so there is no separate "armed" flag anywhere to drift out of sync,
+// same discipline as pflxRaceActiveEffects's shieldActive above.
+function pflxXModInterceptActive(s, pid, now) {
+  now = now || Date.now();
+  var buys = ((s && s.xmodEvents) || []).filter(function (e) { return e.key === 'intercept' && e.pid === pid; })
+    .map(function (e) { return { at: e.at, kind: 'buy' }; });
+  var consumes = ((s && s.raceEvents) || []).filter(function (e) { return e.key === 'steal' && e.interceptedBy === pid; })
+    .map(function (e) { return { at: e.at, kind: 'consume' }; });
+  var timeline = buys.concat(consumes).sort(function (a, b) { return a.at - b.at; });
+  var active = false;
+  timeline.forEach(function (ev) { active = ev.kind === 'buy'; });
+  return active;
+}
+window.pflxXModInterceptActive = pflxXModInterceptActive;
+
+// Validates and constructs an X-Mod purchase event -- PURE, does not
+// save, same shape/contract as pflxRaceTriggerPowerup above. `opts`:
+// { choice: 'guaranteed'|'risk' } for Vault Deal, { xcBalance } the
+// player's REAL X-Coin balance (X-Mods spend X-Coin, not Nitro, so this
+// can't be derived from the session alone), { sessionsList } for the
+// cross-session daily cap, and an injectable { rand } for deterministic
+// tests of Vault Deal / All In's coin-flip.
+function pflxXModTrigger(s, pid, key, opts, now) {
+  opts = opts || {};
+  now = now || Date.now();
+  var def = PFLX_XMODS[key];
+  if (!def) return { ok: false, reason: 'unknown-xmod' };
+  if (!s || s.xmodsEnabled === false) return { ok: false, reason: 'xmods-disabled' };
+  var currentSlide = ((s && s.slides) || [])[s.currentSlideIndex || 0];
+  if (!pflxXModUsableNow(def, s, currentSlide)) return { ok: false, reason: 'not-usable-now' };
+  if ((opts.xcBalance == null ? 0 : opts.xcBalance) < def.cost) return { ok: false, reason: 'insufficient-xc' };
+  var dayStr = pflxXModDayStr(now);
+  var dailyCount = pflxXModDailyCount(opts.sessionsList || [s], pid, dayStr);
+  if (dailyCount >= PFLX_XMOD_DAILY_LIMIT) return { ok: false, reason: 'daily-limit' };
+  var event = { id: 'xmev_' + now + '_' + Math.random().toString(36).slice(2, 8), pid: pid, key: key, at: now, slideId: currentSlide ? currentSlide.id : null, cost: def.cost };
+  var rand = opts.rand || Math.random;
+  if (key === 'vault_deal') {
+    var choice = opts.choice === 'risk' ? 'risk' : 'guaranteed';
+    event.choice = choice;
+    if (choice === 'guaranteed') { event.payout = PFLX_XMOD_VAULT_GUARANTEED; }
+    else { event.won = rand() < 0.5; event.payout = event.won ? PFLX_XMOD_VAULT_RISK_WIN : 0; }
+  } else if (key === 'all_in') {
+    event.won = rand() < 0.5;
+  }
+  return { ok: true, event: event };
+}
+window.pflxXModTrigger = pflxXModTrigger;
 
 // ── Shared Quizlet/CSV deck importer ────────────────────────────────
 var PFLX_DECKS_KEY = 'pflx_ba_decks';
@@ -5341,6 +5612,117 @@ function pflxPuzzleBarHtml(s, sl, myId) {
 }
 window.pflxPuzzleBarHtml = pflxPuzzleBarHtml;
 
+// PATCH X-LIVE -- X-Mods player-side UI layer. Mirrors liveTriggerPowerupUi
+// above: validates via the pure pflxXModTrigger(), appends the event, saves
+// (merge-safe via saveSession's read-merge-write), THEN does the real X-Coin
+// deduction/payout through the exact same postAward/p.xc/liteLog pattern
+// confirmGameUpgrade already uses for the Marketplace (X-Mods spend real XC,
+// never Nitro, never real money -- this is NOT the Nitro-spend path above).
+async function liveTriggerXModUi(key, opts) {
+  const s = nativeSessionAppliesToMe(); if (!s) return;
+  const myId = (L.me && L.me.id) || ''; if (!myId) return;
+  const def = PFLX_XMODS[key]; if (!def) return;
+  const p = myRecord();
+  const result = pflxXModTrigger(s, myId, key, Object.assign({}, opts, { xcBalance: p.xc || 0, sessionsList: L.sessions }), Date.now());
+  if (!result.ok) { toast('Can’t use that: ' + result.reason.replace(/-/g, ' ')); return; }
+  s.xmodEvents = s.xmodEvents || [];
+  s.xmodEvents.push(result.event);
+  await saveSession(s);
+  postAward(p.id, { xc: -def.cost, reason: 'xlive.xmod.' + key });
+  p.xc = Math.max(0, (p.xc || 0) - def.cost);
+  liteLog(p.id, 'xmod', def.label, -def.cost);
+  if (result.event.payout) {
+    postAward(p.id, { xc: result.event.payout, reason: 'xlive.xmod.' + key + '.payout' });
+    p.xc = (p.xc || 0) + result.event.payout;
+    liteLog(p.id, 'xmod', def.label + ' payout', result.event.payout);
+  }
+  render();
+  var msg = def.icon + ' ' + def.label + ' used!';
+  if (key === 'vault_deal') {
+    msg = result.event.choice === 'guaranteed' ? (def.icon + ' Vault Deal: +' + result.event.payout + ' XC guaranteed!')
+      : (result.event.won ? (def.icon + ' Vault Deal: risk paid off — +' + result.event.payout + ' XC!') : (def.icon + ' Vault Deal: risk didn’t pay off this time.'));
+  } else if (key === 'all_in') {
+    msg = result.event.won ? (def.icon + ' All In: locked in — doubled if your answer’s right!') : (def.icon + ' All In: risking it — you’ll lose it if your answer’s right.');
+  }
+  toast(msg);
+}
+window.liveTriggerXModUi = liveTriggerXModUi;
+
+// Vault Deal needs a guaranteed-vs-risk choice before it can fire; every
+// other X-Mod triggers directly. Same confirm-modal pattern buyGameUpgrade
+// already uses above for the Marketplace.
+function liveXModPromptUi(key) {
+  if (key === 'vault_deal') {
+    modal('<div class="cardT">💼 Vault Deal</div><div style="font-size:13px;color:#aeb6d8">Take <b style="color:#ffd166">' + PFLX_XMOD_VAULT_GUARANTEED + ' XC</b> guaranteed, or risk it for a 50/50 shot at <b style="color:#ffd166">' + PFLX_XMOD_VAULT_RISK_WIN + ' XC</b> (could be 0). Costs ' + PFLX_XMODS.vault_deal.cost + ' XC either way.</div>' +
+      '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="modalClose();liveTriggerXModUi(\'vault_deal\',{choice:\'guaranteed\'})">GUARANTEED ' + PFLX_XMOD_VAULT_GUARANTEED + ' XC</button><button class="bigbtn red" onclick="modalClose();liveTriggerXModUi(\'vault_deal\',{choice:\'risk\'})">RISK IT</button></div>');
+    return;
+  }
+  liveTriggerXModUi(key);
+}
+window.liveXModPromptUi = liveXModPromptUi;
+
+// Host toggle -- same save/render pattern as liveTogglePowerups above.
+// X-Mods are ON by default (spec: "no host action is needed for a mod to
+// work") -- only an explicit `false` turns the tray dark session-wide.
+async function liveToggleXMods(on) {
+  const s = L.sessions.find(function (x) { return x.id === L.liveRunningSessionId; }); if (!s) return;
+  s.xmodsEnabled = !!on;
+  await saveSession(s);
+  render();
+}
+window.liveToggleXMods = liveToggleXMods;
+
+// Player-side X-Mods tray -- follows whatever activity the host currently
+// has on screen (spec item 3: "no host action is needed for a mod to
+// work... usable mods light up; the rest dim"). Dark entirely on the 5
+// excluded slide types or when the host has X-Mods off session-wide.
+function pflxXModTrayHtml(s, sl, myId) {
+  if (!s || s.xmodsEnabled === false) return '';
+  if (!sl || PFLX_XMOD_DARK_TYPES.indexOf(sl.type) !== -1) return '';
+  var p = myRecord();
+  var bal = p.xc || 0;
+  var dayStr = pflxXModDayStr(Date.now());
+  var dailyCount = pflxXModDailyCount(L.sessions, myId, dayStr);
+  var atLimit = dailyCount >= PFLX_XMOD_DAILY_LIMIT;
+  var btns = Object.keys(PFLX_XMODS).map(function (k) {
+    var def = PFLX_XMODS[k];
+    var usable = pflxXModUsableNow(def, s, sl) && !atLimit && bal >= def.cost;
+    return '<button class="bigbtn ghost" style="font-size:9px;padding:6px 8px' + (usable ? '' : ';opacity:0.35') + '" ' + (usable ? '' : 'disabled') + ' onclick="liveXModPromptUi(\'' + k + '\')">' + def.icon + ' ' + def.label + ' (' + def.cost + ')</button>';
+  }).join('');
+  return '<div class="card" style="background:rgba(125,159,255,0.07);border-color:rgba(125,159,255,0.28);margin-bottom:8px;padding:10px">' +
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-family:Audiowide;font-size:10px;color:#7d9fff">⚙️ X-Mods — ' + bal.toLocaleString() + ' XC</span>' +
+    (atLimit ? '<span style="font-size:10px;color:#ff8a8a">Daily limit reached (' + PFLX_XMOD_DAILY_LIMIT + '/' + PFLX_XMOD_DAILY_LIMIT + ')</span>' : '<span style="font-size:10px;color:#8a93b8">' + dailyCount + '/' + PFLX_XMOD_DAILY_LIMIT + ' used today</span>') +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + btns + '</div>' +
+    '</div>';
+}
+window.pflxXModTrayHtml = pflxXModTrayHtml;
+
+// Host-side live feed + toggle (spec item 5: "a live feed of mods used,
+// and a per-session toggle to turn X-Mods off"). Inserted into rLiveRun()
+// below, unconditionally (unlike the X-Rush cards, X-Mods aren't scoped to
+// quiz_race sessions only).
+function pflxXModHostFeedHtml(s) {
+  var events = ((s && s.xmodEvents) || []).slice().sort(function (a, b) { return (b.at || 0) - (a.at || 0); }).slice(0, 20);
+  var roster = classRoster();
+  function nameFor(pid) { var pl = roster.find(function (r) { return r.id === pid; }); return pl ? (pl.brand || 'Player') : 'Player'; }
+  var rows = events.map(function (ev) {
+    var def = PFLX_XMODS[ev.key] || {};
+    var extra = '';
+    if (ev.key === 'vault_deal') extra = ' — ' + (ev.choice === 'guaranteed' ? ('guaranteed +' + ev.payout) : (ev.won ? ('risk won +' + ev.payout) : 'risk lost'));
+    else if (ev.key === 'all_in') extra = ' — ' + (ev.won ? 'doubled' : 'lost it');
+    return '<div style="font-size:11px;color:#c9cfe8;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.06)">' + (def.icon || '⚙️') + ' <b>' + esc(nameFor(ev.pid)) + '</b> used ' + esc(def.label || ev.key) + extra + '</div>';
+  }).join('');
+  return '<div class="card" style="background:rgba(255,255,255,0.03);margin-bottom:10px">' +
+    '<div class="cardT" style="font-size:12px">⚙️ X-Mods</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">' +
+    '<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-family:inherit;font-size:12px"><input type="checkbox" style="width:auto" ' + (s.xmodsEnabled === false ? '' : 'checked') + ' onchange="liveToggleXMods(this.checked)"/> ⚙️ X-Mods Enabled</label>' +
+    '</div>' +
+    (events.length ? ('<div style="margin-top:8px;max-height:140px;overflow-y:auto">' + rows + '</div>') : '<div style="font-size:11px;color:#5c6488;margin-top:6px">No X-Mods used yet.</div>') +
+    '</div>';
+}
+window.pflxXModHostFeedHtml = pflxXModHostFeedHtml;
+
 
 // PATCH X-LIVE -- Prominent Session Timer (Sept 9, Ennis: "Session Timer
 // should be promanate"). Pure text/state function (unit-testable without a
@@ -5468,6 +5850,7 @@ function rLiveRun(s) {
           }).join('') + '</div>') : '') +
         '</div>'
     ) : '') +
+    pflxXModHostFeedHtml(s) +
     (sl ? (
       '<div class="card" style="background:rgba(255,255,255,0.03)">' +
       '<div class="cardT">' + meta.icon + ' ' + esc(sl.title || '(untitled)') + '</div>' +
@@ -5613,14 +5996,22 @@ function rLiveNative() {
     var fogged = !!(raceEff && raceEff.effects.fog);
     var optCount = (sl.options || []).length;
     var displayOrder = (isRace && fogged) ? pflxRaceFogOptions(optCount, sl.id + '_' + myId) : (sl.options || []).map(function (_, i) { return i; });
+    // PATCH X-LIVE -- X-Mods Cerebro Scan: eliminates up to 2 wrong
+    // options on THIS player's own screen only. Pure/derived (see
+    // pflxXModEliminatedOptions above) -- empty array when the mod hasn't
+    // been bought for this slide, so this collapses to byte-identical
+    // pre-X-Mods output on every pre-existing fixture/session.
+    var xmodElim = isRace ? pflxXModEliminatedOptions(s, sl, myId) : [];
     body = raceTimerHtml + displayOrder.map(function (i) {
       const o = sl.options[i];
+      const eliminated = xmodElim.indexOf(i) !== -1;
       const picked = myResp && myResp.value === i;
       const showCorrect = sl.revealed && meta.graded && i === sl.correctIndex;
-      const locked = hc.responsesLocked || myResp || raceExpired || frozen;
-      return '<button class="bigbtn xl-opt xl-opt-' + (i % 4) + ' ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (locked ? ';opacity:0.6' : '') + '" ' +
-        (locked ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')"><span class="xl-shape">' + ['\u25B2', '\u25C6', '\u25CF', '\u25A0'][i % 4] + '</span>' + esc(o) + (showCorrect ? ' \u2b50' : '') + '</button>';
-    }).join('') + (frozen ? '<div style="text-align:center;color:#7ad9ff;font-size:11px;margin-top:8px">\u2744\ufe0f Frozen! Answering unlocks soon.</div>' : '');
+      const locked = hc.responsesLocked || myResp || raceExpired || frozen || eliminated;
+      return '<button class="bigbtn xl-opt xl-opt-' + (i % 4) + ' ' + (showCorrect ? 'green' : (picked ? 'gold' : 'ghost')) + '" style="display:block;width:100%;margin-top:8px;text-align:left' + (locked ? ';opacity:0.6' : '') + (eliminated ? ';text-decoration:line-through' : '') + '" ' +
+        (locked ? 'disabled' : '') + ' onclick="liveSubmitChoice(' + i + ')"><span class="xl-shape">' + ['\u25B2', '\u25C6', '\u25CF', '\u25A0'][i % 4] + '</span>' + esc(o) + (showCorrect ? ' \u2b50' : '') + (eliminated ? ' \u2716\ufe0f' : '') + '</button>';
+    }).join('') + (frozen ? '<div style="text-align:center;color:#7ad9ff;font-size:11px;margin-top:8px">\u2744\ufe0f Frozen! Answering unlocks soon.</div>' : '') +
+      (xmodElim.length ? '<div style="text-align:center;color:#7d9fff;font-size:11px;margin-top:8px">\uD83E\uDDE0 Cerebro Scan: ' + xmodElim.length + ' wrong answer' + (xmodElim.length === 1 ? '' : 's') + ' removed.</div>' : '');
   } else if (sl.type === 'open_response') {
     body = '<textarea id="liveOpenResp" rows="3" placeholder="Type your response…" ' + (hc.responsesLocked || myResp ? 'disabled' : '') + '>' + (myResp ? esc(myResp.value) : '') + '</textarea>' +
       (!myResp && !hc.responsesLocked ? '<button class="bigbtn gold" style="margin-top:8px" onclick="liveSubmitText()">SUBMIT</button>' : '');
@@ -5661,6 +6052,7 @@ function rLiveNative() {
     (sl.prompt && !meta.isEmbed ? '<div style="font-size:14px;color:#c9cfe8;margin:8px 0">' + esc(sl.prompt) + '</div>' : '') +
     pflxRacePowerupBarHtml(s, sl, myId) +
     pflxPuzzleBarHtml(s, sl, myId) +
+    pflxXModTrayHtml(s, sl, myId) +
     body +
     (slideTimeUp && !sl.revealed ? '<div class="xl-timeup">\u23F1 TIME\u2019S UP \u2014 ANSWERS LOCKED</div>' : '') +
     (myResp ? '<div style="font-size:11px;color:#8a93b8;margin-top:10px">Response submitted' + (sl.revealed && meta.graded ? (myResp.value === sl.correctIndex ? ' · ✅ correct' : ' · ❌ not quite') : '') + '</div>' : '') +
