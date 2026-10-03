@@ -7719,7 +7719,7 @@ const XL_SFX = {
   // as the Console's PATCH PLATFORM v243 -- see that comment for the
   // crest-factor reasoning). Kept in sync so X-Live and the Console sound
   // consistent everywhere.
-  uiHover: 'pflx-library/02_UI_Blips/blip_055.mp3', // PATCH X-LIVE v0.70 -- Ennis: "softer and smoother" -- swapped from a click-category clip (crest 1.7) to a blip/swell clip (crest 1.6, longer attack/decay), the smoothest reasonably-short candidate across a full re-measure of both UI packs
+  uiHover: ['pflx-library/02_UI_Blips/blip_027.mp3', 'pflx-library/02_UI_Blips/blip_039.mp3', 'pflx-library/02_UI_Blips/blip_040.mp3', 'pflx-library/02_UI_Blips/blip_045.mp3'], // PATCH X-LIVE v0.86 -- Ennis picked these four hover blips (027/039/040/045); rotates, never the same one twice in a row. Was blip_055 (v0.70). // PATCH X-LIVE v0.70 -- Ennis: "softer and smoother" -- swapped from a click-category clip (crest 1.7) to a blip/swell clip (crest 1.6, longer attack/decay), the smoothest reasonably-short candidate across a full re-measure of both UI packs
   uiClick: 'pflx-library/01_UI_Clicks/click_041.mp3',
   // PATCH X-LIVE v0.52 -- real Dragon Ball Z punch SFX for Archive Battle,
   // wired to the same hitFoe/critFoe/hitMe flags v0.50 already set for the
@@ -7784,8 +7784,9 @@ const XL_UI_SEL = 'button, a[href], [onclick], [role="button"], .tab, .xl-audio-
 const xlUiPool = {};
 function xlUiPlay(name, gain) {
   if (!xlSfxOn() || !xlAudioHere || typeof Audio === 'undefined') return false;
-  const path = XL_SFX[name]; if (!path) return false;
-  const pool = xlUiPool[name] || (xlUiPool[name] = []);
+  let path = XL_SFX[name]; if (!path) return false;
+  if (Array.isArray(path)) { const l = xlUiPool['_last_' + name]; const c = path.filter(q => q !== l); path = c[Math.floor(Math.random() * c.length)] || path[0]; xlUiPool['_last_' + name] = path; } // PATCH X-LIVE v0.86
+  const pool = xlUiPool[path] || (xlUiPool[path] = []);
   let a = pool.find(x => x.paused || x.ended);
   if (!a) { if (pool.length >= 4) a = pool[0]; else { a = new Audio(XL_SOUND_ROOT + path); a.preload = 'auto'; pool.push(a); } }
   try { a.volume = Math.max(0, Math.min(1, gain)); a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(function () {}); } catch (e) { return false; }
