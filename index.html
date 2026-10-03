@@ -2742,12 +2742,104 @@ const EXO_LINES = {
 };
 
 // ── Evo art (PATCH evo-art v1): real card art from assets/exo when it exists, procedural SVG otherwise ──
+// PATCH X-LIVE v0.90 -- ten Evo levels (Ennis, 4 Oct). Same EVO10 module as the Battle Arena.
+/* EVO10 -- ten-level Evo progression (Ennis, 4 Oct 2026). Shared verbatim by
+   the Battle Arena (public/preview.html) and X-Live (index.html).
+   - Sync XP to REACH level L: XP[L-1] = 0/250/500/1200/2500/4500/8000/12000/20000/30000.
+   - Levels 1-9 come from Sync XP. Level 10 also needs a host grant (l10 flag).
+   - Branches are a lineage: pick A/B/C at L2, split to A1/A2 (etc.) at L5,
+     H (hybrid) is an optional permanent path at L8+. Hosts can reset a path.
+   - `stage` (1-5) is kept as the power tier the combat code already reads:
+     L1-2 -> 1, L3-4 -> 2, L5-6 -> 3, L7-9 -> 4, L10 -> 5.
+   - Art: small copies only (.web.jpg / .thumb.jpg). Levels 1-3 keep their
+     legacy file names (<n>-<b>), levels 4-10 use l<NN>-<b>. */
+(function (root) {
+  var XP = [0, 250, 500, 1200, 2500, 4500, 8000, 12000, 20000, 30000];
+  var SUB = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+  function branchesAt(level) { return level <= 1 ? ['BASE'] : level <= 4 ? ['A', 'B', 'C'] : level <= 7 ? SUB.slice() : SUB.concat(['H']); }
+  var LINE_STUDIO = { ironwright: 'gentech', resonant: 'mindforge', mythweaver: 'emagination', neonborn: 'innov8' };
+  var NAMES = {
+    ironwright: { A: 'Forgeclaw', B: 'Bulwark', C: 'Arcwright', H: 'Omniforge Prime' },
+    resonant: { A: 'Bassbreaker', B: 'Tempo', C: 'Harmonic', H: 'Luminarch Prime' },
+    mythweaver: { A: 'Quillblade', B: 'Mirage', C: 'Starweaver', H: 'Worldsmith Prime' },
+    neonborn: { A: 'Riftfang', B: 'Ghostwire', C: 'Voltstalker', H: 'Singularity Prime' }
+  };
+  function clampLevel(n) { n = Math.floor(Number(n) || 1); return Math.max(1, Math.min(10, n)); }
+  function tierOf(level) { level = clampLevel(level); return level <= 2 ? 1 : level <= 4 ? 2 : level <= 6 ? 3 : level <= 9 ? 4 : 5; }
+  // Level the XP alone earns (never 10 -- that needs the grant).
+  function levelForXp(xp) { var l = 1; for (var i = 1; i < 9; i++) { if ((xp || 0) >= XP[i]) l = i + 1; } return l; }
+  function levelOf(ex) {
+    if (!ex) return 1;
+    if (ex.level) return clampLevel(ex.level);
+    // Rows written before the ten-level switch: derive from XP, keep a granted Paragon.
+    return (ex.stage || 1) >= 5 ? 10 : levelForXp(ex.sync_xp || 0);
+  }
+  function branchOf(ex) { var b = String((ex && ex.branch) || 'BASE').toUpperCase(); return b === 'H' || b === 'BASE' || /^[ABC][12]?$/.test(b) ? b : 'BASE'; }
+  // The path step the player must choose before their card can move past it.
+  function pendingChoice(ex) {
+    var lv = levelOf(ex), b = branchOf(ex);
+    if (lv >= 2 && b === 'BASE') return ['A', 'B', 'C'];
+    if (lv >= 5 && b.length === 1 && b !== 'H') return [b + '1', b + '2'];
+    return null;
+  }
+  // Optional hybrid offer at L8+ (does not block anything).
+  function canTakeHybrid(ex) { var lv = levelOf(ex), b = branchOf(ex); return lv >= 8 && b !== 'H' && b.length === 2; }
+  // The card shown: the highest level the chosen path has art for.
+  function cardOf(ex) {
+    var lv = levelOf(ex), b = branchOf(ex);
+    for (var l = lv; l > 1; l--) { var c = cardAt(l, b); if (c) return { level: l, branch: c }; }
+    return { level: 1, branch: 'BASE' };
+  }
+  function cardAt(level, branch) { // card for any level on a given path (deck rows)
+    level = clampLevel(level); var b = String(branch || 'BASE').toUpperCase();
+    if (level === 1) return 'BASE';
+    if (b === 'BASE') return null;
+    if (level <= 4) return b === 'H' ? null : b[0];
+    if (b === 'H') return level >= 8 ? 'H' : null;
+    return b.length === 2 ? b : null;
+  }
+  function file(line, level, branch, size) {
+    level = clampLevel(level);
+    var b = String(branch || 'BASE').toLowerCase();
+    var stem = level <= 3 ? level + '-' + b : 'l' + (level < 10 ? '0' : '') + level + '-' + b;
+    return line + '/' + stem + '-default-standard' + (size === 'thumb' ? '.thumb.jpg' : '.web.jpg');
+  }
+  function branchName(line, b) {
+    b = String(b || 'BASE').toUpperCase(); if (b === 'BASE') return 'Base';
+    var n = (NAMES[line] || {})[b[0]] || b; if (b === 'H') return (NAMES[line] || {}).H || 'Hybrid';
+    return n + (b.length > 1 ? ' ' + b[1] : '');
+  }
+  function nextXp(ex) { var lv = levelOf(ex); return lv >= 10 ? null : XP[lv]; }
+  // Apply a new Sync XP total. Returns the patch to save (sync_xp, level, stage) and whether it levelled.
+  function applyXp(ex, newXp) {
+    var before = levelOf(ex), lv = before;
+    if (lv < 9) lv = Math.max(lv, levelForXp(newXp));
+    return { patch: { sync_xp: newXp, level: lv, stage: tierOf(lv) }, leveled: lv > before, from: before, to: lv };
+  }
+  // Path choice: only the options pendingChoice offers (or H when canTakeHybrid). Returns a patch or null.
+  function choose(ex, b) {
+    b = String(b || '').toUpperCase();
+    var opts = pendingChoice(ex);
+    if (opts && opts.indexOf(b) >= 0) return { branch: b };
+    if (b === 'H' && canTakeHybrid(ex)) return { branch: 'H' };
+    return null;
+  }
+  // Host grant for Level 10: needs Level 9, the XP and a path.
+  function canGrantL10(ex) { return levelOf(ex) === 9 && (ex.sync_xp || 0) >= XP[9] && !pendingChoice(ex); }
+  function grantL10(ex) { return canGrantL10(ex) ? { level: 10, stage: 5 } : null; }
+  // Host path reset: back to the start of the current path step.
+  function resetPath(ex) { return { branch: 'BASE' }; }
+  root.EVO10 = { XP: XP, branchesAt: branchesAt, tierOf: tierOf, levelForXp: levelForXp, levelOf: levelOf, branchOf: branchOf,
+    pendingChoice: pendingChoice, canTakeHybrid: canTakeHybrid, cardOf: cardOf, cardAt: cardAt, file: file, branchName: branchName,
+    nextXp: nextXp, applyXp: applyXp, choose: choose, canGrantL10: canGrantL10, grantL10: grantL10, resetPath: resetPath,
+    LINE_STUDIO: LINE_STUDIO };
+})(typeof window !== 'undefined' ? window : globalThis);
 const EXO_ART_BASE = 'https://pflx-battle-arena.vercel.app/assets/exo/';
-function exoArtFile(exo, cw) {
-  const st = exo.stage || 1;
-  const build = String(exo.build || (st === 1 ? 'base' : st < 4 ? 'a' : 'a1')).toLowerCase();
-  return exo.line + '/' + st + '-' + build + '-' + cw + '-' + (exo.form || 'standard');
+function exoArtFile(exo, size) { // small copies only, by card level + path
+  const c = EVO10.cardOf(exo);
+  return EVO10.file(exo.line, c.level, c.branch, size);
 }
+function exoTierName(ex) { const L2 = EXO_LINES[ex && ex.line]; return L2 ? L2.stages[EVO10.tierOf(EVO10.levelOf(ex)) - 1] : 'Evo'; }
 // PATCH X-LIVE v0.48 -- per-line/stage face focal points for the Studio Hub's
 // cropped-in Evo portrait (see rMe()). Measured by eye against the real
 // assets/exo/<line>/<stage>-<build>-default-standard art (stages 3/5 have no
@@ -2770,8 +2862,9 @@ const EXO_FACE_FOCAL = {
 // only needs remapping on the Y axis into that already-visible window; X
 // carries over as-is since no horizontal cropping happens before this point.
 function exoFaceFocalOrigin(exo) {
-  const line = exo && exo.line, stage = (exo && exo.stage) || 1;
-  const entry = EXO_FACE_FOCAL[line] && EXO_FACE_FOCAL[line][stage];
+  const line = exo && exo.line, card = exo ? EVO10.cardOf(exo) : { level: 1 };
+  // focal points were measured on the level 1 and 2 art only (old stage 4 art is retired)
+  const entry = card.level <= 2 && EXO_FACE_FOCAL[line] && EXO_FACE_FOCAL[line][card.level];
   if (!entry) return '50% 40%';
   const y = Math.max(0, Math.min(100, (entry.y - 7) / 67 * 100));
   const x = Math.max(0, Math.min(100, entry.x));
@@ -2779,9 +2872,8 @@ function exoFaceFocalOrigin(exo) {
 }
 function exoArtHTML(exo, size, fallback) {
   if (!exo || !exo.line) return fallback;
-  const ext = size <= 96 ? '.thumb.jpg' : '.png';
-  const src = EXO_ART_BASE + exoArtFile(exo, exo.colorway || 'default') + ext;
-  const alt = EXO_ART_BASE + exoArtFile(exo, 'default') + ext;
+  const src = EXO_ART_BASE + exoArtFile(exo, size <= 96 ? 'thumb' : 'web');
+  const alt = src;
   const fb = String(fallback || '').replace(/"/g, '&quot;');
   return '<span class="exo-art" style="display:inline-block;width:' + size + 'px;height:' + size + 'px;position:relative;vertical-align:middle">' +
     '<img src="' + src + '" data-alt="' + alt + '" alt="" draggable="false" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;object-position:center 22%;display:block;box-shadow:0 0 0 1.5px rgba(120,220,255,.55), 0 0 16px rgba(120,220,255,.6), 0 0 34px rgba(120,220,255,.3)" ' +
@@ -7165,8 +7257,9 @@ function rMe() {
   const logo = sid ? 'https://pflx-battle-arena.vercel.app/public/' + sid + '.png' : '';
   const rgb = (st && st.colorRgb) || '125,233,255';
   const stages = (window.SMF_SEASON && SMF_SEASON.studios && sid) ? ((SMF_SEASON.studios.find(x => x.id === sid) || {}).exo || {}).stages : null;
-  const stageName = ex ? ((stages && stages[(ex.stage || 1) - 1]) || (EXO_LINES[ex.line] ? EXO_LINES[ex.line].stages[(ex.stage || 1) - 1] : 'Evo')) : null;
-  const xpNext = ex ? (typeof EXO_STAGE_XP !== 'undefined' ? EXO_STAGE_XP[ex.stage || 1] : [0, 500, 2500, 8000, 20000][ex.stage || 1]) : null;
+  const evLv = ex ? EVO10.levelOf(ex) : 1;
+  const stageName = ex ? ((stages && stages[EVO10.tierOf(evLv) - 1]) || exoTierName(ex)) : null;
+  const xpNext = ex && evLv < 9 ? EVO10.nextXp(ex) : null;
   const xpPct = ex && xpNext ? Math.min(100, Math.round(100 * (ex.sync_xp || 0) / xpNext)) : (ex ? 100 : 0);
   const story = (L.story && L.story.byId && L.story.byId[p.id]) || {};
   const orbs = story.orbs || 0, orbCap = 100 + 50 * ((ex && ex.stage || 1) - 1);
@@ -7209,7 +7302,7 @@ function rMe() {
   let evoStats = '<div class="card">';
   if (ex) {
     evoStats += '<div class="hub-bars">' +
-        '<div><span>Sync XP' + (xpNext ? ' to stage ' + ((ex.stage || 1) + 1) : '') + '</span><b>' + (ex.sync_xp || 0).toLocaleString() + (xpNext ? ' / ' + xpNext.toLocaleString() : ' · Paragon') + '</b><div class="xl-story-bar"><i style="width:' + xpPct + '%"></i></div></div>' +
+        '<div><span>Sync XP' + (xpNext ? ' to level ' + (evLv + 1) : '') + '</span><b>' + (ex.sync_xp || 0).toLocaleString() + (xpNext ? ' / ' + xpNext.toLocaleString() : (evLv === 9 ? ' · Lv 10 is host granted' : ' · Level 10')) + '</b><div class="xl-story-bar"><i style="width:' + xpPct + '%"></i></div></div>' +
         '<div><span>Energy orbs</span><b>' + orbs + ' / ' + orbCap + '</b><div class="xl-story-bar orb"><i style="width:' + Math.min(100, Math.round(100 * orbs / orbCap)) + '%"></i></div></div>' +
       '</div>' +
       '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><button class="bigbtn ghost xl-sm" onclick="go(\'play\')">🛠 EVO BAY</button><button class="bigbtn ghost xl-sm" onclick="go(\'shop\')">🛒 MARKETPLACE</button></div>';
@@ -12807,9 +12900,9 @@ window.PFLX_ISSUES = {"version":"1.0","issues":{"aiko":{"key":"aiko","chapter":1
   window.pflxExoState = function () {
     var id = myId(), ex = (L.exo && L.exo[id]) || null, S = window.SMF_SEASON || {}, st = myStory() || {};
     if (!ex || !ex.line) return null;
-    var stage = ex.stage || 1, line = ex.line, base = (S.evoGame && S.evoGame.cards.baseStats[line]) || {};
+    var lv = EVO10.levelOf(ex), stage = EVO10.tierOf(lv), line = ex.line, base = (S.evoGame && S.evoGame.cards.baseStats[line]) || {};
     var stats = {}; Object.keys(base).forEach(function (k) { stats[k] = base[k] + (stage - 1); });
-    return { studio: LINE_STUDIO[line] || 'studio-gentech', stage: stage, build: ex.build || (stage === 1 ? 'BASE' : (stage < 4 ? 'A' : 'A1')),
+    return { studio: LINE_STUDIO[line] || 'studio-gentech', stage: stage, level: lv, branch: EVO10.branchOf(ex), build: EVO10.cardOf(ex).branch,
              syncXp: ex.sync_xp || 0, orbs: st.orbs || 0, orbCap: 100 + 50 * (stage - 1), colorway: ex.colorway || 'default', form: ex.form || 'standard', stats: stats };
   };
 
@@ -12839,7 +12932,7 @@ window.PFLX_ISSUES = {"version":"1.0","issues":{"aiko":{"key":"aiko","chapter":1
       '<div style="flex:1;min-width:200px"><div style="font-family:Audiowide,sans-serif;font-size:13px;color:#e8ecff">' + esc(where) + '</div>' +
       '<div class="xl-story-bar" style="margin:8px 0"><i style="width:' + (g ? g.pct : 0) + '%"></i></div>' +
       '<div class="xl-hint" style="text-align:left;margin:0">' + (g && g.next ? 'Next: ' + esc(g.next.title) : 'The Nexus opens a slot for you.') +
-      (ex ? ' · Evo stage ' + ex.stage + ' · ' + (ex.orbs || 0) + ' orbs' : '') + '</div></div>' +
+      (ex ? ' · Evo level ' + ex.level + ' · ' + (ex.orbs || 0) + ' orbs' : '') + '</div></div>' +
       '<button class="bigbtn" onclick="xlStoryOpen()">\uD83D\uDE80 ENTER THE CAMPAIGN</button></div>' +
       (L.story.loading ? '<div class="xl-hint" style="text-align:left;margin-top:8px">Reading your progress…</div>' : '') + '</div>';
     if (L.story.embedKey) {
@@ -12856,7 +12949,7 @@ window.PFLX_ISSUES = {"version":"1.0","issues":{"aiko":{"key":"aiko","chapter":1
   window.xlStoryCampaignBlock = function (p, ex) {
     var st = myStory(), g = st ? xlStoryStage(st) : null, joined = !!(st && st.joined);
     var S = window.SMF_SEASON || {}, stageNames = ex && S.studios ? (S.studios.filter(function (x) { return x.id === LINE_STUDIO[ex.line]; })[0] || {}).exo : null;
-    var evoName = ex ? ((stageNames && stageNames.stages) ? stageNames.stages[(ex.stage || 1) - 1] : (EXO_LINES[ex.line] ? EXO_LINES[ex.line].stages[(ex.stage || 1) - 1] : 'Evo')) : null;
+    var evoName = ex ? ((stageNames && stageNames.stages) ? stageNames.stages[EVO10.tierOf(EVO10.levelOf(ex)) - 1] : exoTierName(ex)) : null;
     var where = !g || !g.done ? 'Act Zero \u00b7 Arrival' : (g.complete ? 'Season complete' : (g.act ? g.act.n + ' \u00b7 ' + g.act.t : 'Act Zero \u00b7 Arrival'));
     var h = '<div style="margin-top:14px;padding:12px;border:1px solid rgba(125,233,255,.25);background:rgba(7,11,22,.45);text-align:left">' +
       '<div style="font-family:Audiowide;font-size:10px;letter-spacing:.22em;color:#7de9ff">CAMPAIGN \u00b7 CHAPTER 1</div>' +
@@ -13142,17 +13235,25 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   /* ---------- derived ---------- */
   function line() { var ex = exoRow(); return ex ? ex.line : null; }
   function studioOf() { return S().studios ? S().studios.filter(function (s) { return s.id === LINE_STUDIO[line()]; })[0] : null; }
-  function stage() { var ex = exoRow(); return ex ? (ex.stage || 1) : 1; }
+  // PATCH X-LIVE v0.90 -- level() is the card level 1-10; stage() is the power tier 1-5 the combat numbers use.
+  function level() { var ex = exoRow(); return ex ? EVO10.levelOf(ex) : 1; }
+  function stage() { return EVO10.tierOf(level()); }
   function stageInfo(n) { return (S().exo.stages || [])[(n || stage()) - 1] || { name: 'Core', n: 1, frame: 'steel' }; }
-  function stageName(n) { var st = studioOf(); return st && st.exo.stages ? st.exo.stages[(n || stage()) - 1] : (EXO_LINES[line()] ? EXO_LINES[line()].stages[(n || stage()) - 1] : 'Evo'); }
-  function buildName(b) { if (!b || b === 'BASE') return 'Base'; var bn = (S().exo.buildNames || {})[line()] || {}; return (bn[b[0]] || b) + (b.length > 1 && b !== 'H' ? ' ' + b[1] : ''); }
-  function cardName(n, b) { return stageName(n) + (b && b !== 'BASE' ? ' · ' + buildName(b) : ''); }
-  function activeBuild() { var st = story(); var n = stage(); if (st.build && st.buildStage === n) return st.build; return n === 1 ? 'BASE' : (n < 4 ? 'A' : 'A1'); }
+  function stageName(n) { var t = n || stage(); var st = studioOf(); return st && st.exo.stages ? st.exo.stages[t - 1] : (EXO_LINES[line()] ? EXO_LINES[line()].stages[t - 1] : 'Evo'); }
+  function levelName(lv) { return stageName(EVO10.tierOf(lv || level())); }
+  function buildName(b) { return EVO10.branchName(line(), b); }
+  function cardName(lv, b) { return levelName(lv) + (b && b !== 'BASE' ? ' · ' + buildName(b) : ''); }
+  function activeBuild() { var ex = exoRow(); return ex ? EVO10.cardOf(ex).branch : 'BASE'; }
   function owned(n) { var st = story(); st.owned = st.owned || {}; var k = String(n); if (!st.owned[k]) st.owned[k] = [n === 1 ? 'BASE' : (n < 4 ? 'A' : 'A1')]; return st.owned[k]; }
-  function artUrl(n, b, size) { var cw = (exoRow() && exoRow().colorway) || 'default'; return ART_BASE + line() + '/' + n + '-' + String(b || 'BASE').toLowerCase() + '-' + cw + '-standard' + (size === 'thumb' ? '.thumb.jpg' : '.web.jpg'); }
-  function artAlt(n, b, size) { return ART_BASE + line() + '/' + n + '-' + String(b || 'BASE').toLowerCase() + '-default-standard' + (size === 'thumb' ? '.thumb.jpg' : '.web.jpg'); }
+  function artUrl(lv, b, size) { return ART_BASE + EVO10.file(line(), lv, b, size); }
+  function artAlt(lv, b, size) { return artUrl(lv, b, size); }
   function stageXpTable() { return (typeof EXO_STAGE_XP !== 'undefined') ? EXO_STAGE_XP : [0, 500, 2500, 8000, 20000]; }
-  function nextThreshold() { var n = stage(); var xp = stageXpTable(); return n < 5 ? xp[n] : null; }
+  function nextThreshold() { var ex = exoRow(); return ex && level() < 9 ? EVO10.nextXp(ex) : null; }
+  function levelUpPatch(newXp) { // shared by feeding and battle wins
+    var ex = exoRow(); var r = EVO10.applyXp(ex || {}, newXp);
+    if (r.leveled) toast('✨ Your Evo reached Level ' + r.to + (EVO10.pendingChoice(Object.assign({}, ex, r.patch)) ? ' · choose your new path in the Evo Bay' : '') + '.');
+    return r.patch;
+  }
   // PATCH X-LIVE v0.73 -- the Sync XP threshold to REACH stage k (from k-1), for any k, not just stage()+1. Powers the full 5-stage Card Deck row below.
   function stageThreshold(k) { var xp = stageXpTable(); return xp[k - 1] || 0; }
   function orbCap() { return 100 + 50 * (stage() - 1); }
@@ -13178,9 +13279,9 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
 
   /* ---------- card markup ---------- */
   function cardHTML(n, b, chip, locked) {
-    return '<div class="evc' + (locked ? ' locked' : '') + '" style="--frame:' + (FRAME[stageInfo(n).frame] || FRAME.steel) + '"><div>' +
+    return '<div class="evc' + (locked ? ' locked' : '') + '" style="--frame:' + (FRAME[stageInfo(EVO10.tierOf(n)).frame] || FRAME.steel) + '"><div>' +
       '<img src="' + artUrl(n, b) + '" data-alt="' + artAlt(n, b) + '" alt="" onerror="if(!this.dataset.f){this.dataset.f=1;this.src=this.dataset.alt}else{this.style.opacity=0}">' +
-      '<span class="stage">STAGE<b>' + n + '</b></span>' + (chip ? '<span class="chip">' + esc(chip) + '</span>' : '') +
+      '<span class="stage">LV<b>' + n + '</b></span>' + (chip ? '<span class="chip">' + esc(chip) + '</span>' : '') +
       (locked ? '<span class="lock">🔒</span>' : '') +
       '<span class="plate">' + esc(cardName(n, b)) + '</span></div></div>';
   }
@@ -13228,7 +13329,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     if (!myId()) return h + '<div class="xl-hint">Sign in to hatch your Evo.</div></div>';
     if (ln) {
       var nm = EXO_LINES[ln] ? EXO_LINES[ln].stages[0] : 'Evo';
-      h += '<div class="xl-hint">Your Evo is ready to hatch. A ' + esc(nm) + ', bonded to your Studio. It starts at Stage 1 and grows with every quest.</div>' +
+      h += '<div class="xl-hint">Your Evo is ready to hatch. A ' + esc(nm) + ', bonded to your Studio. It starts at Level 1 and grows through ten levels with every quest.</div>' +
         '<button class="bigbtn gold" onclick="xlEvoHatch(\'' + ln + '\',\'' + where + '\')">🥚 HATCH ' + esc(nm.toUpperCase()) + (where === 'clash' ? ' &amp; FIGHT' : '') + '</button>';
     } else {
       h += '<div class="xl-hint">Choose the Evo line you want to hatch. Each one belongs to a Startup Studio.</div><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px">' +
@@ -13239,7 +13340,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
   window.xlEvoStarterCard = xlEvoStarterCard;
   window.xlEvoHatch = function (ln, where) {
     var id = myId(); if (!id || !EXO_LINES[ln] || exoRow()) { render(); return; }
-    var row = { player_id: id, line: ln, stage: 1, sync_xp: 0, exo_name: EXO_LINES[ln].stages[0], colorway: 'default',
+    var row = { player_id: id, line: ln, stage: 1, level: 1, branch: 'BASE', sync_xp: 0, exo_name: EXO_LINES[ln].stages[0], colorway: 'default',
       equipped: {}, cosmetics: { accent: '' }, stats_cache: {}, updated_at: new Date().toISOString() };
     if (!L.exo) L.exo = {};
     L.exo[id] = row;
@@ -13261,22 +13362,25 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var rest = (st.lastCare || 0) + cooldownMs() - Date.now();
     var base = g.cards.baseStats[line()] || {};
     var h = '<div class="evb-grid">';
-    h += '<div class="evb-panel"><h3>Your Evo</h3>' + cardHTML(n, activeBuild(), (EXO_LINES[line()] || {}).name) +
+    var lv = level(), cur = EVO10.cardOf(ex);
+    h += '<div class="evb-panel"><h3>Your Evo · Level ' + lv + '</h3>' + cardHTML(cur.level, cur.branch, (EXO_LINES[line()] || {}).name) +
       '<div class="evb-row"><span>Orb bar</span><b>' + (st.orbs || 0) + ' / ' + orbCap() + '</b></div><div class="evb-bar orb"><i style="width:' + Math.min(100, 100 * (st.orbs || 0) / orbCap()) + '%"></i></div>' +
-      '<div class="evb-row"><span>Sync XP to next stage</span><b>' + (nt ? (ex.sync_xp || 0) + ' / ' + nt : 'Paragon is host granted') + '</b></div><div class="evb-bar xp"><i style="width:' + (nt ? Math.min(100, 100 * (ex.sync_xp || 0) / nt) : 100) + '%"></i></div>' +
+      '<div class="evb-row"><span>Sync XP to level ' + Math.min(10, lv + 1) + '</span><b>' + (nt ? (ex.sync_xp || 0) + ' / ' + nt : (lv >= 10 ? 'Max level' : (ex.sync_xp || 0) + ' · Level 10 is host granted')) + '</b></div><div class="evb-bar xp"><i style="width:' + (nt ? Math.min(100, 100 * (ex.sync_xp || 0) / nt) : 100) + '%"></i></div>' +
       '<div class="evb-stats">' + (S().exo.stats || []).map(function (k) { var ref = (base[k] || 0) + (n - 1); var cls = sv[k] > ref ? 'up' : (sv[k] < ref ? 'down' : ''); return '<div class="' + cls + '"><b>' + sv[k] + '</b>' + k + '</div>'; }).join('') + '</div></div>';
     h += '<div class="evb-col">';
     h += '<div class="evb-panel"><h3>Care</h3><div class="evb-row"><span>Condition</span><span class="mood ' + m + '">' + (m === 'fed' ? 'Fed · +10% stats' : (m === 'hungry' ? 'Hungry · −10% stats' : 'Ready')) + '</span></div>' +
       '<div class="care"><div class="c"><b>Collect</b><p>Orbs your quests earned in Mission Control wait here. Collecting starts the rest timer.</p><span class="t">' + (rest > 0 ? 'Resting · ' + fmtT(rest) : ((st.pending || 0) > 0 ? (st.pending || 0) + ' orbs waiting' : 'Nothing waiting. Finish a quest.')) + '</span><button class="bigbtn ghost xl-sm" onclick="xlEvoCollect()"' + ((rest > 0 || !(st.pending > 0)) ? ' disabled' : '') + '>COLLECT ORBS</button></div>' +
       '<div class="c"><b>Feed</b><p>Feed ' + g.orbs.feedCost + ' orbs for ' + g.orbs.feedSyncXp + ' Sync XP. A fed Evo fights 10 percent stronger. Feeding starts the same rest timer.</p><span class="t">' + (rest > 0 ? 'Resting · ' + fmtT(rest) : ((st.orbs || 0) >= g.orbs.feedCost ? 'Ready to feed' : 'Not enough orbs')) + '</span><button class="bigbtn ghost xl-sm" onclick="xlEvoFeed()"' + ((rest > 0 || (st.orbs || 0) < g.orbs.feedCost) ? ' disabled' : '') + '>FEED</button></div></div></div>';
     h += '<div class="evb-panel"><h3>Abilities on this card</h3><div class="abil">' + abilities().map(function (a) { return abHTML(a, false); }).join('') + '</div></div>';
-    /* card deck: this stage's builds, then the next stage greyed out */
-    /* PATCH X-LIVE v0.73 -- full 5-stage swipeable inventory, see header comment */
-    var deckRow = '';
-    for (var dk = 1; dk <= 5; dk++) {
-      deckRow += '<div class="evb-divider">STAGE ' + dk + '<br>' + esc(stageName(dk).toUpperCase()) +
-        (dk === n ? '<br><span style="color:var(--cyan)">CURRENT</span>' : (dk < n ? '' : '<br>unlocks at ' + stageThreshold(dk).toLocaleString() + ' Sync XP')) + '</div>' +
-        deckHTML(dk, dk > n, dk < n);
+    /* PATCH X-LIVE v0.90 -- ten-level path: one card per level on the player's lineage; choices at L2, L5, L8 */
+    h = h.replace('<div class="evb-col">', '<div class="evb-col">' + pathChoiceHTML(ex));
+    var deckRow = '', myB = EVO10.branchOf(ex);
+    for (var dk = 1; dk <= 10; dk++) {
+      var cb = EVO10.cardAt(dk, myB);
+      deckRow += '<div class="evb-divider">LEVEL ' + dk + '<br>' + esc(levelName(dk).toUpperCase()) +
+        (dk === lv ? '<br><span style="color:var(--cyan)">CURRENT</span>' : (dk < lv ? '' : '<br>' + (dk === 10 ? EVO10.XP[9].toLocaleString() + ' Sync XP + host' : EVO10.XP[dk - 1].toLocaleString() + ' Sync XP'))) + '</div>' +
+        '<div class="shop"><div class="s' + (dk <= lv && cb ? ' owned' : ' locked') + '">' + (cb ? cardHTML(dk, cb, dk <= lv ? (dk === cur.level ? 'active' : 'collected') : 'locked', dk > lv) +
+          '<span class="n">' + esc(buildName(cb)) + '</span>' : '<div class="evc locked"><div><span class="stage">LV<b>' + dk + '</b></span><span class="lock">?</span><span class="plate">' + (dk <= 4 ? 'Path opens at Lv 2' : 'Path splits at Lv 5') + '</span></div></div>') + '</div></div>';
     }
     h += '<div class="evb-panel"><h3>Card deck</h3><div class="evb-deckrow">' + deckRow + '</div></div>';
     h += '</div></div>';
@@ -13308,16 +13412,40 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
                        : '<button class="bigbtn gold xl-sm" onclick="xlEvoBuy(\'' + b + '\')"' + (xcOf() < cost ? ' disabled' : '') + '>BUY · ' + cost + ' XC</button>'))) + '</div>';
     }).join('') + '</div>';
   }
+  function pathChoiceHTML(ex) {
+    var opts = EVO10.pendingChoice(ex), hyb = EVO10.canTakeHybrid(ex), lv = EVO10.levelOf(ex);
+    if (!opts && !hyb) return '';
+    var list = opts || ['H'];
+    return '<div class="evb-panel" style="border-color:rgba(255,209,102,.5)"><h3>' + (opts ? 'Choose your path' : 'Hybrid path open') + '</h3>' +
+      '<div class="xl-hint" style="text-align:left;margin:0 0 10px">' + (opts ? 'Level ' + lv + ' opens a new path. Your choice is permanent; only a host can reset it.' : 'Level 8 opens the Hybrid path. It is optional and replaces ' + esc(buildName(EVO10.branchOf(ex))) + ' for good.') + '</div>' +
+      '<div class="shop">' + list.map(function (b) {
+        var c = EVO10.cardOf({ line: ex.line, level: lv, branch: b }), a = (G() && G().abilities[line()] || {})[b[0]];
+        return '<div class="s">' + cardHTML(c.level, c.branch, 'path ' + b, false) + '<span class="n">' + esc(buildName(b)) + '</span><p>' + (a ? esc(a.name) + ': ' + esc(a.text) : '') + '</p>' +
+          '<button class="bigbtn gold xl-sm" onclick="xlEvoChoose(\'' + b + '\')">' + (b === 'H' ? 'TAKE HYBRID' : 'CHOOSE') + '</button></div>';
+      }).join('') + '</div></div>';
+  }
+  window.xlEvoChoose = function (b) {
+    var ex = exoRow(); if (!ex) return;
+    var patch = EVO10.choose(ex, b); if (!patch) { toast('That path is not open yet.'); return; }
+    modal('<div class="cardT">Lock in ' + esc(buildName(b)) + '?</div><div style="font-size:13px;color:#aeb6d8">' + (b === 'H' ? 'The Hybrid path replaces ' + esc(buildName(EVO10.branchOf(ex))) + '. ' : '') + 'Paths are permanent. Only a host can reset one.</div>' +
+      '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="xlEvoChooseConfirm(\'' + b + '\')">LOCK IT IN</button><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+  };
+  window.xlEvoChooseConfirm = function (b) {
+    var ex = exoRow(); var patch = ex && EVO10.choose(ex, b); modalClose(); if (!patch) return;
+    saveExo(patch); liteLog(myId(), 'award', 'Evo path: ' + buildName(b), 0); toast('🧬 Path locked in: ' + buildName(b) + '.'); render();
+  };
   window.xlEvoCollect = function () { var st = story(); st.orbs = Math.min(orbCap(), (st.orbs || 0) + (st.pending || 0)); st.pending = 0; st.lastCare = Date.now(); saveStory(); render(); };
   window.xlEvoFeed = function () {
     var g = G(), st = story(), ex = exoRow(); if (!g || !ex || (st.orbs || 0) < g.orbs.feedCost) return;
     st.orbs -= g.orbs.feedCost; st.lastCare = Date.now(); st.lastFed = Date.now(); saveStory();
-    var xp = (ex.sync_xp || 0) + g.orbs.feedSyncXp, patch = { sync_xp: xp }, nt = nextThreshold();
-    if (nt && xp >= nt && stage() < 4) { patch.stage = stage() + 1; toast('✨ Your Evo evolved into ' + stageName(patch.stage) + '.'); }
+    var xp = (ex.sync_xp || 0) + g.orbs.feedSyncXp, patch = levelUpPatch(xp);
     saveExo(patch); liteLog(myId(), 'award', 'Fed ' + stageName(), 0); render();
   };
-  window.xlEvoEquip = function (b) { var st = story(); st.build = b; st.buildStage = stage(); saveStory(); render(); };
-  window.xlEvoBuy = function (b) {
+  /* PATCH X-LIVE v0.90 -- the build shop is retired: cards come from the chosen path. Kept as no-ops for stale buttons. */
+  window.xlEvoEquip = function () { render(); };
+  window.xlEvoEquipLegacy = function (b) { var st = story(); st.build = b; st.buildStage = stage(); saveStory(); render(); };
+  window.xlEvoBuy = function () { render(); };
+  window.xlEvoBuyLegacy = function (b) {
     var g = G(), n = stage(), cost = (g.cards.purchaseAt || {})[String(n)] || 0;
     if (xcOf() < cost) { toast('Not enough XC — you have ' + xcOf().toLocaleString()); return; }
     modal('<div class="cardT">Buy ' + esc(cardName(n, b)) + '?</div><div style="font-size:13px;color:#aeb6d8">This spends <b style="color:#ffd166">' + cost.toLocaleString() + ' XC</b> and adds the card to your deck.</div>' +
@@ -13678,13 +13806,12 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
       var xc = (rw.win.xc + rw.win.perTier.xc * (f.tier - 1)) * hiveMult, orbs = (rw.win.orbs + rw.win.perTier.orbs * (f.tier - 1)) * hiveMult, xp = (rw.win.syncXp + rw.win.perTier.syncXp * (f.tier - 1)) * hiveMult;
       var winId = B.hive ? 'hive' : f.id;
       earnXc(xc, 'xlive.archive.win.' + winId); st.pending = (st.pending || 0) + orbs; st.wins = (st.wins || 0) + 1; saveStory();
-      var nxp = (ex.sync_xp || 0) + xp, patch = { sync_xp: nxp }, nt = nextThreshold();
-      if (nt && nxp >= nt && stage() < 4) { patch.stage = stage() + 1; toast('✨ Your Evo evolved into ' + stageName(patch.stage) + '.'); }
+      var nxp = (ex.sync_xp || 0) + xp, patch = levelUpPatch(nxp);
       saveExo(patch); liteLog(myId(), 'award', 'Evo Clash: ' + (B.hive ? 'The Hive' : f.name) + ' down', xc);
       say('The ' + f.name + ' breaks apart. +' + xc + ' XC, +' + orbs + ' orbs waiting at the Bay, +' + xp + ' Sync XP.', 'win');
       B.result = '<h2>' + (B.hive ? 'The Hive is down' : 'Archive unit down') + '</h2><p>Rewards post through X-Coin. The orbs wait in the Bay until your rest timer clears.</p><div class="r"><div>+' + xc + '<span>XC</span></div><div>+' + orbs + '<span>Orbs</span></div><div>+' + xp + '<span>Sync XP</span></div></div>' + xlBattleContinueHtml(true) + '<div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">KEEP PLAYING · NEXT UNIT</button> <button class="bigbtn ghost" onclick="xlBattleTheaterExit();xlHubGo(1)">EVO BAY</button></div>';
     } else {
-      saveExo({ sync_xp: (ex.sync_xp || 0) + rw.lose.syncXp });
+      saveExo(levelUpPatch((ex.sync_xp || 0) + rw.lose.syncXp));
       say('Your Evo is down. +' + rw.lose.syncXp + ' Sync XP for the attempt.', 'bad');
       B.result = '<h2>Evo down</h2><p>No XC lost. Feed up and try the term bank again.</p>' + xlBattleContinueHtml(false) + '<div><button class="bigbtn gold" onclick="xlBattleStartSequence(\'fight\')">TRY AGAIN</button> <button class="bigbtn ghost" onclick="xlBattleTheaterExit();xlHubGo(1)">EVO BAY</button></div>';
     }
