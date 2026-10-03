@@ -7064,7 +7064,7 @@ function presetEditor(kind) {
 }
 
 // ── PLAYER VIEW ──
-function myRecord() { return L.roster.find(p => p.id === (L.me && L.me.id)) || { id: (L.me && L.me.id) || 'me', brand: (L.me && L.me.brand) || 'Player', xc: 0, totalXc: 0, badges: 0 }; }
+function myRecord() { return L.roster.find(p => p.id === (L.me && L.me.id)) || (L.hostRoster || []).find(p => p.id === (L.me && L.me.id)) || { id: (L.me && L.me.id) || 'me', brand: (L.me && L.me.brand) || 'Player', xc: 0, totalXc: 0, badges: 0 }; } // PATCH X-LIVE v0.85 -- host/admin accounts are filtered OUT of L.roster by loadRoster() (into L.hostRoster instead), so myRecord() always fell through to the dummy fallback for every host/admin, losing their real studioId/xc/totalXc/badges
 function rMe() {
   const p = myRecord();
   const ex = L.exo[p.id];
