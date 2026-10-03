@@ -2400,7 +2400,7 @@ async function loadRoster() {
     } catch (e) { L.roster = DEMO_ROSTER.slice(); L.demo = L.demo || !L.roster.length; }
   }
   if (!L.roster.length) L.roster = DEMO_ROSTER.slice();
-  L.loaded.roster = true; resolveMyId(); render();
+  L.loaded.roster = true; resolveMyId(); exoReconcileStudios(); render(); // PATCH X-LIVE v0.88
 }
 function resolveMyId() {
   if (!L.me || L.me.resolved) return;
@@ -2414,7 +2414,37 @@ async function loadExo() {
     const r = await fetch(SUPABASE_URL + '/rest/v1/player_avatars?select=*', { headers: SB_HEADERS });
     if (r.ok) (await r.json()).forEach(row => { L.exo[row.player_id] = row; });
   } catch (e) {}
+  exoReconcileStudios(); // PATCH X-LIVE v0.88
   render();
+}
+// PATCH X-LIVE v0.88 -- an Evo follows its player's Studio. Ennis (3 Oct):
+// a Studio move re-skins the Evo to the new Studio's line at the SAME stage,
+// Sync XP kept (spec v1.1). Before this, a player moved into Innov8 kept the
+// eMagination Sketchling they hatched earlier. Every row is corrected in
+// memory for display; only the signed-in player's own row is written back,
+// so a host session never rewrites other players' rows.
+const EXO_STUDIO_LINE = { 'studio-gentech': 'ironwright', 'studio-mindforge': 'resonant', 'studio-emagination': 'mythweaver', 'studio-innov8': 'neonborn' };
+function exoReconcileStudios() {
+  if (!L.exo) return;
+  const all = (L.roster || []).concat(L.hostRoster || []);
+  Object.keys(L.exo).forEach(pid => {
+    const ex = L.exo[pid], rec = all.find(r => r.id === pid);
+    const want = rec && EXO_STUDIO_LINE[rec.studioId];
+    if (!ex || !want || ex.line === want || !EXO_LINES[want]) return;
+    const old = EXO_LINES[ex.line], st = Math.max(1, Math.min(5, ex.stage || 1));
+    const defaultName = !ex.exo_name || (old && old.stages.indexOf(ex.exo_name) >= 0);
+    ex.line = want;
+    if (defaultName) ex.exo_name = EXO_LINES[want].stages[st - 1];
+    if (!EXO_LINES[want].colorways[ex.colorway || 'default']) ex.colorway = 'default';
+    if (L.me && L.me.id === pid) {
+      ex.updated_at = new Date().toISOString();
+      try {
+        fetch(SUPABASE_URL + '/rest/v1/player_avatars?player_id=eq.' + encodeURIComponent(pid), { method: 'PATCH',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, SB_HEADERS),
+          body: JSON.stringify({ line: ex.line, exo_name: ex.exo_name, colorway: ex.colorway, updated_at: ex.updated_at }) });
+      } catch (e) {}
+    }
+  });
 }
 L.cohortNames = [];
 async function loadCohortGroups() {
@@ -13134,7 +13164,7 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
      with no Studio yet picks one of the four lines. */
   var STUDIO_LINE = { 'studio-gentech': 'ironwright', 'studio-mindforge': 'resonant', 'studio-emagination': 'mythweaver', 'studio-innov8': 'neonborn' };
   function myStudioLine() {
-    var me = (L.roster || []).filter(function (r) { return r.id === myId(); })[0] || {};
+    var me = (L.roster || []).concat(L.hostRoster || []).filter(function (r) { return r.id === myId(); })[0] || {}; // PATCH X-LIVE v0.88 -- hosts hatch their Studio's line too
     return STUDIO_LINE[me.studioId] || '';
   }
   function xlEvoStarterCard(where) {
