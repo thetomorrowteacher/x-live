@@ -6238,10 +6238,10 @@ function xlXRushBannerHTML() {
 function rTeams() {
   const names = (L.cfg.teams && L.cfg.teams.names) || [];
   if (!names.length) {
-    return xlXRushBannerHTML() + '<div class="card" style="text-align:center;padding:40px"><div style="font-size:34px">👥</div>' +
+    return xlXRushBannerHTML() + (L.isHost ? frontiersTeamSetting() : '') + '<div class="card" style="text-align:center;padding:40px"><div style="font-size:34px">👥</div>' +
       '<div style="font-family:Audiowide;font-size:12px;letter-spacing:0.1em;color:#9aa3c8;margin:10px 0">NO TEAMS YET</div>' +
       '<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px"><span style="font-size:12px;color:#8a93b8">Teams:</span>' +
-      '<input id="teamN" type="number" min="2" max="6" value="2" style="width:70px;text-align:center"/>' +
+      '<input id="teamN" type="number" min="1" max="999" value="' + (L.cfg.teams.frontiersMode ? Math.ceil(classRoster().length / 4) : 2) + '" ' + (L.cfg.teams.frontiersMode ? 'disabled ' : '') + 'style="width:70px;text-align:center"/>' +
       '<button class="bigbtn green" onclick="makeTeams()">DRAFT TEAMS</button></div></div>';
   }
   const w = weekStart(0);
@@ -6260,7 +6260,7 @@ function rTeams() {
       (members.length ? '' : '<div style="font-size:11px;color:#5c6488;text-align:center;padding:8px">empty</div>') +
       '</div>';
   }).join('');
-  return xlXRushBannerHTML() + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">' +
+  return xlXRushBannerHTML() + (L.isHost ? frontiersTeamSetting() : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">' +
     (L.isHost ? '<button class="bigbtn gold" onclick="xlXRushLaunch()">🏁 LAUNCH X-RUSH</button>' : '') +
     '<button class="bigbtn green" onclick="teamsShufflePlayers()">🔀 SHUFFLE PLAYERS</button>' +
     '<button class="bigbtn" onclick="teamsRerollNames()">🎲 NEW NAMES</button>' +
@@ -6268,7 +6268,7 @@ function rTeams() {
     // terminology with Mission Control's own "Projects")
     '<button class="bigbtn gold" onclick="projTeams()">📽️ PRESENT</button>' +
     '<span style="flex:1"></span>' +
-    '<span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="2" max="6" value="' + names.length + '" style="width:64px;text-align:center"/>' +
+    '<span style="font-size:12px;color:#8a93b8">Teams:</span><input id="teamN" type="number" min="1" max="999" value="' + names.length + '" ' + (L.cfg.teams.frontiersMode ? 'disabled ' : '') + 'style="width:64px;text-align:center"/>' +
     '<button class="bigbtn ghost" onclick="makeTeams()">REDRAFT</button>' +
     '<button class="bigbtn red" onclick="clearTeams()">CLEAR</button></div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">' + cols + '</div>' +
@@ -6781,18 +6781,71 @@ const TEAM_NAME_BANK = [
 function drawTeamNames(n) {
   return TEAM_NAME_BANK.slice().sort(() => Math.random() - 0.5).slice(0, n);
 }
+// Nexus Frontiers co-op drafting: complete studio quartets first, then diverse fallback.
+function frontiersDraft(roster, random = Math.random) {
+  const studios = ['studio-gentech', 'studio-mindforge', 'studio-emagination', 'studio-innov8'];
+  const seen = new Set();
+  const groups = {}; studios.concat(['unknown']).forEach(k => groups[k] = []);
+  roster.forEach(p => {
+    if (!p || !p.id || seen.has(p.id)) return;
+    seen.add(p.id);
+    const key = String(p.studioId || '').toLowerCase().replace(/^studio-/, '');
+    const sid = 'studio-' + key;
+    groups[studios.includes(sid) ? sid : 'unknown'].push(p);
+  });
+  Object.values(groups).forEach(g => { for (let i = g.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [g[i], g[j]] = [g[j], g[i]]; } });
+  const count = Math.ceil(seen.size / 4);
+  const teams = Array.from({length: count}, () => []);
+  const complete = Math.min(count, ...studios.map(k => groups[k].length));
+  for (let i = 0; i < complete; i++) studios.forEach(k => teams[i].push(groups[k].pop()));
+  Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length).forEach(k => {
+    while (groups[k].length) {
+      const choices = teams.map((members, i) => ({members, i})).filter(t => t.members.length < 4);
+      const match = p => {
+        const sid = 'studio-' + String(p.studioId || '').toLowerCase().replace(/^studio-/, '');
+        return (studios.includes(sid) ? sid : 'unknown') === k;
+      };
+      choices.sort((a, b) => a.members.filter(match).length - b.members.filter(match).length || a.members.length - b.members.length || a.i - b.i);
+      teams[choices[0].i].push(groups[k].pop());
+    }
+  });
+  return teams;
+}
+function frontiersTeamSetting() {
+  return '<label style="display:block;margin:12px 0;color:#a9eaff;font-size:12px"><input type="checkbox" ' + (L.cfg.teams.frontiersMode ? 'checked ' : '') + 'onchange="teamsSetFrontiers(this.checked)"/> Nexus Frontiers · teams of 4, balanced across studios</label>';
+}
+function teamsSetFrontiers(on) {
+  if (!L.isHost) return;
+  L.cfg.teams.frontiersMode = !!on;
+  if (on) makeTeams(); else { saveCfg(); render(); }
+}
+function frontiersAssignTeams() {
+  const teams = frontiersDraft(classRoster());
+  const drawn = drawTeamNames(teams.length);
+  const names = teams.map((_, i) => drawn[i] || ('NEXUS SQUAD ' + (i + 1)));
+  const assign = {};
+  teams.forEach((members, i) => members.forEach(p => assign[p.id] = names[i]));
+  L.cfg.teams = Object.assign({}, L.cfg.teams, {names, assign, frontiersMode: true});
+  return teams;
+}
 function makeTeams() {
+  if (L.cfg.teams.frontiersMode) {
+    const teams = frontiersAssignTeams(); saveCfg();
+    toast('Nexus Frontiers: ' + teams.length + ' squads drafted' + (teams.some(t => t.length < 4) ? ' · partial squad needs players' : ''));
+    go('teams'); return;
+  }
   const inp = document.getElementById('teamN');
   const n = Math.max(2, Math.min(6, parseInt(inp ? inp.value : L.cfg.teams.names.length) || 2));
   const names = drawTeamNames(n);
   const R = classRoster().slice().sort(() => Math.random() - 0.5);
   const assign = {};
   R.forEach((p, i) => assign[p.id] = names[i % n]);
-  L.cfg.teams = { names: names, assign: assign }; saveCfg();
-  if (typeof xlSfx === 'function') xlSfx('groups'); // PATCH X-LIVE v0.35
+  L.cfg.teams = Object.assign({}, L.cfg.teams, { names, assign }); saveCfg();
+  if (typeof xlSfx === 'function') xlSfx('groups');
   toast('👥 ' + n + ' teams drafted'); go('teams');
 }
 function teamsShufflePlayers() {
+  if (L.cfg.teams.frontiersMode) { frontiersAssignTeams(); saveCfg(); toast('Nexus squads reshuffled'); render(); return; }
   const names = L.cfg.teams.names || []; if (!names.length) return;
   const R = classRoster().slice().sort(() => Math.random() - 0.5);
   const assign = {};
@@ -6805,16 +6858,18 @@ function teamsRerollNames() {
   const map = {}; old.forEach((o, i) => map[o] = fresh[i]);
   const assign = {};
   Object.keys(L.cfg.teams.assign || {}).forEach(pid => { assign[pid] = map[L.cfg.teams.assign[pid]] || fresh[0]; });
-  L.cfg.teams = { names: fresh, assign: assign }; saveCfg(); toast('🎲 New team names drawn'); render();
+  L.cfg.teams = Object.assign({}, L.cfg.teams, { names: fresh, assign: assign }); saveCfg(); toast('🎲 New team names drawn'); render();
 }
 function teamsMovePlayer(pid) {
   const names = L.cfg.teams.names || []; if (names.length < 2) return;
   const cur = L.cfg.teams.assign[pid];
   const idx = names.indexOf(cur);
-  L.cfg.teams.assign[pid] = names[(idx + 1) % names.length];
+  const next = names[(idx + 1) % names.length];
+  if (L.cfg.teams.frontiersMode && Object.values(L.cfg.teams.assign).filter(n => n === next).length >= 4) { toast('That Nexus squad already has four players'); return; }
+  L.cfg.teams.assign[pid] = next;
   saveCfg(); render();
 }
-function clearTeams() { L.cfg.teams = { names: [], assign: {} }; saveCfg(); render(); }
+function clearTeams() { L.cfg.teams = Object.assign({}, L.cfg.teams, { names: [], assign: {} }); saveCfg(); render(); }
 
 // wheel
 let wheelPlayers = [];
