@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════
+     X-LIVE v0.95, Oct 5 2026 — PATCH X-LIVE v0.95: SESSION TEMPLATES + CHECKPOINT SETUPS (Ennis, 5 Oct).
+       Four session templates in the X-LIVE SESSION builder (Full · Mission Briefing, Full · Mindful Moment, Workshop block,
+       Encore self-paced). 📍 CHECKPOINT SETUPS holds the locked 10-checkpoint base (Alpha..Omega, X-Gems, campaign act) and, per
+       checkpoint, the host's learning target, Activity Guide link, Quick Recap and Full Review videos (YouTube supports
+       check-for-understanding stops; Drive plays without them), Daily Growth Log and FeedForward counts, Encore mode.
+       Stored in app_data pflx_xlive_cp_setup. X-Live READS the existing Mission Control checkpoint records (matched by name,
+       never written) to follow the active checkpoint; a session built on a checkpoint fills its briefing, Refresh, workshop
+       and Exit Ticket from the setup and carries the campaign act. Mission Control's records are not modified.
+     X-LIVE v0.94, Oct 5 2026 — PATCH X-LIVE v0.94: X-LIVE SESSION, A TIMED CHAIN OF ACTIVITIES (Ennis, 5 Oct).
+       Sessions tab: new ⏱ X-LIVE SESSION builder makes a strict-timer session of five blocks: Opening (Mission Briefing 5 min
+       or Mindful Moment 1-5), Nexus Frontiers (max 10, embeds the Battle Arena), Activity Guide / Checkpoint Refresh (10),
+       Creator's Workshop (10-40, 5 min Starting State + 5 min Ending State), Exit Ticket. Auto-advance, HOLD, run of show and
+       extend are the existing v0.37 engine; a NOW banner shows on every device at each hand-off. System Events can be planned
+       for the WHOLE session (s.sevPlan, launched at GO LIVE) or launched from the run panel with Length = Whole session; a
+       whole-session event ends with the session. Videos, Starting/Ending State capture, Encore and the richer Exit Ticket
+       are later phases (spec in the project docs).
      X-LIVE v0.93, Oct 5 2026 — PATCH X-LIVE v0.93: SYSTEM EVENTS REACH THE GAME (Nexus Frontiers economy, Ennis 5 Oct).
        The host's X-Live publishes the XC-affecting events of the running session (Double XC, Golden Hour, System Tax,
        Studio Surge, XC Rain) to app_data key pflx_xlive_sev_live as {events:[{type,startAt,endAt,mult,pct,bonus,studio,
@@ -5365,6 +5381,8 @@ function rLiveList() {
   return '<div class="card"><div class="cardT" style="display:flex;align-items:center;gap:10px">🔴 Live Sessions' +
     '<span style="margin-left:auto;display:flex;gap:8px">' +
     '<button class="bigbtn gold" style="padding:8px 14px;font-size:10px" onclick="xlQuickLaunchOpen()">⚡ QUICK LAUNCH</button>' +
+    '<button class="bigbtn gold" style="padding:8px 14px;font-size:10px" onclick="xlChain.openSetups()">📍 CHECKPOINT SETUPS</button>' + // PATCH X-LIVE v0.95
+    '<button class="bigbtn gold" style="padding:8px 14px;font-size:10px" onclick="xlChain.open()">⏱ X-LIVE SESSION</button>' + // PATCH X-LIVE v0.94
     '<button class="bigbtn green" style="padding:8px 14px;font-size:10px" onclick="liveNewSession()">+ NEW SESSION</button>' +
     '</span></div>' +
     (groups.active.length ? ('<div style="font-size:10px;color:#7dffb8;margin:10px 0 4px;text-transform:uppercase;font-family:Audiowide">🟢 Active</div>' + groups.active.map(sessionRow).join('')) : '') +
@@ -14336,6 +14354,20 @@ html[data-xl-skin] #xlSkinFx{display:block}
 
 body.xs-live #app{padding-top:calc(14px + var(--xs-barh,0px))}
 body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
+/* PATCH X-LIVE v0.94 -- X-Live Session builder */
+.xc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:8px}
+.xc-grid label,#modalBox label{display:block}
+.xc-fix{font-size:11px;color:#8a93b8;margin-top:4px}
+.xc-evs{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}
+.xc-ev{white-space:nowrap;display:inline-flex!important;align-items:center;gap:5px;font-size:12px;color:#d6defa;text-transform:none!important;font-family:inherit!important}
+.xc-total{margin-top:12px;padding:8px 12px;border:1px solid rgba(57,192,255,.35);border-radius:8px;font-size:12px;color:#bfeaff}
+/* PATCH X-LIVE v0.95 -- Checkpoint Setups + session templates */
+.xc-tabs{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 10px}
+.xc-tab{background:#0d1530;border:1px solid #2a3770;color:#cfd8ff;border-radius:7px;padding:5px 9px;font:600 11px 'Exo 2',sans-serif;cursor:pointer}
+.xc-tab.on{background:#1b3a7a;border-color:#39c0ff;color:#fff}
+.xc-cp{padding:8px 12px;border:1px solid rgba(181,123,255,.4);border-radius:8px;margin-bottom:8px;font-size:13px;color:#e6dcff}
+.xc-warn{font-size:11px;color:#ffd166;margin-top:3px}.xc-ok{font-size:11px;color:#7dffb4;margin-top:3px}
+#modalBox textarea,#modalBox select,#modalBox input:not([type=checkbox]){width:100%;box-sizing:border-box}
 
 </style>
 <script id="xl-sev">
@@ -14450,8 +14482,9 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
   const S = { seen: {}, seenInit: {}, queue: [], busy: false, bar: '', skin: '', rainN: {}, opt: { mins: 0, skin: '', pct: 10, mult: 2 }, lastType: '', timers: [] };
 
   function sess() { try { return (typeof xlViewerSession === 'function') ? xlViewerSession() : null; } catch (e) { return null; } }
-  function activeOf(s, now) { now = now || Date.now(); return ((s && s.sevs) || []).filter(function (e) { return e && !e.endedAt && e.endsAt > now; }); }
+  function activeOf(s, now) { now = now || Date.now(); return ((s && s.sevs) || []).filter(function (e) { return e && !e.endedAt && e.endsAt > now && !(e.whole && s.status && s.status !== 'active'); }); }  // PATCH X-LIVE v0.94 -- whole-session events end with the session
   function activeNow() { return activeOf(sess()); }
+  function clk(e, now) { return e && e.whole ? 'SESSION' : fmt(e.endsAt - now); }
   function fmt(ms) { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
   function effectLine(e) {
     const T = TYPES[e.type] || {};
@@ -14471,9 +14504,11 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     o = o || {};
     if (typeId === 'random') { const pool = TYPE_ORDER.filter(function (t) { return t !== S.lastType; }); typeId = pick(pool); }
     const T = TYPES[typeId]; if (!T) return null;
+    const whole = +o.mins === -1; // PATCH X-LIVE v0.94 -- 'whole session'
     const mins = +o.mins > 0 ? +o.mins : T.mins;
     const now = Date.now();
-    const ev = { id: 'sev_' + now.toString(36) + Math.random().toString(36).slice(2, 5), type: typeId, name: T.name, icon: T.icon, startedAt: now, endsAt: now + mins * 60000, mins: mins, by: o.by || 'host' };
+    const ev = { id: 'sev_' + now.toString(36) + Math.random().toString(36).slice(2, 5), type: typeId, name: T.name, icon: T.icon, startedAt: now, endsAt: whole ? now + 8 * 3600000 : now + mins * 60000, mins: mins, by: o.by || 'host' };
+    if (whole) ev.whole = true;
     if (typeId === 'system_tax') ev.pct = +o.pct > 0 ? +o.pct : T.pct;
     if (typeId === 'xc_boost' || typeId === 'golden_hour' || typeId === 'market_crash') ev.mult = +o.mult > 1 ? +o.mult : T.mult;
     if (typeId === 'xc_rain') { ev.rain = T.rain; ev.every = T.every; }
@@ -14535,7 +14570,7 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     // bar
     const bar = ensureBar();
     const html = act.map(function (e) {
-      return '<div class="xs-b"><span style="font-size:18px">' + e.icon + '</span><span>SYSTEM EVENT: ' + esc(e.name).toUpperCase() + ' · ' + esc(effectLine(e)) + '</span><em>' + fmt(e.endsAt - now) + '</em>' +
+      return '<div class="xs-b"><span style="font-size:18px">' + e.icon + '</span><span>SYSTEM EVENT: ' + esc(e.name).toUpperCase() + ' · ' + esc(effectLine(e)) + '</span><em>' + clk(e, now) + '</em>' +
         (L.isHost ? '<button onclick="xlSev.end(\'' + e.id + '\')">END</button>' : '') + '</div>';
     }).join('');
     if (html !== S.bar) { S.bar = html; bar.innerHTML = html; }
@@ -14547,7 +14582,7 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     // keep the projector slide's clocks fresh
     const proj = document.getElementById('proj');
     if (proj && proj.classList.contains('on') && proj.querySelector('[data-sev-clock]')) {
-      proj.querySelectorAll('[data-sev-clock]').forEach(function (el) { const ev = ((s && s.sevs) || []).find(function (x) { return x.id === el.getAttribute('data-sev-clock'); }); if (ev) el.textContent = fmt(ev.endsAt - now); });
+      proj.querySelectorAll('[data-sev-clock]').forEach(function (el) { const ev = ((s && s.sevs) || []).find(function (x) { return x.id === el.getAttribute('data-sev-clock'); }); if (ev) el.textContent = clk(ev, now); });
     }
   }
   function ensureBar() { let b = document.getElementById('xlSevBar'); if (!b) { b = document.createElement('div'); b.id = 'xlSevBar'; document.body.appendChild(b); } return b; }
@@ -14712,11 +14747,11 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     return '<div class="card xs-host"><h4>🎰 SYSTEM EVENTS — plays for everyone in the session</h4>' +
       '<div class="xs-grid"><button class="bigbtn red" onclick="xlSev.launch(\'random\')">🎰 ROLL A RANDOM EVENT</button>' +
       TYPE_ORDER.map(function (t) { return '<button class="bigbtn ghost" title="' + esc(TYPES[t].desc) + '" onclick="xlSev.launch(\'' + t + '\')">' + TYPES[t].icon + ' ' + esc(TYPES[t].name) + '</button>'; }).join('') + '</div>' +
-      '<div class="xs-row"><label>Length <select onchange="xlSev.opt.mins=+this.value">' + [[0, 'Default'], [1, '1 min'], [2, '2 min'], [3, '3 min'], [5, '5 min'], [10, '10 min'], [15, '15 min'], [20, '20 min'], [30, '30 min']].map(function (x) { return '<option value="' + x[0] + '"' + (o.mins === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
+      '<div class="xs-row"><label>Length <select onchange="xlSev.opt.mins=+this.value">' + [[0, 'Default'], [-1, 'Whole session'], [1, '1 min'], [2, '2 min'], [3, '3 min'], [5, '5 min'], [10, '10 min'], [15, '15 min'], [20, '20 min'], [30, '30 min']].map(function (x) { return '<option value="' + x[0] + '"' + (o.mins === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
       '<label>Tax <select onchange="xlSev.opt.pct=+this.value">' + [5, 10, 15, 20, 25].map(function (x) { return '<option value="' + x + '"' + (o.pct === x ? ' selected' : '') + '>' + x + '%</option>'; }).join('') + '</select></label>' +
       '<label>Multiplier <select onchange="xlSev.opt.mult=+this.value">' + [2, 3, 4].map(function (x) { return '<option value="' + x + '"' + (o.mult === x ? ' selected' : '') + '>×' + x + '</option>'; }).join('') + '</select></label>' +
       '<label>Reality Warp skin <select onchange="xlSev.opt.skin=this.value"><option value="">Random</option>' + SKIN_IDS.map(function (k) { return '<option value="' + k + '"' + (o.skin === k ? ' selected' : '') + '>' + SKINS[k][1] + ' ' + esc(SKINS[k][0]) + '</option>'; }).join('') + '</select></label></div>' +
-      (act.length ? '<div class="xs-row" style="color:#ffb8dd">Active: ' + act.map(function (e) { return e.icon + ' ' + esc(e.name) + ' (' + fmt(e.endsAt - Date.now()) + ') <button class="bigbtn ghost" style="padding:3px 8px;font-size:8px" onclick="xlSev.end(\'' + e.id + '\')">END</button>'; }).join(' · ') + '</div>' : '') +
+      (act.length ? '<div class="xs-row" style="color:#ffb8dd">Active: ' + act.map(function (e) { return e.icon + ' ' + esc(e.name) + ' (' + clk(e, Date.now()) + ') <button class="bigbtn ghost" style="padding:3px 8px;font-size:8px" onclick="xlSev.end(\'' + e.id + '\')">END</button>'; }).join(' · ') + '</div>' : '') +
       '</div>';
   }
 
@@ -14727,7 +14762,7 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     const title = s ? esc(s.title || 'Live Session') : 'X-Live';
     return '<div class="xs-pj"><div class="projTitle">⚡ X-LIVE · ' + title + '</div>' +
       (act.length ? '<div class="xs-pj-cards">' + act.map(function (e) {
-        return '<div class="xs-pj-card"><div class="ic">' + e.icon + '</div><div class="nm">' + esc(e.name).toUpperCase() + '</div><div class="ds">' + esc(effectLine(e)) + '</div><div class="tm" data-sev-clock="' + e.id + '">' + fmt(e.endsAt - now) + '</div></div>';
+        return '<div class="xs-pj-card"><div class="ic">' + e.icon + '</div><div class="nm">' + esc(e.name).toUpperCase() + '</div><div class="ds">' + esc(effectLine(e)) + '</div><div class="tm" data-sev-clock="' + e.id + '">' + clk(e, now) + '</div></div>';
       }).join('') + '</div>' : '<div class="xs-pj-none">No System Event is running. ' + (L.isHost ? 'Roll one to shake up the room.' : 'Stay sharp — one can drop any moment.') + '</div>') +
       (L.isHost ? '<div style="margin-top:18px"><button class="bigbtn red" onclick="xlSev.launch(\'random\')">🎰 ROLL SYSTEM EVENT</button></div>' : '') +
       (recent.length ? '<div class="xs-pj-log">' + recent.map(function (e) { return '<span>' + e.icon + ' ' + esc(e.name) + '</span>'; }).join('') + '</div>' : '') + '</div>';
@@ -14847,6 +14882,334 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
   ensureSkinLayer(); ensureBar();
   setInterval(function () { try { tick(); publish(); } catch (e) {} }, 500);
   window.xlSev = { publish: publish, publishPayload: publishPayload, TYPES: TYPES, SKINS: SKINS, opt: S.opt, state: S, launch: launch, end: endEvent, tick: tick, active: activeNow, activeOf: activeOf, priceMult: priceMult, economy: economy, projHtml: projHtml, hostHtml: hostHtml, upShopHtml: upShopHtml, upEdit: upEdit, upImg: upImg, upClearImg: upClearImg, upSave: upSave, reveal: reveal, applySkin: applySkin, makeEvent: makeEvent, skinCss: skinCss };
+})();
+
+</script>
+<script id="xl-chain">
+/* PATCH X-LIVE v0.94/v0.95 -- X-LIVE SESSION: a timed chain of activities, session templates and checkpoint setups.
+   Ennis (5 Oct 2026): a session is a timer-driven run of activities that flow into each other; System Events last the whole session.
+   Opening (Mission Briefing 5 min OR Mindful Moment 1-5 min) -> Nexus Frontiers (<=10) -> Activity Guide / Checkpoint Refresh (10)
+   -> Creator's Workshop (<=40) -> Exit Ticket. Built on what X-Live already has (per-slide duration, strict auto-advance, run of show).
+   v0.95: named session templates, the locked 10-checkpoint base, per-checkpoint setups (pflx_xlive_cp_setup), a read-only join to the
+   Mission Control checkpoint records, and the campaign act each checkpoint belongs to. */
+(function () {
+  'use strict';
+  if (window.xlChain) return;
+  const S = { lastIdx: {}, form: null, setups: null, mc: null, edit: null, loading: false };
+  const LIMITS = { mindful: [1, 5], nexus: [1, 10], workshop: [10, 40], exit: [1, 10], growth: [0, 10], ff: [0, 10] };
+  const REFRESH_MIN = 10;
+  const SETUP_KEY = 'pflx_xlive_cp_setup';
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function clamp(v, r, d) { v = parseInt(v, 10); if (!(v >= 0)) v = d; return Math.max(r[0], Math.min(r[1], v)); }
+
+  // ── the locked 10-checkpoint base (Ennis, 5 Oct 2026). Order, names, content and X-Gems are his; the campaign act mapping is a proposal. ──
+  const CPS = [
+    { key: 'alpha', n: 1, greek: 'Alpha', title: 'Onboarding + The Alter Ego', phase: 'Onboarding', content: 'Onboarding and The Alter Ego: Personality Traits and Character Profile.', xgem: ['CharacterForge'], act: 'act1', actLabel: 'Act One · The Alter Ego', quests: ['a1-traits', 'a1-forge', 'a1-profile'], d: { growthLog: 0, feedforward: 0 } },
+    { key: 'beta', n: 2, greek: 'Beta', title: 'The Alter Ego to Brand Board', phase: 'Brand Board', content: 'The Alter Ego to a Brand Board: logo design, color theory, typography and a slogan.', xgem: ['CharacterForge'], act: 'act1', actLabel: 'Act One · The Alter Ego', quests: ['a1-board', 'a1-mint'], d: { growthLog: 0, feedforward: 0 } },
+    { key: 'gamma', n: 3, greek: 'Gamma', title: 'BrandBuilder Phase 1 · Empathize / Define', phase: 'BrandBuilder Phase 1', content: 'The Nexus Narratives: Client Profile and Client Empathy Map.', xgem: ['ClientCall'], act: 'act2', actLabel: 'Act Two · BrandBuilder Phase One', quests: ['a2-brief', 'a2-pick', 'a2-issue', 'a2-interview', 'a2-cprofile', 'a2-empathy', 'a2-cp3'], d: { growthLog: 0, feedforward: 0 } },
+    { key: 'delta', n: 4, greek: 'Delta', title: 'BrandBuilder Phase 2 · Ideate', phase: 'BrandBuilder Phase 2', content: 'SparkLab, the Ideation Development Form and the Project Development Infographic.', xgem: ['ThinkTable'], act: 'act3', actLabel: 'Act Three · BrandBuilder Phase Two', quests: ['a3-r1', 'a3-r2', 'a3-r3', 'a3-merge', 'a3-cp4'], d: { growthLog: 0, feedforward: 0 } },
+    { key: 'omicron', n: 5, greek: 'Omicron', title: 'Phase 2 Prototype · Creator’s Workshop', phase: 'BrandBuilder Phase 2 · Prototype', content: 'Creator’s Workshop: Project Development.', xgem: ['ProtoDev'], act: 'act4', actLabel: 'Act Four · The Developer’s Workshop', quests: ['a4-start', 'a4-log', 'a4-build'], d: { growthLog: 3, feedforward: 0 } },
+    { key: 'sigma', n: 6, greek: 'Sigma', title: 'Phase 2 Prototype · Creator’s Workshop', phase: 'BrandBuilder Phase 2 · Prototype', content: 'Creator’s Workshop: Project Development.', xgem: ['ProtoDev'], act: 'act4', actLabel: 'Act Four · The Developer’s Workshop', quests: ['a4-start', 'a4-log', 'a4-build'], d: { growthLog: 3, feedforward: 0 } },
+    { key: 'zeta', n: 7, greek: 'Zeta', title: 'Prototype Workshop → FeedForward Network → Testing > Innovate', phase: 'BrandBuilder Phase 2 · Prototype and Testing', content: 'Creator’s Workshop, then the FeedForward Network (recruit testers, barter testing, 3 or more FeedForwards), then Testing > Innovate (before / after).', xgem: ['ProtoDev', 'PushPoint', 'ElevaTron'], act: 'act5', actLabel: 'Act Five · FeedForward Force', quests: ['a4-build', 'a5-course', 'a5-give', 'a5-take'], d: { growthLog: 3, feedforward: 3 } },
+    { key: 'nu', n: 8, greek: 'Nu', title: 'Prototype Workshop → FeedForward Network → Testing > Innovate', phase: 'BrandBuilder Phase 2 · Prototype and Testing', content: 'Prototype Creator’s Workshop, then the FeedForward Network and Testing > Innovate, same as Zeta.', xgem: ['ProtoDev', 'PushPoint', 'ElevaTron'], act: 'act5', actLabel: 'Act Five · FeedForward Force', quests: ['a4-build', 'a5-course', 'a5-give', 'a5-take'], d: { growthLog: 3, feedforward: 3 } },
+    { key: 'psi', n: 9, greek: 'Psi', title: 'Phase 3 Implement · Exhibit Design and Marketing', phase: 'BrandBuilder Phase 3 · Implement', content: 'Exhibit and Presentation Design (layout, storyboards, scripts, elevator pitch, joint storytelling event plan, marketing plan) plus Marketing, Promoting and Advertisement.', xgem: [], act: 'act6', actLabel: 'Act Six · Exhibit', quests: ['a6-design', 'a6-pitch'], d: { growthLog: 3, feedforward: 0 } },
+    { key: 'omega', n: 10, greek: 'Omega', title: 'Phase 3 Implement · Expo', phase: 'BrandBuilder Phase 3 · Implement', content: 'Expo: presenting, pitching and performing; season-wide showcase and Battle Arena competitions (Creators Showdown, Nexus Frontiers finals); reflection, brand refinement and FeedForward self-evaluation.', xgem: [], act: 'act6', actLabel: 'Act Six · Exhibit', quests: ['a6-show', 'a6-eval', 'a6-locator'], d: { growthLog: 0, feedforward: 0 } }
+  ];
+  const PRESETS = [
+    { id: 'full-briefing', name: 'Full session · Mission Briefing opening', note: '5 + 10 + 10 + 40 + 5 = 70 min', preset: 'full', opening: 'briefing' },
+    { id: 'full-mindful', name: 'Full session · Mindful Moment opening', note: 'Mindful 1 to 5 min, then the same chain', preset: 'full', opening: 'mindful' },
+    { id: 'workshop', name: 'Workshop block · Refresh + Workshop + Exit', note: 'No opening or game: for a work-only day', preset: 'workshop', opening: 'briefing' },
+    { id: 'encore', name: 'Encore · self-paced Creator’s Workshop', note: 'Homework after a session; no host clock', preset: 'encore', opening: 'briefing' }
+  ];
+  function cpByKey(k) { return CPS.find(function (c) { return c.key === k; }) || null; }
+  function cpKeyFromName(name) { const n = String(name || '').toLowerCase(); const c = CPS.find(function (x) { return new RegExp('\\b' + x.key + '\\b').test(n); }); return c ? c.key : null; }
+
+  // ── pure: video links ──
+  function parseVideo(url) {
+    url = String(url || '').trim(); if (!url) return { url: '', kind: '', id: '' };
+    let m = url.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
+    if (m) return { url: url, kind: 'youtube', id: m[1] };
+    m = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]+)/i);
+    if (m) return { url: url, kind: 'drive', id: m[1] };
+    return { url: url, kind: 'other', id: '' };
+  }
+  function cleanSetup(o) {
+    o = o || {};
+    const v = function (u) { const p = parseVideo(u); return { url: p.url, kind: p.kind, id: p.id, stops: Array.isArray(u && u.stops) ? u.stops : [] }; };
+    const rv = function (x) { const p = parseVideo(x && x.url != null ? x.url : x); return { url: p.url, kind: p.kind, id: p.id, stops: (x && Array.isArray(x.stops)) ? x.stops : [] }; };
+    return {
+      learningTarget: String(o.learningTarget || '').slice(0, 400), guideUrl: String(o.guideUrl || '').trim().slice(0, 500),
+      recap: rv(o.recap), full: rv(o.full),
+      growthLog: o.growthLog == null || o.growthLog === '' ? null : clamp(o.growthLog, LIMITS.growth, 0),
+      feedforward: o.feedforward == null || o.feedforward === '' ? null : clamp(o.feedforward, LIMITS.ff, 0),
+      encore: o.encore === 'required' || o.encore === 'off' ? o.encore : 'optional',
+      opening: o.opening === 'mindful' ? 'mindful' : 'briefing'
+    };
+  }
+
+  // ── data: setups (X-Live) and the Mission Control checkpoint records (read-only) ──
+  async function loadSetups(force) {
+    if (S.setups && !force) return S.setups;
+    let d = null; try { d = (typeof kvLoad === 'function') ? await kvLoad(SETUP_KEY) : null; } catch (e) {}
+    const items = (d && d.items && typeof d.items === 'object') ? d.items : {};
+    const out = {}; Object.keys(items).forEach(function (k) { if (cpByKey(k)) out[k] = cleanSetup(items[k]); });
+    S.setups = out; return out;
+  }
+  async function saveSetups(items) {
+    const clean = {}; Object.keys(items || {}).forEach(function (k) { if (cpByKey(k)) clean[k] = cleanSetup(items[k]); });
+    const ok = (typeof kvSave === 'function') ? await kvSave(SETUP_KEY, { v: 1, items: clean, updatedAt: Date.now() }) : false;
+    if (ok) S.setups = clean; return ok;
+  }
+  async function loadMC(force) {
+    if (S.mc && !force) return S.mc;
+    let d = null; try { d = (typeof kvLoad === 'function') ? await kvLoad('pflx_mc_checkpoints') : null; } catch (e) {}
+    let items = d && (Array.isArray(d) ? d : d.items);
+    if (!Array.isArray(items)) { try { const a = (typeof kvLoad === 'function') ? await kvLoad('checkpoints') : null; items = Array.isArray(a) ? a : (a && a.items); } catch (e) {} }
+    const map = {};
+    (Array.isArray(items) ? items : []).forEach(function (c) {
+      const k = cpKeyFromName(c && (c.name || c.title)); if (!k) return;
+      map[k] = { id: c.id, name: c.name || c.title, status: c.status || '', startDate: c.startDate || '', endDate: c.endDate || '', seasonId: c.seasonId || '' };
+    });
+    S.mc = map; return map;
+  }
+  // pure: the checkpoint Mission Control says is running now (active first, else the upcoming one that starts soonest)
+  function activeKey(mc) {
+    const ks = Object.keys(mc || {}); if (!ks.length) return null;
+    const act = ks.filter(function (k) { return mc[k].status === 'active'; }); if (act.length) return CPS.filter(function (c) { return act.indexOf(c.key) !== -1; })[0].key;
+    const up = ks.filter(function (k) { return mc[k].status === 'upcoming' && mc[k].startDate; }).sort(function (a, b) { return mc[a].startDate < mc[b].startDate ? -1 : 1; });
+    return up.length ? up[0] : null;
+  }
+  // pure: base + host setup + Mission Control record
+  function merge(setups, mc) {
+    return CPS.map(function (c) {
+      const su = cleanSetup((setups || {})[c.key]);
+      return Object.assign({}, c, { setup: su, growthLog: su.growthLog != null ? su.growthLog : c.d.growthLog, feedforward: su.feedforward != null ? su.feedforward : c.d.feedforward, mc: (mc || {})[c.key] || null });
+    });
+  }
+
+  // ── pure: the block plan from a form ──
+  function buildPlan(f) {
+    f = f || {};
+    const preset = (f.preset === 'workshop' || f.preset === 'encore') ? f.preset : 'full';
+    const opening = f.opening === 'mindful' ? 'mindful' : 'briefing';
+    const om = opening === 'mindful' ? clamp(Math.max(1, +f.mindfulMin || 3), LIMITS.mindful, 3) : 5;
+    const nm = clamp(Math.max(1, +f.nexusMin || 10), LIMITS.nexus, 10), wm = clamp(Math.max(10, +f.workshopMin || 40), LIMITS.workshop, 40), em = clamp(Math.max(1, +f.exitMin || 5), LIMITS.exit, 5);
+    const B = {
+      opening: { role: 'opening', min: om, type: opening === 'mindful' ? 'mindful' : 'text', title: opening === 'mindful' ? 'Mindful Moment' : 'Mission Briefing',
+        prompt: opening === 'mindful' ? 'Settle in. Follow the circle: breathe in as it grows, out as it shrinks. Headphones recommended.' : 'Today’s mission, the checkpoint in focus and what you will leave with.' },
+      nexus: { role: 'nexus', min: nm, type: 'sub_app', subApp: 'arena', title: 'Nexus Frontiers · Battle Arena Challenge', prompt: '' },
+      refresh: { role: 'refresh', min: REFRESH_MIN, type: 'media', title: 'Activity Guide · Checkpoint Refresh', prompt: 'You have 1 minute to pick your checkpoint, then watch the Quick Recap or the Full Review until the clock ends.' },
+      workshop: { role: 'workshop', min: wm, type: 'project', title: 'Creator’s Workshop', prompt: 'First 5 min: Starting State (details + goals). Last 5 min: Ending State (details + goals for next session). The time between is work time.' },
+      exit: { role: 'exit', min: em, type: 'exit', title: 'Exit Ticket', prompt: 'Rate your progress on today’s learning target and share your final thought.' }
+    };
+    let blocks;
+    if (preset === 'workshop') blocks = [B.refresh, B.workshop, B.exit];
+    else if (preset === 'encore') blocks = [Object.assign({}, B.workshop, { min: 0, prompt: 'Starting State: details and goals. Then work at your own pace (about 30 minutes). Ending State: details and goals for your next session. Finish with your Exit Ticket.' }), Object.assign({}, B.exit, { min: 0 })];
+    else blocks = [B.opening, B.nexus, B.refresh, B.workshop, B.exit];
+    const total = blocks.reduce(function (a, b) { return a + b.min; }, 0);
+    const wk = blocks.find(function (b) { return b.role === 'workshop'; });
+    return { preset: preset, blocks: blocks, totalMin: total, opening: opening, workMin: wk ? (preset === 'encore' ? 30 : Math.max(0, wk.min - 10)) : 0, selfPaced: preset === 'encore' };
+  }
+
+  // ── pure-ish: write a checkpoint into a chain session's blocks (idempotent: always built from each slide's basePrompt) ──
+  function cpLines(cp) {
+    const su = cp.setup || {}, L2 = [];
+    L2.push('Checkpoint ' + cp.greek + ' · ' + cp.title);
+    L2.push('Learning target: ' + (su.learningTarget || 'set in Checkpoint Setups'));
+    L2.push('Campaign: ' + cp.actLabel);
+    if (cp.xgem && cp.xgem.length) L2.push('X-Gem: ' + cp.xgem.join(' → '));
+    return L2;
+  }
+  function applyCheckpoint(s, cp) {
+    if (!s || !cp) return s;
+    s.checkpoint = cp.key; s.checkpointName = 'Checkpoint ' + cp.greek;
+    s.campaign = { act: cp.act, label: cp.actLabel, quests: cp.quests.slice() };
+    (s.slides || []).forEach(function (sl) {
+      if (!sl.chain) return;
+      if (sl.basePrompt == null) sl.basePrompt = sl.prompt || '';
+      const su = cp.setup || {};
+      let add = '';
+      if (sl.chain === 'opening' && sl.type === 'text') add = '\n\n' + cpLines(cp).join('\n');
+      if (sl.chain === 'refresh') {
+        const r = []; if (su.guideUrl) r.push('Activity Guide: ' + su.guideUrl); if (su.recap && su.recap.url) r.push('Quick Recap (under 1:30): ' + su.recap.url); if (su.full && su.full.url) r.push('Full Review (up to 7 min): ' + su.full.url);
+        add = '\n\nCheckpoint ' + cp.greek + (r.length ? '\n' + r.join('\n') : '\nVideos not added yet: the host adds them in Checkpoint Setups.');
+        sl.refresh = { cp: cp.key, guideUrl: su.guideUrl || '', recap: su.recap || null, full: su.full || null };
+      }
+      if (sl.chain === 'workshop') add = '\n\nCheckpoint ' + cp.greek + ': ' + cp.content + (cp.growthLog ? '\nDaily Growth Log: ' + cp.growthLog + ' or more entries required across sessions.' : '') + (cp.feedforward ? '\nFeedForward: give at least ' + cp.feedforward + '.' : '');
+      if (sl.chain === 'exit') add = '\n\nLearning target: ' + (su.learningTarget || 'set in Checkpoint Setups');
+      sl.prompt = sl.basePrompt + add;
+      if (sl.chain === 'workshop' || sl.chain === 'refresh') sl.cp = cp.key;
+    });
+    if (s.encore) s.encore.mode = (cp.setup && cp.setup.encore) || s.encore.mode || 'optional';
+    return s;
+  }
+
+  // ── pure: build the session object (uses the app's own constructors) ──
+  function buildSession(f, base, cp) {
+    const plan = buildPlan(f);
+    const s = base || newLiveSession();
+    s.title = String((f && f.title) || '').trim() || (plan.selfPaced ? 'Encore' : 'X-Live');
+    s.strictTimer = plan.selfPaced ? 'manual' : 'auto';
+    s.chain = { v: 1, preset: plan.preset, opening: plan.opening, totalMin: plan.totalMin };
+    if (plan.selfPaced) { s.selfPaced = true; s.encore = { mode: 'optional' }; }
+    s.slides = plan.blocks.map(function (b) {
+      const sl = liveNewSlide(b.type);
+      sl.title = b.title; sl.prompt = b.prompt; sl.basePrompt = b.prompt; sl.chain = b.role;
+      sl.duration = b.min * 60; sl.seconds = b.min * 60;
+      if (b.subApp) sl.subApp = b.subApp;
+      return sl;
+    });
+    const types = (f && f.events) || [];
+    s.sevPlan = plan.selfPaced ? [] : types.filter(function (t) { return t === 'random' || (window.xlSev && xlSev.TYPES[t]); }).map(function (t) { return { type: t }; });
+    s.mcLink = !!(f && f.cpMode === 'mc');
+    if (cp) applyCheckpoint(s, cp);
+    return s;
+  }
+
+  // ── session builder form ──
+  function defaults() { return { title: 'X-Live', template: 'full-briefing', preset: 'full', opening: 'briefing', mindfulMin: 3, nexusMin: 10, workshopMin: 40, exitMin: 5, events: [], cpMode: 'none' }; }
+  function sel(id, vals, cur, unit) { return '<select id="' + id + '" onchange="xlChain.sync()">' + vals.map(function (v) { return '<option value="' + v + '"' + (+cur === v ? ' selected' : '') + '>' + v + (unit || ' min') + '</option>'; }).join('') + '</select>'; }
+  function range(a, b, step) { const r = []; for (let i = a; i <= b; i += (step || 1)) r.push(i); return r; }
+  function formHtml(f) {
+    const plan = buildPlan(f), T = (window.xlSev && xlSev.TYPES) || {};
+    const evs = Object.keys(T).map(function (t) { return '<label class="xc-ev"><input type="checkbox" value="' + t + '"' + (f.events.indexOf(t) !== -1 ? ' checked' : '') + ' onchange="xlChain.sync()"> ' + T[t].icon + ' ' + esc(T[t].name) + '</label>'; }).join('') +
+      '<label class="xc-ev"><input type="checkbox" value="random"' + (f.events.indexOf('random') !== -1 ? ' checked' : '') + ' onchange="xlChain.sync()"> 🎰 Random event</label>';
+    const cur = PRESETS.find(function (p) { return p.id === f.template; }) || PRESETS[0];
+    const cpOpts = '<option value="none"' + (f.cpMode === 'none' ? ' selected' : '') + '>No checkpoint</option><option value="mc"' + (f.cpMode === 'mc' ? ' selected' : '') + '>Follow Mission Control (the active checkpoint)</option>' +
+      CPS.map(function (c) { return '<option value="' + c.key + '"' + (f.cpMode === c.key ? ' selected' : '') + '>' + c.n + ' · ' + c.greek + ' · ' + esc(c.title) + '</option>'; }).join('');
+    const full = plan.preset === 'full';
+    return '<div class="cardT">⏱ X-Live Session</div>' +
+      '<div style="font-size:12px;color:#aeb6d8;margin-bottom:10px">A timed chain: each activity ends on its clock and the show moves on by itself. HOLD in Backstage stops the advance.</div>' +
+      '<label>Template</label><select id="xcTpl" onchange="xlChain.sync()">' + PRESETS.map(function (p) { return '<option value="' + p.id + '"' + (f.template === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select><div class="xc-fix">' + esc(cur.note) + '</div>' +
+      '<label style="margin-top:8px">Title</label><input id="xcTitle" value="' + esc(f.title) + '" oninput="xlChain.sync()" maxlength="80"/>' +
+      '<label style="margin-top:8px">Checkpoint</label><select id="xcCp" onchange="xlChain.sync()">' + cpOpts + '</select><div class="xc-fix">Fills the briefing, the Refresh videos, the workshop goals and the Exit Ticket target from the checkpoint’s setup. Following Mission Control re-reads the active checkpoint at GO LIVE (read only).</div>' +
+      '<div class="xc-grid">' +
+      (full ? '<div><label>1 · Opening</label><div class="xc-fix">' + (f.opening === 'mindful' ? 'Mindful Moment' : 'Mission Briefing · 5 min') + '</div>' + (f.opening === 'mindful' ? '<label>Mindful length</label>' + sel('xcMind', range(1, 5), f.mindfulMin) : '') + '</div>' +
+        '<div><label>2 · Nexus Frontiers (max 10)</label>' + sel('xcNexus', range(2, 10), f.nexusMin) + '</div>' : '') +
+      (plan.selfPaced ? '' : '<div><label>' + (full ? '3 · ' : '1 · ') + 'Checkpoint Refresh</label><div class="xc-fix">10 min · 1 to pick, 9 to watch</div></div>' +
+        '<div><label>Creator’s Workshop (max 40)</label>' + sel('xcWork', range(10, 40, 5), f.workshopMin) + '<div class="xc-fix">' + plan.workMin + ' min of work time between the Starting and Ending State</div></div>' +
+        '<div><label>Exit Ticket</label>' + sel('xcExit', [1, 2, 3, 4, 5, 6, 8, 10], f.exitMin) + '</div>') +
+      (plan.selfPaced ? '<div><label>Creator’s Workshop · Encore</label><div class="xc-fix">Self-paced, about 30 min. Completing it earns Self Directed Player. The player runner ships in the next phase; this saves the setup now.</div></div>' : '') + '</div>' +
+      (plan.selfPaced ? '' : '<label style="margin-top:12px">System Events for the whole session <span style="color:#8a93b8;text-transform:none">· start at GO LIVE, end when the session ends</span></label><div class="xc-evs">' + evs + '</div>') +
+      '<div class="xc-total">' + (plan.selfPaced ? 'Self-paced · no host clock' : 'Total <b>' + plan.totalMin + ' min</b> · ' + plan.blocks.map(function (b) { return b.min; }).join(' + ')) + '</div>' +
+      '<div style="margin-top:12px;display:flex;gap:8px"><button class="bigbtn green" onclick="xlChain.create()">CREATE SESSION</button><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>';
+  }
+  function readForm() {
+    const g = function (id) { const el = document.getElementById(id); return el ? el.value : null; };
+    const f = S.form || defaults();
+    const tpl = g('xcTpl'); if (tpl && tpl !== f.template) { const p = PRESETS.find(function (x) { return x.id === tpl; }); if (p) { f.template = p.id; f.preset = p.preset; f.opening = p.opening; } }
+    if (g('xcTitle') != null) f.title = g('xcTitle');
+    if (g('xcCp')) f.cpMode = g('xcCp');
+    if (g('xcMind')) f.mindfulMin = +g('xcMind');
+    if (g('xcNexus')) f.nexusMin = +g('xcNexus');
+    if (g('xcWork')) f.workshopMin = +g('xcWork');
+    if (g('xcExit')) f.exitMin = +g('xcExit');
+    f.events = Array.prototype.slice.call(document.querySelectorAll('.xc-ev input:checked')).map(function (el) { return el.value; });
+    S.form = f; return f;
+  }
+  function open() { if (!L.isHost) return; S.form = defaults(); modal(formHtml(S.form)); }
+  function sync() { const f = readForm(); const keep = document.activeElement && document.activeElement.id; modal(formHtml(f)); if (keep) { const el = document.getElementById(keep); if (el && el.focus) { el.focus(); if (el.setSelectionRange && el.type !== 'number' && el.tagName === 'INPUT') { try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} } } } }
+  async function resolveCp(f) {
+    if (!f || !f.cpMode || f.cpMode === 'none') return null;
+    const setups = await loadSetups(); let key = f.cpMode;
+    if (key === 'mc') { const mc = await loadMC(); key = activeKey(mc); if (!key) { try { toast('No active checkpoint found in Mission Control. Pick one by hand.'); } catch (e) {} return null; } }
+    const all = merge(setups, S.mc); return all.find(function (c) { return c.key === key; }) || null;
+  }
+  async function create() {
+    const f = readForm(); const cp = await resolveCp(f); const s = buildSession(f, null, cp);
+    if (L.hostCapabilities && L.hostCapabilities.scopedToCohorts) { s.allCohorts = false; s.cohorts = (L.me && Array.isArray(L.me.managedCohorts)) ? L.me.managedCohorts.slice() : []; }
+    modalClose(); L.liveEditingSession = s; render();
+    toast('⏱ ' + (s.selfPaced ? 'Encore' : 'X-Live session') + ' built' + (s.selfPaced ? '' : ' · ' + s.chain.totalMin + ' min') + (cp ? ' · Checkpoint ' + cp.greek : '') + ' · review it, then SAVE');
+    return s;
+  }
+
+  // ── Checkpoint Setups editor (host) ──
+  async function openSetups(key) {
+    if (!L.isHost) return;
+    const setups = await loadSetups(); await loadMC();
+    S.edit = { items: JSON.parse(JSON.stringify(setups)), key: key || (S.edit && S.edit.key) || 'alpha', msg: '' };
+    renderSetups();
+  }
+  function setupsHtml() {
+    const e = S.edit, all = merge(e.items, S.mc), cp = all.find(function (c) { return c.key === e.key; }) || all[0], su = cp.setup;
+    const tabs = all.map(function (c) { const filled = c.setup.learningTarget || c.setup.recap.url || c.setup.full.url || c.setup.guideUrl; return '<button class="xc-tab' + (c.key === cp.key ? ' on' : '') + '" onclick="xlChain.pick(\'' + c.key + '\')" title="' + esc(c.title) + '">' + c.n + ' ' + c.greek + (filled ? ' ●' : '') + '</button>'; }).join('');
+    const vhint = function (v) { return v.kind === 'drive' ? '<div class="xc-warn">Google Drive videos play but cannot pause for questions. Use an unlisted YouTube video for check-for-understanding stops.</div>' : (v.url && v.kind === 'other' ? '<div class="xc-warn">Not a YouTube or Google Drive link.</div>' : (v.kind === 'youtube' ? '<div class="xc-ok">YouTube video found · stops supported</div>' : '')); };
+    const mc = cp.mc ? 'Mission Control: ' + esc(cp.mc.name) + ' · ' + esc(cp.mc.status) + (cp.mc.startDate ? ' · ' + esc(cp.mc.startDate) + ' to ' + esc(cp.mc.endDate) : '') : 'Not found in Mission Control (read only)';
+    return '<div class="cardT">📍 Checkpoint Setups</div><div class="xc-tabs">' + tabs + '</div>' +
+      '<div class="xc-cp"><b>' + cp.n + ' · Checkpoint ' + cp.greek + '</b> · ' + esc(cp.title) + '<div class="xc-fix">' + esc(cp.content) + '</div>' +
+      '<div class="xc-fix">X-Gem: ' + (cp.xgem.length ? esc(cp.xgem.join(' → ')) : 'not designed yet') + ' · Campaign: ' + esc(cp.actLabel) + ' · ' + mc + '</div></div>' +
+      '<label>Learning target <span style="color:#8a93b8;text-transform:none">· from the Future Learning Protocol</span></label><textarea id="xsLt" rows="2" maxlength="400" oninput="xlChain.edit()">' + esc(su.learningTarget) + '</textarea>' +
+      '<label>Activity Guide link</label><input id="xsGuide" value="' + esc(su.guideUrl) + '" oninput="xlChain.edit()" placeholder="https://docs.google.com/…"/>' +
+      '<label>Quick Recap video (under 1:30)</label><input id="xsRecap" value="' + esc(su.recap.url) + '" oninput="xlChain.edit()" placeholder="YouTube (unlisted) or Google Drive link"/>' + vhint(su.recap) +
+      '<label>Full Review video (up to about 7 min)</label><input id="xsFull" value="' + esc(su.full.url) + '" oninput="xlChain.edit()" placeholder="YouTube (unlisted) or Google Drive link"/>' + vhint(su.full) +
+      '<div class="xc-grid"><div><label>Daily Growth Log entries</label><input id="xsGl" type="number" min="0" max="10" value="' + cp.growthLog + '" oninput="xlChain.edit()"/></div>' +
+      '<div><label>FeedForwards to give (max 10)</label><input id="xsFf" type="number" min="0" max="10" value="' + cp.feedforward + '" oninput="xlChain.edit()"/></div>' +
+      '<div><label>Encore</label><select id="xsEn" onchange="xlChain.edit()">' + [['optional', 'Optional (bonus)'], ['required', 'Assigned and required'], ['off', 'Off']].map(function (o) { return '<option value="' + o[0] + '"' + (su.encore === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div><label>Opening</label><select id="xsOp" onchange="xlChain.edit()"><option value="briefing"' + (su.opening === 'briefing' ? ' selected' : '') + '>Mission Briefing</option><option value="mindful"' + (su.opening === 'mindful' ? ' selected' : '') + '>Mindful Moment</option></select></div></div>' +
+      '<div class="xc-fix">Defaults (host can change): Daily Growth Log 3 on workshop checkpoints, FeedForward 3 on Zeta and Nu. These are prototype values.</div>' +
+      '<div style="margin-top:12px;display:flex;gap:8px;align-items:center"><button class="bigbtn green" onclick="xlChain.saveSetups()">SAVE SETUPS</button><button class="bigbtn ghost" onclick="modalClose()">CLOSE</button><span id="xsMsg" style="font-size:12px;color:#7dffb4">' + esc(e.msg) + '</span></div>';
+  }
+  function renderSetups() { modal(setupsHtml()); }
+  function pick(key) { editFromDom(); S.edit.key = key; S.edit.msg = ''; renderSetups(); }
+  function editFromDom() {
+    if (!S.edit) return; const g = function (id) { const el = document.getElementById(id); return el ? el.value : null; };
+    if (g('xsLt') == null) return;
+    const k = S.edit.key, base = cpByKey(k); if (!base) return;
+    const ex = S.edit.items[k] || {};
+    S.edit.items[k] = cleanSetup({ learningTarget: g('xsLt'), guideUrl: g('xsGuide'), recap: { url: g('xsRecap'), stops: ex.recap && ex.recap.stops }, full: { url: g('xsFull'), stops: ex.full && ex.full.stops },
+      growthLog: g('xsGl'), feedforward: g('xsFf'), encore: g('xsEn'), opening: g('xsOp') });
+  }
+  function edit() { editFromDom(); }
+  async function doSave() {
+    editFromDom(); S.edit.msg = 'Saving…';
+    const ok = await saveSetups(S.edit.items);
+    S.edit.msg = ok ? 'Saved. New sessions pick this up.' : 'Could not save. Try again.';
+    const m = document.getElementById('xsMsg'); if (m) { m.textContent = S.edit.msg; m.style.color = ok ? '#7dffb4' : '#ff7b8e'; }
+    return ok;
+  }
+
+  // ── whole-session System Events: launch the plan at GO LIVE; follow Mission Control's checkpoint ──
+  function launchPlan(s) {
+    if (!s || !s.sevPlan || !s.sevPlan.length || s.status !== 'active' || !L.isHost || !window.xlSev) return;
+    if (s.sevPlanLaunched) return;
+    s.sevPlanLaunched = Date.now();
+    s.sevPlan.forEach(function (p, i) { setTimeout(function () { try { xlSev.launch(p.type, { mins: -1 }); } catch (e) { console.warn('[xlChain] event', e); } }, 4000 + i * 5000); });
+  }
+  async function followMC(s) {
+    if (!s || !s.mcLink || !L.isHost) return null;
+    const mc = await loadMC(true), key = activeKey(mc); if (!key) return null;
+    const cp = merge(await loadSetups(true), mc).find(function (c) { return c.key === key; });
+    if (cp && s.checkpoint !== cp.key) { applyCheckpoint(s, cp); try { await saveSession(s); } catch (e) {} }
+    return cp;
+  }
+  function wrapAsync(name, fn) {
+    const orig = window[name]; if (typeof orig !== 'function') return;
+    window[name] = function () { const a = arguments; const r = orig.apply(this, a); return Promise.resolve(r).then(function (v) { try { fn(a); } catch (e) { console.warn('[xlChain]', e); } return v; }); };
+  }
+  function endWhole(s) { if (!s) return; (s.sevs || []).forEach(function (e) { if (e && e.whole && !e.endedAt) e.endedAt = Date.now(); }); }
+  (function hook() {
+    wrapAsync('liveGoLiveSession', function (a) { const s = (L.sessions || []).find(function (x) { return x.id === a[0]; }); launchPlan(s); followMC(s); });
+    wrapAsync('pflxLiveAutoStart', function (a) { launchPlan(a[0]); followMC(a[0]); });
+    const e1 = window.liveEndSession; if (typeof e1 === 'function') window.liveEndSession = function () { try { endWhole(xlRunningSession()); } catch (e) {} return e1.apply(this, arguments); };
+    const e2 = window.pflxLiveAutoEnd; if (typeof e2 === 'function') window.pflxLiveAutoEnd = function (s) { try { endWhole(s); } catch (e) {} return e2.apply(this, arguments); };
+  })();
+
+  // ── hand-off banner on every device when a chain session moves to its next activity ──
+  function blockLine(sl) { const sec = (typeof xlSegSeconds === 'function') ? xlSegSeconds(sl) : 0; return (sl.title || 'Next') + (sec ? ' · ' + Math.round(sec / 60) + ' min' : ''); }
+  function watch() {
+    let s = null; try { s = (typeof xlViewerSession === 'function') ? xlViewerSession() : null; } catch (e) {}
+    if (!s || !s.chain || s.status !== 'active') return;
+    const idx = s.currentSlideIndex || 0, prev = S.lastIdx[s.id];
+    S.lastIdx[s.id] = idx;
+    if (prev == null || prev === idx) return;
+    const sl = (s.slides || [])[idx]; if (!sl) return;
+    try { xlFlashBanner('⏭ NOW: ' + blockLine(sl), 'gold'); } catch (e) {}
+  }
+  setInterval(function () { try { watch(); } catch (e) {} }, 1000);
+
+  window.xlChain = { open: open, sync: sync, create: create, openSetups: openSetups, pick: pick, edit: edit, saveSetups: doSave, buildPlan: buildPlan, buildSession: buildSession, applyCheckpoint: applyCheckpoint,
+    merge: merge, activeKey: activeKey, parseVideo: parseVideo, cleanSetup: cleanSetup, loadSetups: loadSetups, loadMC: loadMC, followMC: followMC, launchPlan: launchPlan, endWhole: endWhole,
+    CPS: CPS, PRESETS: PRESETS, LIMITS: LIMITS, state: S };
 })();
 
 </script>
