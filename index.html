@@ -4,6 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
+<!-- ═══════════════════════════════════════════════════════════════
+     X-LIVE v0.92, Oct 5 2026 — PATCH X-LIVE v0.92: SYSTEM EVENTS ARE AN X-LIVE SESSION FEATURE
+     + the Marketplace is session-upgrades only (Ennis, 5 Oct).
+     · Marketplace: GAME UPGRADES are gone from the X-Live Marketplace (they are bought in the game);
+       it shows Session Upgrades only. Session upgrades gain an image (upload, cropped to 192px and
+       stored in the same pflx_lite_config row), a description, a host editor, price floor 10 XC in
+       steps of 5.
+     · System Events (xl-sev module at the end of this file): data on the session (s.sevs), launched from
+       the run panel (random roll or any type), from the projector's new X-LIVE slide, or from Mission
+       Control (message pflx_xlive_sysevent). Every device shows the same slot-machine reveal (27-card
+       reel ending on the rolled event) with sound design, a pink/magenta alert vignette (the previous
+       notification colours), a per-type animation, then a persistent event bar with a live clock.
+     · Effects (host device, at award time): System Tax, Double XC / Golden Hour, Studio Surge, Badge
+       Rush, XC Rain (host-timed), Market Crash (session upgrade prices x2).
+     · Reality Warp: 23 skins restyle the whole X-Live (page, HUD layer, tabs, cards, buttons, projector)
+       for everyone in the session while the event runs, then revert.
+     ═══════════════════════════════════════════════════════════════ -->
 <!-- ═══════════════════════════════════════════════════════════════════
      X-LIVE v0.84, Oct 1 2026 — PATCH X-LIVE v0.84: Chrono Shift, wired
      for real ("wire it" -- the v0.83 Handoff entry flagged Chrono Shift
@@ -7051,6 +7068,8 @@ function projOpen(start, opts) {
     let inner = '';
     if (v === 'roster') {
       inner = projTeamsInner();
+    } else if (v === 'sev') { // PATCH X-LIVE v0.92 -- the X-Live slide: live System Events
+      inner = window.xlSev ? xlSev.projHtml() : '';
     } else if (v === 'goal') {
       const R = classRoster(); const goal = L.cfg.goal; const w = weekStart(0);
       const earned = R.reduce((s, p) => s + sumActivity(p.id, w), 0);
@@ -7228,9 +7247,8 @@ function rSetup() {
     '</div>' +
     (typeof xlLiveKitSetupHtml === 'function' ? xlLiveKitSetupHtml() : '') + // PATCH X-LIVE v0.37
     '<div class="card"><div class="cardT">Quick Buttons</div>' + presetEditor('awards') + presetEditor('fines') +
-    '<div class="cardT" style="margin-top:14px">Upgrades Shop</div>' +
-    L.cfg.upgrades.map((u, i) => '<div class="feedrow">' + u.icon + ' <b>' + esc(u.label) + '</b> · ' + u.cost + ' XC <span class="t"><button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.upgrades.splice(' + i + ',1);saveCfg();render()">✕</button></span></div>').join('') +
-    '<div style="display:flex;gap:6px;margin-top:8px"><input id="upLbl" placeholder="Privilege" style="flex:2"/><input id="upCost" type="number" placeholder="XC" style="flex:1"/><button class="bigbtn green" style="padding:8px 12px" onclick="var l=document.getElementById(\'upLbl\').value.trim(),c=parseInt(document.getElementById(\'upCost\').value)||0; if(l&&c>0){L.cfg.upgrades.push({id:\'up-\'+Date.now(),label:l,icon:\'🎁\',cost:c});saveCfg();render();}">ADD</button></div></div></div>';
+    (window.xlSev ? xlSev.upShopHtml() : '') + // PATCH X-LIVE v0.92 -- session upgrades with image upload + edit
+    '</div></div>';
 }
 function presetEditor(kind) {
   const arr = L.cfg[kind];
@@ -14211,6 +14229,605 @@ background-image:radial-gradient(circle at 80% 10%, rgba(var(--cyanrgb),.08), tr
     var i = L.hubPane || 0; sw.scrollLeft = sw.clientWidth * i;
     sw.onscroll = function () { var k = Math.round(sw.scrollLeft / sw.clientWidth); if (k !== L.hubPane) { L.hubPane = k; document.querySelectorAll('.hub-tabs button').forEach(function (t, j) { t.classList.toggle('on', j === k); }); if (typeof xlMusic !== 'undefined' && typeof xlMusicZone === 'function') xlMusic.set(xlMusicZone()); } };
   };
+})();
+
+</script>
+<style id="xl-sev-css">
+/* ═══ PATCH X-LIVE v0.92 — System Events inside X-Live sessions ═══════════
+   Overlay (slot-machine reveal, pink vignette, per-type animation), the
+   persistent event bar, the projector slide and the Reality Warp skin FX
+   layer. Skin colour rules are generated in JS (see xlSev.skinCss). */
+#xlSevOv{position:fixed;inset:0;z-index:100050;display:none;align-items:center;justify-content:center;background:rgba(6,2,14,.88);overflow:hidden;font-family:'Exo 2',sans-serif}
+#xlSevOv.on{display:flex;animation:xsIn .35s ease-out}
+@keyframes xsIn{from{opacity:0}to{opacity:1}}
+#xlSevOv .xs-vig{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 0 rgba(255,0,100,0);transition:box-shadow .3s}
+#xlSevOv.alert .xs-vig{animation:xsVig .52s ease-in-out 6}
+@keyframes xsVig{0%,100%{box-shadow:inset 0 0 90px 10px rgba(255,0,100,.25),inset 0 0 220px 40px rgba(255,110,199,.1)}50%{box-shadow:inset 0 0 190px 70px rgba(255,0,100,.85),inset 0 0 340px 120px rgba(180,0,255,.45)}}
+#xlSevOv .xs-scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 4px);mix-blend-mode:screen}
+#xlSevOv .xs-stage{position:relative;width:min(94vw,860px);text-align:center;color:#fff;z-index:2}
+#xlSevOv .xs-top{font-family:'Audiowide';font-weight:900;font-size:clamp(11px,1.7vw,17px);letter-spacing:.42em;color:#ff6ec7;text-shadow:0 0 18px rgba(255,0,100,.9);margin-bottom:14px;animation:xsBlink 1s steps(2) infinite}
+@keyframes xsBlink{50%{opacity:.35}}
+#xlSevOv .xs-machine{position:relative;margin:0 auto;width:min(86vw,560px);padding:16px 16px 18px;border-radius:22px;background:linear-gradient(180deg,#1b0a2e,#0b0414);border:3px solid #ff2d8f;box-shadow:0 0 0 4px rgba(180,0,255,.35),0 0 60px rgba(255,0,100,.55),inset 0 0 40px rgba(255,0,100,.25)}
+#xlSevOv .xs-lights{position:absolute;left:14px;right:14px;top:-9px;height:10px;display:flex;justify-content:space-between;pointer-events:none}
+#xlSevOv .xs-lights i{width:10px;height:10px;border-radius:50%;background:#ff6ec7;box-shadow:0 0 12px #ff0064;animation:xsLamp .6s steps(2) infinite}
+#xlSevOv .xs-lights i:nth-child(even){animation-delay:.3s;background:#ffd166;box-shadow:0 0 12px #ffaa00}
+@keyframes xsLamp{50%{opacity:.2}}
+#xlSevOv .xs-window{position:relative;height:210px;overflow:hidden;border-radius:14px;background:#06020d;border:2px solid rgba(255,110,199,.55);box-shadow:inset 0 0 30px rgba(0,0,0,.9)}
+#xlSevOv .xs-window::before,#xlSevOv .xs-window::after{content:'';position:absolute;left:0;right:0;height:60px;z-index:3;pointer-events:none}
+#xlSevOv .xs-window::before{top:0;background:linear-gradient(180deg,#06020d,transparent)}
+#xlSevOv .xs-window::after{bottom:0;background:linear-gradient(0deg,#06020d,transparent)}
+#xlSevOv .xs-pay{position:absolute;left:0;right:0;top:50%;height:96px;transform:translateY(-50%);border-top:3px solid #ffd166;border-bottom:3px solid #ffd166;z-index:2;pointer-events:none;box-shadow:0 0 22px rgba(255,209,102,.55)}
+#xlSevOv .xs-strip{position:absolute;left:0;right:0;top:0;will-change:transform}
+#xlSevOv .xs-card{height:96px;display:flex;align-items:center;justify-content:center;gap:16px;font-family:'Audiowide';font-weight:900;font-size:clamp(20px,3.6vw,30px);letter-spacing:.08em;color:#ffe3f3;text-transform:uppercase}
+#xlSevOv .xs-card span{font-size:46px;filter:drop-shadow(0 0 10px rgba(255,0,100,.8))}
+#xlSevOv.spin .xs-strip{filter:blur(1.4px)}
+#xlSevOv .xs-skip{position:absolute;right:16px;bottom:14px;z-index:5;cursor:pointer;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#ffd9ee;font-family:'Audiowide';font-size:10px;letter-spacing:.14em;padding:8px 14px;border-radius:8px}
+#xlSevOv .xs-result{min-height:150px;margin-top:20px;opacity:0;transform:scale(.7);transition:all .5s cubic-bezier(.2,1.5,.4,1)}
+#xlSevOv.landed .xs-result{opacity:1;transform:none}
+#xlSevOv .xs-rn{font-family:'Audiowide';font-weight:900;font-size:clamp(26px,5.6vw,54px);letter-spacing:.06em;color:#fff;text-shadow:0 0 28px rgba(255,0,100,.95),0 0 60px rgba(180,0,255,.7)}
+#xlSevOv .xs-rd{font-size:clamp(13px,2vw,18px);color:#ffd9ee;margin-top:8px}
+#xlSevOv .xs-rp{display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+#xlSevOv .xs-rp b{font-family:'Audiowide';font-size:clamp(12px,1.8vw,16px);padding:7px 14px;border-radius:999px;background:rgba(255,0,100,.22);border:1px solid #ff6ec7;color:#fff;letter-spacing:.1em}
+#xlSevOv .xs-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4}
+#xlSevOv .xs-p{position:absolute;font-size:30px;will-change:transform,opacity;filter:drop-shadow(0 0 8px rgba(255,255,255,.4))}
+#xlSevOv .xs-big{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:'Audiowide';font-weight:900;font-size:clamp(70px,22vw,240px);color:#fff;text-shadow:0 0 40px currentColor,0 0 90px currentColor;animation:xsBig 1.8s ease-out forwards;white-space:nowrap}
+@keyframes xsBig{0%{transform:translate(-50%,-50%) scale(.2);opacity:0}25%{transform:translate(-50%,-50%) scale(1.15);opacity:1}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
+#xlSevOv .xs-sweep{position:absolute;inset:-30%;background:conic-gradient(from 0deg,transparent 0 20%,rgba(255,209,102,.45) 25%,transparent 30% 70%,rgba(255,209,102,.45) 75%,transparent 80%);animation:xsSweep 3.2s linear forwards;opacity:.9}
+@keyframes xsSweep{from{transform:rotate(0)}to{transform:rotate(280deg);opacity:0}}
+#xlSevOv .xs-warp{position:absolute;left:50%;top:50%;width:140vmax;height:140vmax;margin:-70vmax 0 0 -70vmax;background:conic-gradient(from 0deg,#ff0064,#b400ff,#00eaff,#ffd166,#ff0064);border-radius:50%;animation:xsWarp 2.6s ease-in forwards;mix-blend-mode:screen;opacity:0}
+@keyframes xsWarp{0%{transform:scale(.02) rotate(0);opacity:.95}70%{opacity:.7}100%{transform:scale(1) rotate(540deg);opacity:0}}
+#xlSevOv .xs-crash{position:absolute;left:8%;right:8%;top:22%;height:56%;opacity:.95}
+#xlSevOv .xs-crash path{fill:none;stroke:#ff3b5c;stroke-width:6;stroke-linecap:round;stroke-dasharray:1400;stroke-dashoffset:1400;animation:xsDraw 1.8s ease-out forwards;filter:drop-shadow(0 0 10px #ff0044)}
+@keyframes xsDraw{to{stroke-dashoffset:0}}
+#xlSevOv.shake .xs-stage{animation:xsShake .5s linear 3}
+@keyframes xsShake{0%,100%{transform:translate(0)}20%{transform:translate(-10px,4px)}40%{transform:translate(9px,-6px)}60%{transform:translate(-7px,-3px)}80%{transform:translate(6px,5px)}}
+/* persistent event bar — the previous notification colours */
+#xlSevBar{position:fixed;top:0;left:0;right:0;z-index:10070;display:none;flex-direction:column;pointer-events:none}
+#xlSevBar.on{display:flex}
+#xlSevBar .xs-b{pointer-events:auto;background:linear-gradient(90deg,rgba(255,0,100,.95),rgba(180,0,255,.95),rgba(255,110,199,.95));padding:9px 16px;display:flex;align-items:center;justify-content:center;gap:12px;font-family:'Audiowide',sans-serif;font-size:12px;letter-spacing:2px;color:#fff;box-shadow:0 4px 30px rgba(255,0,100,.35);animation:xsBar .4s ease-out;flex-wrap:wrap}
+@keyframes xsBar{from{transform:translateY(-100%)}to{transform:none}}
+#xlSevBar .xs-b em{font-style:normal;font-family:'Share Tech Mono',monospace;font-size:14px;font-weight:700}
+#xlSevBar .xs-b button{background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.4);color:#fff;font-family:'Audiowide';font-size:9px;letter-spacing:.12em;padding:4px 10px;border-radius:6px;cursor:pointer}
+body.xs-live::after{content:'';position:fixed;inset:0;z-index:9;pointer-events:none;box-shadow:inset 0 0 90px 6px rgba(255,0,100,.16);animation:xsAmb 3.4s ease-in-out infinite}
+@keyframes xsAmb{50%{box-shadow:inset 0 0 130px 14px rgba(255,0,100,.3)}}
+/* host launcher */
+.xs-host{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,110,199,.3)}
+.xs-host h4{font-family:'Audiowide';font-size:11px;letter-spacing:.16em;color:#ff6ec7;margin-bottom:8px}
+.xs-grid{display:flex;flex-wrap:wrap;gap:6px}
+.xs-grid .bigbtn{padding:8px 10px;font-size:10px}
+.xs-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#8a93b8}
+.xs-row select,.xs-row input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#eaf0ff;border-radius:8px;padding:6px 8px;font-size:12px}
+/* projector slide */
+.xs-pj{width:min(92vw,980px)}
+.xs-pj-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:6px}
+.xs-pj-card{position:relative;text-align:left;padding:20px 22px;border-radius:18px;background:linear-gradient(135deg,rgba(255,0,100,.22),rgba(180,0,255,.2));border:2px solid #ff6ec7;box-shadow:0 0 40px rgba(255,0,100,.35)}
+.xs-pj-card .ic{font-size:54px;line-height:1}
+.xs-pj-card .nm{font-family:'Audiowide';font-weight:900;font-size:clamp(20px,3vw,30px);letter-spacing:.06em;margin-top:8px}
+.xs-pj-card .ds{font-size:clamp(12px,1.6vw,16px);color:#ffd9ee;margin-top:6px}
+.xs-pj-card .tm{font-family:'Share Tech Mono',monospace;font-size:clamp(34px,6vw,64px);font-weight:700;margin-top:10px;color:#fff;text-shadow:0 0 22px rgba(255,0,100,.9)}
+.xs-pj-none{padding:30px;border:2px dashed rgba(255,110,199,.45);border-radius:18px;color:#ffb8dd;font-size:clamp(14px,2vw,20px)}
+.xs-pj-log{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.xs-pj-log span{font-size:12px;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#ffd9ee}
+/* Reality Warp FX layer (motifs); colours come from the generated skin CSS */
+#xlSkinFx{position:fixed;inset:0;z-index:0;pointer-events:none;display:none}
+html[data-xl-skin] #xlSkinFx{display:block}
+#xlSkinFx.m-scan{background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);opacity:.55}
+#xlSkinFx.m-grid{background-image:linear-gradient(var(--xs-a) 1px,transparent 1px),linear-gradient(90deg,var(--xs-a) 1px,transparent 1px);background-size:56px 56px;opacity:.12;-webkit-mask-image:linear-gradient(180deg,transparent,#000 70%);mask-image:linear-gradient(180deg,transparent,#000 70%)}
+#xlSkinFx.m-dots{background-image:radial-gradient(var(--xs-a) 1.4px,transparent 1.6px);background-size:22px 22px;opacity:.14}
+#xlSkinFx.m-grain{background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1.2px);background-size:5px 5px;opacity:.6}
+#xlSkinFx.m-pulse{background:radial-gradient(ellipse at 20% 50%,var(--xs-a),transparent 55%),radial-gradient(ellipse at 80% 50%,var(--xs-b),transparent 55%);opacity:.18;animation:xsNeon 2.4s ease-in-out infinite}
+@keyframes xsNeon{50%{opacity:.34}}
+.xs-warpin{position:fixed;inset:0;z-index:100060;pointer-events:none;background:conic-gradient(from 0deg,#ff0064,#b400ff,#00eaff,#ffd166,#ff0064);mix-blend-mode:screen;animation:xsWarpIn 1.3s ease-out forwards}
+@keyframes xsWarpIn{0%{opacity:.9;transform:scale(.1) rotate(0);border-radius:50%}100%{opacity:0;transform:scale(1.8) rotate(200deg);border-radius:0}}
+@media (prefers-reduced-motion:reduce){#xlSevOv.alert .xs-vig,body.xs-live::after,#xlSevOv .xs-top,#xlSevOv .xs-lights i{animation:none}}
+/* session-upgrade editor + marketplace images (Phase 1) */
+.mk-ic img{width:100%;height:100%;object-fit:cover;border-radius:10px;display:block}
+.mk-card.crash .c{color:#ff6e8f}
+.xs-up{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.xs-up .th{width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:24px;flex:none}
+.xs-up .th img{width:100%;height:100%;object-fit:cover}
+.xs-up .tx{flex:1;min-width:0;font-size:13px}
+.xs-up .tx small{display:block;color:#8a93b8;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+body.xs-live #app{padding-top:calc(14px + var(--xs-barh,0px))}
+body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
+
+</style>
+<script id="xl-sev">
+/* ═══ PATCH X-LIVE v0.92 — System Events inside X-Live sessions + session-upgrade Marketplace ═══
+   Ennis (5 Oct 2026): "Redesign System Events into X-Live Sessions … a Larger Notification like
+   screen that shuffles through System Event types like a slot machine … sound design … a system
+   event animation … vignette … keep the previous system notification colour … make sure the
+   Reality Warp truly effects the design of the session's live presentation/projection."
+   Events are DATA on the session (s.sevs), merged like every other host-owned session field, so
+   every device in the session sees the same reel, lands on the same event and applies the same
+   skin. Economy effects are applied on the HOST's device at award time (same place awards are
+   already posted), so nothing new is trusted to a player's browser. */
+(function () {
+  if (window.xlSev) return;
+
+  // ── sound keys (all PFLX Sound Library clips already served by the Platform) ──
+  Object.assign(XL_SFX, {
+    sevTick: 'pflx-library/02_UI_Blips/blip_010.mp3',
+    sevRise: 'pflx-library/05_Risers/riser_017.mp3',
+    sevLand: 'pflx-library/04_Impacts_Hits/impact_019.mp3',
+    sevAlert: 'countdown/fx_alert.mp3',
+    sevDrop: 'countdown/fx_drop.mp3',
+    sevTax: 'pflx-library/06_Power_Downs/powerdown_005.mp3',
+    sevWin: 'pflx-library/09_Music_Stingers/sting_hit_orbit_arcade.mp3',
+    sevGlitch: 'pflx-library/03_Glitch_Data_Pulses/glitch_009.mp3',
+    sevWarp: 'pflx-library/07_Transitions_Swells/transition_012.mp3'
+  });
+
+  // ── catalog (prototype values — flagged in the Handoff, host can override per launch) ──
+  const TYPES = {
+    system_tax:   { name: 'System Tax',   icon: '💸', desc: 'A slice of every XC earned in this session goes to the system.', mins: 5,  pct: 10, anim: 'tax',    snd: 'sevTax' },
+    xc_boost:     { name: 'Double XC',    icon: '⚡', desc: 'All XC earned in this session is multiplied.',                    mins: 5,  mult: 2,  anim: 'boost',  snd: 'sevWin' },
+    golden_hour:  { name: 'Golden Hour',  icon: '🌟', desc: 'Everything pays double for a long stretch.',                      mins: 10, mult: 2,  anim: 'golden', snd: 'sevWin' },
+    xc_rain:      { name: 'XC Rain',      icon: '🌧️', desc: 'Coins fall on random players every minute.',                      mins: 5,  rain: 25, every: 60, anim: 'rain', snd: 'sevWin' },
+    market_crash: { name: 'Market Crash', icon: '📉', desc: 'Session upgrades cost double while it lasts.',                    mins: 5,  mult: 2,  anim: 'crash',  snd: 'sevGlitch' },
+    studio_surge: { name: 'Studio Surge', icon: '🏢', desc: 'One Studio earns bonus XC on everything.',                        mins: 5,  bonus: 50, anim: 'surge', snd: 'sevWin' },
+    badge_rush:   { name: 'Badge Rush',   icon: '🏅', desc: 'Every award carries a flat bonus.',                               mins: 5,  flat: 25,  anim: 'badge', snd: 'sevWin' },
+    reality_warp: { name: 'Reality Warp', icon: '🌀', desc: 'The whole session changes its look.',                             mins: 10, anim: 'warp',   snd: 'sevWarp' }
+  };
+  const TYPE_ORDER = ['system_tax', 'xc_boost', 'golden_hour', 'xc_rain', 'market_crash', 'studio_surge', 'badge_rush', 'reality_warp'];
+  const STUDIO_NAMES = { gentech: 'Gentech Studio', mindforge: 'MindForge', emagination: 'eMagination Studio', innov8: 'Innov8 Inc', 'massive-dynamic': 'Massive Dynamic' };
+  function studioLabel(id) { const k = String(id || '').replace(/^studio-/, ''); return STUDIO_NAMES[k] || (k ? k.replace(/\b\w/g, function (c) { return c.toUpperCase(); }) : 'a Studio'); }
+
+  // ── Reality Warp skins (same ids and palettes as the Console's skin catalog) ──
+  // [name, icon, accent, accent2, highlight, bg, bg2, ink, muted, card, light, motif, font]
+  const SKINS = {
+    afrofuturistic: ['Neon Afrofuturistic', '✨', '#ff6ec7', '#b400ff', '#ffaa00', '#0d0118', '#2a0a45', '#fbeaff', '#c59ad8', 'rgba(40,8,64,.55)', 0, 'pulse'],
+    cyberpunk:      ['Cyberpunk Neon', '🔫', '#39ff14', '#ff073a', '#ffe600', '#070907', '#112411', '#e8ffe0', '#8fc57f', 'rgba(8,24,8,.6)', 0, 'scan', "'Orbitron','Audiowide',sans-serif"],
+    voidwalker:     ['Void Walker', '🌀', '#8b5cf6', '#ec4899', '#c084fc', '#030014', '#1a0b3d', '#ece6ff', '#a999d6', 'rgba(20,8,50,.6)', 0, 'grid'],
+    clouddesk:      ['Technodrome', '👁️', '#1f5fae', '#a8281f', '#8a5300', '#e3e7ec', '#f6f7f9', '#14202e', '#4b5a6b', 'rgba(255,255,255,.88)', 1, 'dots'],
+    mechanical:     ['Mechanical Metal', '⚙️', '#a8b4c0', '#8b6914', '#d4a56a', '#1c1e22', '#2e3238', '#eef1f4', '#9aa4ae', 'rgba(40,44,50,.7)', 0, 'grain'],
+    collage:        ['College Board', '📌', '#e85d04', '#d62828', '#9a5b00', '#c9a96e', '#e6cf9f', '#3d2814', '#6b4f2a', 'rgba(255,246,225,.82)', 1, 'grain', "Georgia,'Times New Roman',serif"],
+    neonpulse:      ['Neon Pulse Synthwave', '🌇', '#00eaff', '#ff00ff', '#ffb84d', '#14002b', '#2b0057', '#f4e8ff', '#b99be0', 'rgba(36,0,70,.6)', 0, 'pulse'],
+    allblack:       ['All Black (OLED Mono)', '🖤', '#e5e5e5', '#9e9e9e', '#bdbdbd', '#000000', '#0c0c0c', '#f2f2f2', '#8a8a8a', 'rgba(10,10,10,.85)', 0, ''],
+    vadervoid:      ['VaderVoid', '🔴', '#ff1a1a', '#8b0000', '#ff5050', '#020000', '#1a0000', '#ffe5e5', '#c08080', 'rgba(26,0,0,.7)', 0, 'scan'],
+    corporate:      ['Corporate Executive', '💼', '#eab308', '#94a3b8', '#facc15', '#0b1220', '#17223a', '#eef2fb', '#98a6c4', 'rgba(13,20,34,.75)', 0, '', "'Helvetica Neue',Arial,sans-serif"],
+    retrofuturistic:['Retrofuturistic', '📺', '#f97316', '#dc2626', '#fbbf24', '#1a1006', '#3a2209', '#ffeed8', '#c09060', 'rgba(40,22,6,.65)', 0, 'scan', "'Courier New',monospace"],
+    nintendored:    ['Nintendo Red', '🎮', '#c8000f', '#0096c8', '#8a6d00', '#f5efe0', '#fff8e8', '#2b1a1a', '#6e5a52', 'rgba(255,255,255,.9)', 1, 'dots'],
+    metroidprime:   ['Metroid Prime', '🤖', '#00e0ff', '#c2185b', '#ff7a1a', '#050810', '#0d1a2e', '#e0faff', '#7fb7c8', 'rgba(8,16,30,.68)', 0, 'grid', "'Orbitron','Audiowide',sans-serif"],
+    splatoon:       ['Splatoon Inkopolis', '🐙', '#b3f542', '#ff2e8a', '#ffd800', '#0e0716', '#2a0c3d', '#f8ffe0', '#b6a0d0', 'rgba(30,8,48,.62)', 0, 'dots'],
+    ps1classic:     ['PlayStation Classic', '🎯', '#4f8ef7', '#ff6b81', '#ffbd3f', '#2d2d2d', '#444444', '#f0f0f0', '#a8a8a8', 'rgba(60,60,60,.7)', 0, 'scan'],
+    ps5cosmic:      ['PS5 Cosmic', '🎲', '#3ddfff', '#6e33d6', '#9ad1ff', '#001a3d', '#003a7a', '#e8f6ff', '#8fb4d8', 'rgba(0,36,80,.62)', 0, 'grid'],
+    bloodborne:     ['Bloodborne Yharnam', '🕯️', '#c9a227', '#8a1414', '#e0b83a', '#0a0807', '#261410', '#f3e8d0', '#a8987a', 'rgba(24,14,10,.72)', 0, 'grain', "Georgia,'Times New Roman',serif"],
+    bloomberg:      ['Bloomberg Terminal', '📊', '#f99e1c', '#ff1744', '#f99e1c', '#000000', '#121212', '#ffe9c4', '#b18a4e', 'rgba(12,12,12,.85)', 0, 'scan', "'Courier New',monospace"],
+    frutigeraero:   ['Frutiger Aero', '💧', '#0f7cb0', '#29b6f6', '#a06800', '#eaf6ff', '#ffffff', '#0b3a55', '#3d6f8a', 'rgba(255,255,255,.78)', 1, ''],
+    vaporwave:      ['Vaporwave', '🌴', '#01cdfe', '#ff71ce', '#ffd319', '#1a0b2e', '#3a1466', '#fdeaff', '#c3a6e0', 'rgba(40,14,70,.6)', 0, 'grid'],
+    solarpunk:      ['Solarpunk', '🌿', '#6fcf63', '#f4b400', '#f4b400', '#0f2417', '#1b4128', '#eaffe6', '#9cc79a', 'rgba(16,44,26,.62)', 0, 'dots'],
+    wackypromo:     ['Wacky Promo', '📣', '#ffd500', '#ff2d2d', '#ffd500', '#0a0a0a', '#1d1d1d', '#fffbe0', '#bdb36a', 'rgba(24,24,24,.8)', 0, 'dots', "Impact,'Arial Black',sans-serif"],
+    dorfic:         ['DORFic', '🔶', '#c9550a', '#ff6a00', '#8a5300', '#f2f2f0', '#ffffff', '#1f1a14', '#6b5a4a', 'rgba(255,255,255,.92)', 1, ''],
+    steampunk:      ['Steampunk', '🕰️', '#d4a017', '#b87333', '#d4a017', '#1c140d', '#3a2a18', '#f6ead2', '#b79c70', 'rgba(36,24,14,.72)', 0, 'grain', "Georgia,'Times New Roman',serif"]
+  };
+  const SKIN_IDS = Object.keys(SKINS);
+  function rgba(hex, a) { const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map(function (c) { return c + c; }).join('') : h, 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  function skinCss() {
+    let css = '';
+    SKIN_IDS.forEach(function (id) {
+      const k = SKINS[id], a = k[2], b = k[3], g = k[4], bg = k[5], bg2 = k[6], ink = k[7], mu = k[8], card = k[9], light = k[10], font = k[12];
+      const R = 'html[data-xl-skin="' + id + '"] ';
+      css += R + '{--xs-a:' + a + ';--xs-b:' + b + '}';
+      css += R + 'body{background:radial-gradient(ellipse at 50% -20%,' + bg2 + ' 0%,' + bg + ' 68%)!important;color:' + ink + '!important;transition:background .8s}';
+      css += R + '.hud-grid{background-image:linear-gradient(' + rgba(a, .9) + ' 1px,transparent 1px),linear-gradient(90deg,' + rgba(a, .9) + ' 1px,transparent 1px)!important;opacity:' + (light ? .08 : .07) + '!important}';
+      css += R + '.hud-glow.g1{background:' + a + '!important}' + R + '.hud-glow.g2{background:' + b + '!important}' + R + '.hud-glow.g3{background:' + g + '!important}';
+      css += R + '.hud-scan{background:linear-gradient(180deg,transparent,' + rgba(a, .12) + ',transparent)!important}';
+      css += R + '.hud-ring{border-color:' + rgba(a, .2) + '!important}' + R + '.hud-ring.r2{border-color:' + rgba(b, .22) + '!important}';
+      css += R + '.hd .logo{color:' + a + '!important;text-shadow:0 0 20px ' + rgba(a, .45) + '!important}' + R + '.hd .logo b{color:' + g + '!important}';
+      css += R + '.logo-img{filter:drop-shadow(0 0 8px ' + rgba(a, .5) + ')' + (light ? ' brightness(.55) saturate(1.4)' : '') + '!important}';
+      css += R + '.hd .sub,' + R + '.cardT,' + R + '.xl-hint{color:' + mu + '!important}';
+      css += R + '.tab{color:' + mu + '!important;border-color:' + rgba(a, .22) + '!important;background:' + rgba(a, .05) + '!important}';
+      css += R + '.tab.on{border-color:' + a + '!important;background:' + rgba(a, .16) + '!important;color:' + a + '!important;box-shadow:0 0 16px ' + rgba(a, .35) + ',inset 0 0 10px ' + rgba(a, .14) + '!important}';
+      css += R + '.card{background:' + card + '!important;border-color:' + rgba(a, .28) + '!important;color:' + ink + '}';
+      css += R + '.card::before,' + R + '.card::after{border-color:' + a + '!important}';
+      css += R + '.bigbtn{border-color:' + rgba(a, .55) + '!important;background:' + rgba(a, .14) + '!important;color:' + a + '!important}';
+      css += R + '.bigbtn:hover{background:' + rgba(a, .28) + '!important}';
+      css += R + '.bigbtn.gold{border-color:' + rgba(g, .6) + '!important;background:' + rgba(g, .16) + '!important;color:' + g + '!important}';
+      css += R + '.bigbtn.red{border-color:' + rgba(b, .55) + '!important;background:' + rgba(b, .14) + '!important;color:' + b + '!important}';
+      css += R + '.bigbtn.ghost{border-color:' + rgba(mu, .4) + '!important;background:' + rgba(mu, .08) + '!important;color:' + mu + '!important}';
+      css += R + '.ptile,' + R + '.lbrow,' + R + '.mk-card,' + R + '.feedrow{border-color:' + rgba(a, .22) + '!important}';
+      css += R + '.projTitle{color:' + a + '!important;text-shadow:0 0 24px ' + rgba(a, .5) + '}';
+      css += R + '[style*="#8a93b8"],' + R + '[style*="#aeb6d8"],' + R + '[style*="#9aa3c8"]{color:' + mu + '!important}';
+      css += R + '[style*="color:#7de9ff"]{color:' + a + '!important}' + R + '[style*="color:#eaf0ff"]{color:' + ink + '!important}' + R + '[style*="color:#ffd166"]{color:' + g + '!important}';
+      css += R + 'input,' + R + 'select,' + R + 'textarea{background:' + (light ? 'rgba(255,255,255,.85)' : rgba(a, .07)) + '!important;color:' + ink + '!important;border-color:' + rgba(a, .35) + '!important}';
+      css += R + '.ptile .xc,' + R + '.lbrow .val,' + R + '.demoBanner{color:' + g + '!important}' + R + '.demoBanner{border-color:' + rgba(g, .45) + '!important;background:' + rgba(g, .1) + '!important}';
+      css += R + '.ptile .nm,' + R + '.lbrow .nm,' + R + '.goaltxt{color:' + ink + '!important}' + R + '.ptile .av .ph{background:linear-gradient(135deg,' + rgba(a, .55) + ',' + rgba(b, .5) + ')!important;color:#fff!important}';
+      if (font) css += R + '.cardT,' + R + '.tab,' + R + '.projTitle,' + R + '.hd .logo,' + R + '.bigbtn{font-family:' + font + '!important}';
+      if (light) css += R + '.hud-glow{opacity:.12!important}' + R + '.ph,' + R + '.ptile .av{filter:none}' + R + '#proj,' + R + '#proj *{text-shadow:none}' + R + '.xl-pj-bar .bigbtn{background:' + rgba(a, .12) + '!important}';
+    });
+    return css;
+  }
+
+  // ── state ──
+  const S = { seen: {}, seenInit: {}, queue: [], busy: false, bar: '', skin: '', rainN: {}, opt: { mins: 0, skin: '', pct: 10, mult: 2 }, lastType: '', timers: [] };
+
+  function sess() { try { return (typeof xlViewerSession === 'function') ? xlViewerSession() : null; } catch (e) { return null; } }
+  function activeOf(s, now) { now = now || Date.now(); return ((s && s.sevs) || []).filter(function (e) { return e && !e.endedAt && e.endsAt > now; }); }
+  function activeNow() { return activeOf(sess()); }
+  function fmt(ms) { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
+  function effectLine(e) {
+    const T = TYPES[e.type] || {};
+    if (e.type === 'system_tax') return e.pct + '% TAX ON EARNED XC';
+    if (e.type === 'xc_boost' || e.type === 'golden_hour') return '×' + e.mult + ' XC';
+    if (e.type === 'xc_rain') return '+' + e.rain + ' XC / ' + e.every + 's';
+    if (e.type === 'market_crash') return 'UPGRADES ×' + e.mult;
+    if (e.type === 'studio_surge') return studioLabel(e.studio).toUpperCase() + ' +' + e.bonus + '%';
+    if (e.type === 'badge_rush') return '+' + e.flat + ' XC PER AWARD';
+    if (e.type === 'reality_warp') return ((SKINS[e.skin] || [])[0] || 'NEW LOOK').toUpperCase();
+    return (T.name || '').toUpperCase();
+  }
+
+  // ── launch / end (host) ──
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function makeEvent(typeId, o) {
+    o = o || {};
+    if (typeId === 'random') { const pool = TYPE_ORDER.filter(function (t) { return t !== S.lastType; }); typeId = pick(pool); }
+    const T = TYPES[typeId]; if (!T) return null;
+    const mins = +o.mins > 0 ? +o.mins : T.mins;
+    const now = Date.now();
+    const ev = { id: 'sev_' + now.toString(36) + Math.random().toString(36).slice(2, 5), type: typeId, name: T.name, icon: T.icon, startedAt: now, endsAt: now + mins * 60000, mins: mins, by: o.by || 'host' };
+    if (typeId === 'system_tax') ev.pct = +o.pct > 0 ? +o.pct : T.pct;
+    if (typeId === 'xc_boost' || typeId === 'golden_hour' || typeId === 'market_crash') ev.mult = +o.mult > 1 ? +o.mult : T.mult;
+    if (typeId === 'xc_rain') { ev.rain = T.rain; ev.every = T.every; }
+    if (typeId === 'badge_rush') ev.flat = T.flat;
+    if (typeId === 'studio_surge') {
+      ev.bonus = T.bonus;
+      const s = sess(); const ids = {};
+      ((s && s.liveParticipants) || []).forEach(function (p) { const r = (L.roster || []).find(function (x) { return x.id === p.id; }); if (r && r.studioId) ids[String(r.studioId).replace(/^studio-/, '')] = 1; });
+      const keys = Object.keys(ids); ev.studio = o.studio || (keys.length ? pick(keys) : pick(Object.keys(STUDIO_NAMES).slice(0, 4)));
+    }
+    if (typeId === 'reality_warp') ev.skin = (o.skin && SKINS[o.skin]) ? o.skin : pick(SKIN_IDS.filter(function (k) { return k !== S.skin; }));
+    const reel = []; for (let i = 0; i < 27; i++) reel.push(pick(TYPE_ORDER)); reel.push(typeId); ev.reel = reel;
+    return ev;
+  }
+  function launch(typeId, o) {
+    if (!L.isHost) return null;
+    const s = xlRunningSession ? xlRunningSession() : null;
+    if (!s) { toast('Start a live session first — System Events run inside a session.'); return null; }
+    const ev = makeEvent(typeId, Object.assign({}, S.opt.mins ? { mins: S.opt.mins } : {}, typeId === 'system_tax' || typeId === 'random' ? { pct: S.opt.pct } : {}, { mult: S.opt.mult, skin: S.opt.skin }, o || {}));
+    if (!ev) return null;
+    S.lastType = ev.type;
+    s.sevs = (s.sevs || []).filter(function (e) { return e && (e.endsAt > Date.now() - 600000); }).concat([ev]).slice(-12);
+    S.seen[ev.id] = 1;
+    reveal(ev);
+    try { saveSession(s); } catch (e) {}
+    return ev;
+  }
+  function endEvent(id) {
+    if (!L.isHost) return; const s = xlRunningSession(); if (!s) return;
+    const ev = (s.sevs || []).find(function (e) { return e.id === id; }); if (!ev) return;
+    ev.endedAt = Date.now(); try { saveSession(s); } catch (e) {}
+    tick(); try { render(); } catch (e) {}
+  }
+
+  // ── skin ──
+  function ensureSkinLayer() {
+    if (!document.getElementById('xlSevSkinCss')) { const st = document.createElement('style'); st.id = 'xlSevSkinCss'; st.textContent = skinCss(); document.head.appendChild(st); }
+    if (!document.getElementById('xlSkinFx')) { const d = document.createElement('div'); d.id = 'xlSkinFx'; document.body.appendChild(d); }
+  }
+  function applySkin(id) {
+    ensureSkinLayer();
+    id = SKINS[id] ? id : '';
+    if (id === S.skin) return;
+    S.skin = id;
+    const root = document.documentElement, fx = document.getElementById('xlSkinFx');
+    if (!id) { root.removeAttribute('data-xl-skin'); if (fx) fx.className = ''; document.body.classList.remove('xl-skinned'); }
+    else { root.setAttribute('data-xl-skin', id); if (fx) fx.className = SKINS[id][11] ? 'm-' + SKINS[id][11] : ''; document.body.classList.add('xl-skinned'); }
+  }
+
+  // ── tick: bars, skin, rain, detection ──
+  function tick() {
+    const s = sess(), now = Date.now();
+    detect(s, now);
+    const hold = {}; if (S.reveal) hold[S.reveal.id] = 1; S.queue.forEach(function (q) { hold[q.id] = 1; });   // never spoil a reel that has not landed yet
+    const act = activeOf(s, now).filter(function (e) { return !hold[e.id]; });
+    // skin follows the newest active Reality Warp (cleared when it ends or the session is left)
+    const w = act.filter(function (e) { return e.type === 'reality_warp'; }).pop();
+    if (!S.reveal || S.revealSkinOk) applySkin(w ? w.skin : '');
+    // bar
+    const bar = ensureBar();
+    const html = act.map(function (e) {
+      return '<div class="xs-b"><span style="font-size:18px">' + e.icon + '</span><span>SYSTEM EVENT: ' + esc(e.name).toUpperCase() + ' · ' + esc(effectLine(e)) + '</span><em>' + fmt(e.endsAt - now) + '</em>' +
+        (L.isHost ? '<button onclick="xlSev.end(\'' + e.id + '\')">END</button>' : '') + '</div>';
+    }).join('');
+    if (html !== S.bar) { S.bar = html; bar.innerHTML = html; }
+    bar.classList.toggle('on', !!act.length);
+    document.body.style.setProperty('--xs-barh', act.length ? bar.offsetHeight + 'px' : '0px');
+    document.body.classList.toggle('xs-live', !!act.length);
+    // XC Rain is fired from the host's device (it is a host award)
+    if (L.isHost && s && s.id === (L.liveRunningSessionId || '')) act.forEach(function (e) { if (e.type === 'xc_rain') rain(s, e, now); });
+    // keep the projector slide's clocks fresh
+    const proj = document.getElementById('proj');
+    if (proj && proj.classList.contains('on') && proj.querySelector('[data-sev-clock]')) {
+      proj.querySelectorAll('[data-sev-clock]').forEach(function (el) { const ev = ((s && s.sevs) || []).find(function (x) { return x.id === el.getAttribute('data-sev-clock'); }); if (ev) el.textContent = fmt(ev.endsAt - now); });
+    }
+  }
+  function ensureBar() { let b = document.getElementById('xlSevBar'); if (!b) { b = document.createElement('div'); b.id = 'xlSevBar'; document.body.appendChild(b); } return b; }
+  function detect(s, now) {
+    if (!s) { return; }
+    const evs = s.sevs || [];
+    if (!S.seenInit[s.id]) { S.seenInit[s.id] = true; evs.forEach(function (e) { S.seen[e.id] = 1; }); return; }
+    evs.forEach(function (e) {
+      if (!e || S.seen[e.id]) return; S.seen[e.id] = 1;
+      if (e.endedAt || e.endsAt <= now) return;
+      if (now - (+e.startedAt || 0) > 25000) return;   // late arrivals don't replay the show
+      reveal(e);
+    });
+  }
+  function rain(s, e, now) {
+    const n = Math.floor((now - e.startedAt) / (e.every * 1000));
+    if ((S.rainN[e.id] || 0) >= n || n < 1) return; S.rainN[e.id] = n;
+    const here = ((s.liveParticipants) || []).map(function (p) { return (L.roster || []).find(function (r) { return r.id === p.id; }); }).filter(Boolean);
+    if (!here.length) return;
+    const lucky = here.slice().sort(function () { return Math.random() - .5; }).slice(0, Math.max(1, Math.ceil(here.length * .25)));
+    lucky.forEach(function (p) { grant(p, e.rain, 'xc_rain', '🌧️ XC Rain'); });
+    toast('🌧️ XC Rain: +' + e.rain + ' XC on ' + lucky.length + ' player' + (lucky.length === 1 ? '' : 's'));
+    try { xlSfx('award', .8); } catch (er) {}
+    try { render(); } catch (er) {}
+  }
+  function grant(p, xc, key, label) {
+    if (!xc) return;
+    postAward(p.id, { xc: xc, reason: 'xlive.sysevent.' + key, noMultiplier: true });
+    p.xc = Math.max(0, (p.xc || 0) + xc); if (xc > 0) p.totalXc = (p.totalXc || 0) + xc;
+    liteLog(p.id, xc > 0 ? 'award' : 'tax', label, xc);
+    burst(p.id, (xc > 0 ? '+' : '') + xc);
+  }
+
+  // ── economy hooks (host device, at award time) ──
+  function economy(players, xc, label) {
+    if (!L.isHost || !(xc > 0)) return;
+    const s = xlRunningSession && xlRunningSession(); if (!s) return;
+    const act = activeOf(s); if (!act.length) return;
+    const inSess = {}; (s.liveParticipants || []).forEach(function (p) { inSess[p.id] = 1; });
+    let touched = 0;
+    players.forEach(function (p) {
+      if (!inSess[p.id]) return;
+      let extra = 0, notes = [];
+      act.forEach(function (e) {
+        if (e.type === 'xc_boost' || e.type === 'golden_hour') { const x = Math.floor(xc * (e.mult - 1)); if (x) { extra += x; notes.push(e.icon + ' ×' + e.mult); } }
+        if (e.type === 'studio_surge' && String(p.studioId || '').replace(/^studio-/, '') === e.studio) { const x = Math.floor(xc * e.bonus / 100); if (x) { extra += x; notes.push('🏢 +' + e.bonus + '%'); } }
+        if (e.type === 'badge_rush') { extra += e.flat; notes.push('🏅 +' + e.flat); }
+      });
+      if (extra) { grant(p, extra, 'bonus', notes.join(' ') + ' bonus'); touched++; }
+      act.forEach(function (e) {
+        if (e.type === 'system_tax') { const t = Math.floor((xc + extra) * e.pct / 100); if (t > 0) { grant(p, -t, 'tax', '💸 System Tax ' + e.pct + '%'); touched++; } }
+      });
+    });
+    if (touched) { try { xlSfx('award', .6); } catch (er) {} try { render(); } catch (er) {} }
+  }
+  function priceMult() { const c = activeNow().filter(function (e) { return e.type === 'market_crash'; }).pop(); return c ? c.mult : 1; }
+
+  // ── reveal overlay ──
+  function ov() {
+    let o = document.getElementById('xlSevOv');
+    if (!o) {
+      o = document.createElement('div'); o.id = 'xlSevOv';
+      o.innerHTML = '<div class="xs-vig"></div><div class="xs-scan"></div><div class="xs-fx" id="xsFx"></div><div class="xs-stage">' +
+        '<div class="xs-top">⚠ INCOMING // SYSTEM EVENT ⚠</div>' +
+        '<div class="xs-machine"><div class="xs-lights">' + '<i></i>'.repeat(14) + '</div><div class="xs-window"><div class="xs-pay"></div><div class="xs-strip" id="xsStrip"></div></div></div>' +
+        '<div class="xs-result"><div class="xs-rn" id="xsRn"></div><div class="xs-rd" id="xsRd"></div><div class="xs-rp" id="xsRp"></div></div></div>' +
+        '<button class="xs-skip" id="xsSkip">SKIP ▸</button>';
+      document.body.appendChild(o);
+      o.querySelector('#xsSkip').onclick = function () { if (S.finish) S.finish(true); };
+    }
+    return o;
+  }
+  function later(fn, ms) { const t = setTimeout(fn, ms); S.timers.push(t); return t; }
+  function clearTimers() { S.timers.forEach(clearTimeout); S.timers = []; if (S.raf) cancelAnimationFrame(S.raf); S.raf = 0; }
+  function reveal(ev) {
+    if (S.busy) { S.queue.push(ev); return; }
+    S.busy = true; S.reveal = ev; S.revealSkinOk = false;
+    const o = ov(), H = 96, WIN = 210, reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const strip = o.querySelector('#xsStrip'), fx = o.querySelector('#xsFx');
+    fx.innerHTML = ''; o.classList.remove('landed', 'alert', 'shake', 'spin'); void o.offsetWidth;
+    strip.innerHTML = (ev.reel || [ev.type]).map(function (t) { const T = TYPES[t] || { name: t, icon: '❔' }; return '<div class="xs-card"><span>' + T.icon + '</span>' + esc(T.name) + '</div>'; }).join('');
+    const T = TYPES[ev.type];
+    o.querySelector('#xsRn').textContent = T.icon + ' ' + T.name.toUpperCase();
+    o.querySelector('#xsRd').textContent = T.desc;
+    o.querySelector('#xsRp').innerHTML = '<b>' + esc(effectLine(ev)) + '</b><b>⏱ ' + ev.mins + ' MIN</b>';
+    o.classList.add('on', 'spin');
+    const n = (ev.reel || [1]).length, finalOff = (n - 1) * H + H / 2 - WIN / 2, dur = reduce ? 900 : 5200;
+    strip.style.transform = 'translateY(0)';
+    try { xlSfx('sevRise', .9); } catch (e) {}
+    let t0 = 0, lastIdx = -1, lastTick = 0, done = false;
+    function frame(ts) {
+      if (done) return; if (!t0) t0 = ts;
+      const p = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - p, 3.2), off = finalOff * e;
+      strip.style.transform = 'translateY(' + (-off) + 'px)';
+      const idx = Math.floor((off + WIN / 2) / H);
+      if (idx !== lastIdx) { lastIdx = idx; if (ts - lastTick > 40) { lastTick = ts; const a = xlSfx('sevTick', .5 + .3 * p); if (a) { try { a.playbackRate = 1.5 - .6 * p; } catch (er) {} } } }
+      if (p < 1) S.raf = requestAnimationFrame(frame); else land();
+    }
+    function land() {
+      if (done) return; done = true; S.raf = 0;
+      strip.style.transform = 'translateY(' + (-finalOff) + 'px)';
+      o.classList.remove('spin'); o.classList.add('landed', 'alert');
+      if (['tax', 'crash', 'warp'].indexOf(T.anim) >= 0 && !reduce) o.classList.add('shake');
+      try { xlSfx('sevLand', 1); xlSfx('sevDrop', .8); } catch (e) {}
+      later(function () { try { xlSfx('sevAlert', .85); } catch (e) {} }, 260);
+      later(function () { try { xlSfx(T.snd, .9); } catch (e) {} animate(ev, fx, reduce); }, 900);
+      if (ev.type === 'reality_warp') later(function () { S.revealSkinOk = true; flashWarp(); applySkin(ev.skin); }, 1500);
+      later(function () { finish(false); }, reduce ? 2600 : 6800);
+    }
+    function finish(skip) {
+      clearTimers(); done = true;
+      o.classList.remove('on', 'alert', 'shake', 'landed', 'spin');
+      S.revealSkinOk = true; S.reveal = null; S.busy = false; S.finish = null;
+      if (ev.type === 'reality_warp') applySkin(ev.skin);
+      tick();
+      if (S.queue.length) later(function () { reveal(S.queue.shift()); }, 400);
+    }
+    S.finish = finish;
+    S.raf = requestAnimationFrame(frame);
+    // background tabs don't run rAF: guarantee the landing
+    later(function () { if (!done) { const el = o; strip.style.transform = 'translateY(' + (-finalOff) + 'px)'; land(); } }, dur + 1500);
+  }
+  function flashWarp() { const d = document.createElement('div'); d.className = 'xs-warpin'; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 1500); try { xlSfx('sevWarp', .7); } catch (e) {} }
+  function spawn(layer, chars, n, opt) {
+    opt = opt || {};
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('div'); el.className = 'xs-p'; el.textContent = chars[i % chars.length];
+      const w = layer.clientWidth || window.innerWidth, h = layer.clientHeight || window.innerHeight;
+      const x0 = opt.fromCenter ? w / 2 : Math.random() * w, y0 = opt.fromCenter ? h / 2 : (opt.fall ? -40 : opt.rise ? h + 30 : Math.random() * h);
+      el.style.left = x0 + 'px'; el.style.top = y0 + 'px'; el.style.fontSize = (22 + Math.random() * 26) + 'px'; layer.appendChild(el);
+      let to;
+      if (opt.fall) to = { x: (Math.random() - .5) * 120, y: h + 90 };
+      else if (opt.rise) to = { x: (Math.random() - .5) * 160, y: -h - 80 };
+      else if (opt.toCorner) to = { x: w * .42 - x0 + w / 2 - w / 2, y: -h * .42 };
+      else to = { x: (Math.random() - .5) * w * .9, y: (Math.random() - .5) * h * .9 };
+      const d = (opt.dur || 1800) + Math.random() * 900, delay = (opt.stagger || 40) * i;
+      const a = el.animate([{ transform: 'translate(0,0) rotate(0) scale(' + (opt.fromCenter ? .2 : 1) + ')', opacity: 0 }, { opacity: 1, offset: .15 }, { transform: 'translate(' + to.x + 'px,' + to.y + 'px) rotate(' + ((Math.random() - .5) * 540) + 'deg) scale(' + (opt.shrink ? .15 : 1) + ')', opacity: 0 }], { duration: d, delay: delay, easing: opt.ease || 'ease-in', fill: 'forwards' });
+      a.onfinish = function () { el.remove(); };
+    }
+  }
+  function big(layer, text, color) { const b = document.createElement('div'); b.className = 'xs-big'; b.style.color = color; b.textContent = text; layer.appendChild(b); setTimeout(function () { b.remove(); }, 1900); }
+  function animate(ev, fx, reduce) {
+    const k = reduce ? .35 : 1, N = function (x) { return Math.max(4, Math.round(x * k)); };
+    switch (TYPES[ev.type].anim) {
+      case 'tax': big(fx, '−' + ev.pct + '%', '#ff4d6d'); spawn(fx, ['💰', '🪙'], N(30), { fromCenter: true, toCorner: true, shrink: true, dur: 1700, ease: 'ease-in-out' }); break;
+      case 'boost': big(fx, '×' + ev.mult, '#ffd166'); spawn(fx, ['⚡', '🪙', '✨'], N(34), { rise: true, dur: 1500, ease: 'ease-out' }); break;
+      case 'golden': { const sw = document.createElement('div'); sw.className = 'xs-sweep'; fx.appendChild(sw); big(fx, '×' + ev.mult, '#ffe08a'); spawn(fx, ['✨', '🌟', '⭐'], N(34), { dur: 2200, ease: 'ease-out' }); break; }
+      case 'rain': spawn(fx, ['🪙', '🪙', '💰'], N(54), { fall: true, dur: 1900, stagger: 55, ease: 'ease-in' }); break;
+      case 'crash': { fx.insertAdjacentHTML('beforeend', '<svg class="xs-crash" viewBox="0 0 400 200" preserveAspectRatio="none"><path d="M0 20 L60 40 L110 28 L170 80 L220 66 L280 130 L330 118 L400 190"/></svg>'); big(fx, '▼ ×' + ev.mult, '#ff3b5c'); spawn(fx, ['📉', '💥'], N(14), { dur: 1600 }); break; }
+      case 'surge': big(fx, '+' + ev.bonus + '%', '#7de9ff'); spawn(fx, ['🏢', '⭐', '🚀'], N(30), { fromCenter: true, dur: 1700, ease: 'ease-out' }); break;
+      case 'badge': spawn(fx, ['🏅', '🎖️', '🥇'], N(26), { fromCenter: true, dur: 1800, ease: 'ease-out' }); big(fx, '+' + ev.flat, '#ffd166'); break;
+      case 'warp': { const w = document.createElement('div'); w.className = 'xs-warp'; fx.appendChild(w); spawn(fx, ['🌀', '✨'], N(20), { fromCenter: true, dur: 1900, ease: 'ease-out' }); break; }
+    }
+  }
+
+  // ── host launcher (appended to the run panel's SHOW CONTROL card) ──
+  function hostHtml() {
+    if (!L.isHost) return '';
+    const s = xlRunningSession && xlRunningSession(); if (!s) return '';
+    const act = activeOf(s);
+    const o = S.opt;
+    return '<div class="card xs-host"><h4>🎰 SYSTEM EVENTS — plays for everyone in the session</h4>' +
+      '<div class="xs-grid"><button class="bigbtn red" onclick="xlSev.launch(\'random\')">🎰 ROLL A RANDOM EVENT</button>' +
+      TYPE_ORDER.map(function (t) { return '<button class="bigbtn ghost" title="' + esc(TYPES[t].desc) + '" onclick="xlSev.launch(\'' + t + '\')">' + TYPES[t].icon + ' ' + esc(TYPES[t].name) + '</button>'; }).join('') + '</div>' +
+      '<div class="xs-row"><label>Length <select onchange="xlSev.opt.mins=+this.value">' + [[0, 'Default'], [1, '1 min'], [2, '2 min'], [3, '3 min'], [5, '5 min'], [10, '10 min'], [15, '15 min'], [20, '20 min'], [30, '30 min']].map(function (x) { return '<option value="' + x[0] + '"' + (o.mins === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label>Tax <select onchange="xlSev.opt.pct=+this.value">' + [5, 10, 15, 20, 25].map(function (x) { return '<option value="' + x + '"' + (o.pct === x ? ' selected' : '') + '>' + x + '%</option>'; }).join('') + '</select></label>' +
+      '<label>Multiplier <select onchange="xlSev.opt.mult=+this.value">' + [2, 3, 4].map(function (x) { return '<option value="' + x + '"' + (o.mult === x ? ' selected' : '') + '>×' + x + '</option>'; }).join('') + '</select></label>' +
+      '<label>Reality Warp skin <select onchange="xlSev.opt.skin=this.value"><option value="">Random</option>' + SKIN_IDS.map(function (k) { return '<option value="' + k + '"' + (o.skin === k ? ' selected' : '') + '>' + SKINS[k][1] + ' ' + esc(SKINS[k][0]) + '</option>'; }).join('') + '</select></label></div>' +
+      (act.length ? '<div class="xs-row" style="color:#ffb8dd">Active: ' + act.map(function (e) { return e.icon + ' ' + esc(e.name) + ' (' + fmt(e.endsAt - Date.now()) + ') <button class="bigbtn ghost" style="padding:3px 8px;font-size:8px" onclick="xlSev.end(\'' + e.id + '\')">END</button>'; }).join(' · ') + '</div>' : '') +
+      '</div>';
+  }
+
+  // ── projector slide ──
+  function projHtml() {
+    const s = sess(), now = Date.now();
+    const act = activeOf(s, now), recent = ((s && s.sevs) || []).filter(function (e) { return !act.includes(e); }).slice(-6).reverse();
+    const title = s ? esc(s.title || 'Live Session') : 'X-Live';
+    return '<div class="xs-pj"><div class="projTitle">⚡ X-LIVE · ' + title + '</div>' +
+      (act.length ? '<div class="xs-pj-cards">' + act.map(function (e) {
+        return '<div class="xs-pj-card"><div class="ic">' + e.icon + '</div><div class="nm">' + esc(e.name).toUpperCase() + '</div><div class="ds">' + esc(effectLine(e)) + '</div><div class="tm" data-sev-clock="' + e.id + '">' + fmt(e.endsAt - now) + '</div></div>';
+      }).join('') + '</div>' : '<div class="xs-pj-none">No System Event is running. ' + (L.isHost ? 'Roll one to shake up the room.' : 'Stay sharp — one can drop any moment.') + '</div>') +
+      (L.isHost ? '<div style="margin-top:18px"><button class="bigbtn red" onclick="xlSev.launch(\'random\')">🎰 ROLL SYSTEM EVENT</button></div>' : '') +
+      (recent.length ? '<div class="xs-pj-log">' + recent.map(function (e) { return '<span>' + e.icon + ' ' + esc(e.name) + '</span>'; }).join('') + '</div>' : '') + '</div>';
+  }
+
+  // ── session-upgrade Marketplace + editor (Phase 1) ──
+  function cleanCost(v) { v = parseInt(v, 10) || 0; return Math.max(10, Math.round(v / 5) * 5); }
+  function mkCardS(u, i) {
+    const mult = priceMult(), base = u.cost || 0, cost = base * mult;
+    const art = u.image ? '<img src="' + esc(u.image) + '" alt="">' : '<span>' + (u.icon || '🎁') + '</span>';
+    return '<div class="mk-card session' + (mult > 1 ? ' crash' : '') + '">' +
+      '<div class="mk-top"><div class="mk-ic">' + art + '</div><div class="mk-t"><b>' + esc(u.label || u.name) + '</b><div>' + esc(u.desc || 'Redeem in class.') + '</div></div><span class="mk-auto live">● LIVE</span></div>' +
+      '<div class="mk-strip"><div><small>WHERE</small>Live session</div><i>›</i><div><small>EFFECT</small><span class="e">' + esc(u.label || u.name) + '</span></div><i>›</i><div><small>SCOPE</small>You</div></div>' +
+      '<div class="mk-chips"><span class="c">🪙 ' + cost.toLocaleString() + ' XC' + (mult > 1 ? ' (×' + mult + ' Market Crash)' : '') + '</span><span>⏱ single-use</span></div>' +
+      '<button class="bigbtn gold" style="width:100%" onclick="buyUpgrade(' + i + ')">BUY · ' + cost.toLocaleString() + ' XC</button></div>';
+  }
+  function rShopS() {
+    const p = myRecord(), list = L.cfg.upgrades || [];
+    const bal = '<div style="font-size:11px;color:#8a93b8;margin:0 0 12px">Balance <b style="color:#ffd166">' + (p.xc || 0).toLocaleString() + ' XC</b>. Session upgrades are redeemed in class and your teacher sees them in the feed. Game upgrades are bought inside the game, with the XC you earn there.</div>';
+    return '<div class="card"><div class="cardT">🛒 MARKETPLACE</div>' + bal +
+      '<div class="mk-h">SESSION UPGRADES <span>this class</span></div>' +
+      (list.length ? '<div class="mk-grid">' + list.map(function (u, i) { return mkCardS(u, i); }).join('') + '</div>' : '<div class="xl-hint" style="text-align:left">Your teacher has not published any session upgrades yet.</div>') + '</div>';
+  }
+  function buyUpgradeS(i) {
+    const u = L.cfg.upgrades[i], p = myRecord(); if (!u) return;
+    const cost = (u.cost || 0) * priceMult();
+    if ((p.xc || 0) < cost) { toast('Not enough XC — you have ' + (p.xc || 0).toLocaleString()); return; }
+    modal('<div class="cardT">Redeem ' + esc(u.label) + '?</div><div style="font-size:13px;color:#aeb6d8">This spends <b style="color:#ffd166">' + cost.toLocaleString() + ' XC</b>. Your teacher gets notified in the feed.</div>' +
+      '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="confirmUpgrade(' + i + ')">REDEEM</button><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+  }
+  function confirmUpgradeS(i) {
+    const u = L.cfg.upgrades[i], p = myRecord(); if (!u) return;
+    const cost = (u.cost || 0) * priceMult();
+    if ((p.xc || 0) < cost) { modalClose(); toast('Not enough XC.'); return; }
+    postAward(p.id, { xc: -cost, reason: 'lite.upgrade.' + u.id });
+    p.xc = Math.max(0, (p.xc || 0) - cost);
+    liteLog(p.id, 'upgrade', u.label, -cost);
+    modalClose(); render(); toast('🎁 ' + u.label + ' redeemed! Your teacher has been notified.' + (L.demo ? ' (demo)' : ''));
+  }
+  function upShopHtml() {
+    return '<div class="cardT" style="margin-top:14px">Session Upgrades <span style="text-transform:none;letter-spacing:0;font-family:inherit;font-weight:400">· shown in the X-Live Marketplace</span></div>' +
+      (L.cfg.upgrades || []).map(function (u, i) {
+        return '<div class="xs-up"><div class="th">' + (u.image ? '<img src="' + esc(u.image) + '" alt="">' : (u.icon || '🎁')) + '</div><div class="tx"><b>' + esc(u.label) + '</b> · ' + (u.cost || 0) + ' XC<small>' + esc(u.desc || '') + '</small></div>' +
+          '<button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="xlSev.upEdit(' + i + ')">EDIT</button>' +
+          '<button class="bigbtn red" style="padding:4px 9px;font-size:8px" onclick="L.cfg.upgrades.splice(' + i + ',1);saveCfg();render()">✕</button></div>';
+      }).join('') +
+      '<div style="margin-top:10px"><button class="bigbtn green" onclick="xlSev.upEdit(-1)">+ NEW SESSION UPGRADE</button></div>';
+  }
+  const ED = { image: '', icon: '🎁' };
+  function upEdit(i) {
+    const u = i >= 0 ? L.cfg.upgrades[i] : { label: '', desc: '', cost: 100, icon: '🎁', image: '' };
+    ED.image = u.image || ''; ED.icon = u.icon || '🎁';
+    modal('<div class="cardT">' + (i >= 0 ? 'Edit' : 'New') + ' session upgrade</div>' +
+      '<label>Name</label><input id="xuName" value="' + esc(u.label || '') + '" maxlength="40"/>' +
+      '<label style="margin-top:8px">What it does</label><input id="xuDesc" value="' + esc(u.desc || '') + '" maxlength="120"/>' +
+      '<div style="display:flex;gap:10px;margin-top:8px"><div style="flex:1"><label>Cost (XC, min 10, steps of 5)</label><input id="xuCost" type="number" min="10" step="5" value="' + (u.cost || 100) + '"/></div><div style="flex:1"><label>Icon (if no image)</label><input id="xuIcon" value="' + esc(u.icon || '🎁') + '" maxlength="4"/></div></div>' +
+      '<label style="margin-top:8px">Image</label><div style="display:flex;gap:10px;align-items:center"><div class="xs-up"><div class="th" id="xuPrev" style="width:64px;height:64px">' + (u.image ? '<img src="' + esc(u.image) + '" alt="">' : esc(u.icon || '🎁')) + '</div></div>' +
+      '<input id="xuFile" type="file" accept="image/*" onchange="xlSev.upImg(this)" style="flex:1"/><button class="bigbtn ghost" style="padding:6px 10px;font-size:9px" onclick="xlSev.upClearImg()">REMOVE</button></div>' +
+      '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="xlSev.upSave(' + i + ')">SAVE</button><button class="bigbtn ghost" onclick="modalClose()">CANCEL</button></div>');
+  }
+  function upImg(inp) {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const fr = new FileReader();
+    fr.onload = function () {
+      const im = new Image();
+      im.onload = function () {
+        const S2 = 192, c = document.createElement('canvas'); c.width = c.height = S2; const x = c.getContext('2d');
+        const m = Math.min(im.width, im.height), sx = (im.width - m) / 2, sy = (im.height - m) / 2; x.drawImage(im, sx, sy, m, m, 0, 0, S2, S2);
+        let d = c.toDataURL('image/webp', .86); if (d.indexOf('image/webp') < 0) d = c.toDataURL('image/jpeg', .85);
+        ED.image = d; const pv = document.getElementById('xuPrev'); if (pv) pv.innerHTML = '<img src="' + d + '" alt="">';
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(f);
+  }
+  function upClearImg() { ED.image = ''; const pv = document.getElementById('xuPrev'); if (pv) pv.textContent = (document.getElementById('xuIcon') || {}).value || '🎁'; }
+  function upSave(i) {
+    const name = (document.getElementById('xuName').value || '').trim(); if (!name) { toast('Give the upgrade a name.'); return; }
+    const rec = { id: i >= 0 ? L.cfg.upgrades[i].id : 'up-' + Date.now(), label: name, desc: (document.getElementById('xuDesc').value || '').trim(), cost: cleanCost(document.getElementById('xuCost').value), icon: (document.getElementById('xuIcon').value || '').trim() || '🎁' };
+    if (ED.image) rec.image = ED.image;
+    if (i >= 0) L.cfg.upgrades[i] = Object.assign({}, L.cfg.upgrades[i], rec, ED.image ? {} : { image: '' }); else L.cfg.upgrades.push(rec);
+    saveCfg(); modalClose(); render();
+  }
+
+  // ── wiring ──
+  function wrap(name, fn) { const orig = window[name]; if (typeof orig !== 'function') return; window[name] = function () { return fn(orig, arguments); }; }
+  wrap('applyAction', function (orig, a) { const r = orig.apply(this, a); try { if (a[2] === 'award' && a[1] && a[1].xc > 0) economy(a[0], a[1].xc, a[1].label); } catch (e) { console.warn('[xlSev] economy', e); } return r; });
+  wrap('grantBadge', function (orig, a) { const r = orig.apply(this, a); try { const b = a[1]; if (b && typeof b === 'object' && b.xc > 0) economy(a[0], b.xc, b.name); } catch (e) { console.warn('[xlSev] economy', e); } return r; });
+  wrap('xlShowControlHtml', function (orig, a) { return orig.apply(this, a) + hostHtml(); });
+  wrap('xlProjViews', function (orig, a) { const v = orig.apply(this, a); if (L.isHost ? !!(L.liveRunningSessionId && xlRunningSession && xlRunningSession()) : !!sess()) v.push('sev'); return v; });
+  wrap('xlWatchSession', function (orig, a) { const r = orig.apply(this, a); try { tick(); } catch (e) {} return r; });
+  window.rShop = rShopS; window.buyUpgrade = buyUpgradeS; window.confirmUpgrade = confirmUpgradeS; window.mkCard = (function (orig) { return function (u, kind) { return kind === 'session' ? mkCardS(u, u._i) : orig.apply(this, arguments); }; })(window.mkCard);
+
+  // Mission Control → X-Live: the Console's System Events panel can fire an event into the running session
+  window.addEventListener('message', function (e) {
+    let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (er) { return; } }
+    if (!m || m.type !== 'pflx_xlive_sysevent' || !L.isHost) return;
+    const map = { reality_warp: 'reality_warp', system_tax: 'system_tax', xc_boost: 'xc_boost', studio_surge: 'studio_surge', xc_rain: 'xc_rain', badge_rush: 'badge_rush', market_crash: 'market_crash', golden_hour: 'golden_hour' };
+    const ev = m.event || {}; const t = map[ev.type]; if (!t) return;
+    launch(t, { by: 'mission-control', mins: ev.duration || 0, pct: ev.taxPercent, mult: ev.boostMultiplier, skin: ev.skin });
+  });
+
+  ensureSkinLayer(); ensureBar();
+  setInterval(function () { try { tick(); } catch (e) {} }, 500);
+  window.xlSev = { TYPES: TYPES, SKINS: SKINS, opt: S.opt, state: S, launch: launch, end: endEvent, tick: tick, active: activeNow, activeOf: activeOf, priceMult: priceMult, economy: economy, projHtml: projHtml, hostHtml: hostHtml, upShopHtml: upShopHtml, upEdit: upEdit, upImg: upImg, upClearImg: upClearImg, upSave: upSave, reveal: reveal, applySkin: applySkin, makeEvent: makeEvent, skinCss: skinCss };
 })();
 
 </script>
