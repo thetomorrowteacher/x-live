@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>X-Live — Classroom</title>
 <!-- ═══════════════════════════════════════════════════════════════
+     X-LIVE v0.93, Oct 5 2026 — PATCH X-LIVE v0.93: SYSTEM EVENTS REACH THE GAME (Nexus Frontiers economy, Ennis 5 Oct).
+       The host's X-Live publishes the XC-affecting events of the running session (Double XC, Golden Hour, System Tax,
+       Studio Surge, XC Rain) to app_data key pflx_xlive_sev_live as {events:[{type,startAt,endAt,mult,pct,bonus,studio,
+       rain,every}]}; Nexus Frontiers reads it and applies it to the joint team bank during a live round. Look-only
+       events (Reality Warp) are not published. Nothing else in v0.92 changed.
      X-LIVE v0.92, Oct 5 2026 — PATCH X-LIVE v0.92: SYSTEM EVENTS ARE AN X-LIVE SESSION FEATURE
      + the Marketplace is session-upgrades only (Ennis, 5 Oct).
      · Marketplace: GAME UPGRADES are gone from the X-Live Marketplace (they are bought in the game);
@@ -14825,9 +14830,23 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     launch(t, { by: 'mission-control', mins: ev.duration || 0, pct: ev.taxPercent, mult: ev.boostMultiplier, skin: ev.skin });
   });
 
+  // ── publish: the host's X-Live writes the XC-affecting events of the running session to app_data (pflx_xlive_sev_live) so games (Nexus Frontiers) apply them to a live round ──
+  const PUB_TYPES = { xc_boost: 1, golden_hour: 1, system_tax: 1, studio_surge: 1, xc_rain: 1 };
+  function publishPayload(s, now) {
+    const evs = s ? activeOf(s, now).filter(function (e) { return PUB_TYPES[e.type]; }).map(function (e) {
+      const o = { id: e.id, type: e.type, startAt: e.startedAt, endAt: e.endsAt }; ['mult', 'pct', 'bonus', 'studio', 'rain', 'every'].forEach(function (k) { if (e[k] != null) o[k] = e[k]; }); return o; }) : [];
+    return { v: 1, session: s ? s.id : '', events: evs };
+  }
+  function publish(force) {
+    if (!L.isHost || typeof kvSave !== 'function') return;
+    const s = (typeof xlRunningSession === 'function') ? xlRunningSession() : null, now = Date.now(), pl = publishPayload(s, now), sig = JSON.stringify(pl.events);
+    if (!force && (sig === S.pubSig || (S.pubSig == null && !s))) return;
+    if (S.pubBusy && !force) return; S.pubBusy = true; S.pubSig = sig; pl.updatedAt = now;
+    Promise.resolve(kvSave('pflx_xlive_sev_live', pl)).then(function (ok) { if (!ok) S.pubSig = null; }).catch(function () { S.pubSig = null; }).then(function () { S.pubBusy = false; });
+  }
   ensureSkinLayer(); ensureBar();
-  setInterval(function () { try { tick(); } catch (e) {} }, 500);
-  window.xlSev = { TYPES: TYPES, SKINS: SKINS, opt: S.opt, state: S, launch: launch, end: endEvent, tick: tick, active: activeNow, activeOf: activeOf, priceMult: priceMult, economy: economy, projHtml: projHtml, hostHtml: hostHtml, upShopHtml: upShopHtml, upEdit: upEdit, upImg: upImg, upClearImg: upClearImg, upSave: upSave, reveal: reveal, applySkin: applySkin, makeEvent: makeEvent, skinCss: skinCss };
+  setInterval(function () { try { tick(); publish(); } catch (e) {} }, 500);
+  window.xlSev = { publish: publish, publishPayload: publishPayload, TYPES: TYPES, SKINS: SKINS, opt: S.opt, state: S, launch: launch, end: endEvent, tick: tick, active: activeNow, activeOf: activeOf, priceMult: priceMult, economy: economy, projHtml: projHtml, hostHtml: hostHtml, upShopHtml: upShopHtml, upEdit: upEdit, upImg: upImg, upClearImg: upClearImg, upSave: upSave, reveal: reveal, applySkin: applySkin, makeEvent: makeEvent, skinCss: skinCss };
 })();
 
 </script>
