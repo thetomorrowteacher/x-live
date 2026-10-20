@@ -2055,6 +2055,29 @@
 <div id="proj"></div>
 <div id="toastBox"></div>
 <script>
+// v295 -- shared PFLX server login (pflx-auth) + message guard.
+window.pflxAuth = window.pflxAuth || (function () {
+  var EP = 'https://hyxiagexyptzvetqjmnj.supabase.co/functions/v1/pflx-auth', ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5eGlhZ2V4eXB0enZldHFqbW5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwODM4MTYsImV4cCI6MjA4OTY1OTgxNn0.hqHVlRu775dZfJrKxSFMNEPhANu5EFm7gJpaJ3RnbnY', TK = 'pflx_auth_v1';
+  function call(b) { return fetch(EP, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify(b) })
+    .then(function (r) { return r.json().catch(function () { return { ok: false }; }); }, function () { return { ok: false, error: 'offline' }; }); }
+  function save(tok, p) { try { var exp = Date.now() + 2592000000; try { exp = JSON.parse(atob(tok.split('.')[0].replace(/-/g, '+').replace(/_/g, '/'))).exp || exp; } catch (e) {} localStorage.setItem(TK, JSON.stringify({ token: tok, pid: p.id, brand: p.brand, role: p.role, exp: exp })); } catch (e) {} }
+  function cur() { try { var t = JSON.parse(localStorage.getItem(TK) || 'null'); if (t && t.token && t.exp > Date.now()) return t; } catch (e) {} return null; }
+  return {
+    login: function (who, pin) { return call({ action: 'login', who: who, pin: pin }).then(function (r) { if (r && r.ok) save(r.token, r.player); return r || { ok: false }; }); },
+    verify: function (tok) { tok = tok || (cur() || {}).token; if (!tok) return Promise.resolve(null); return call({ action: 'verify', token: tok }).then(function (r) { if (r && r.ok) { save(tok, r.player); return r.player; } return null; }); },
+    token: function () { var c = cur(); return c ? c.token : ''; }
+  };
+})();
+window.pflxIsPflxOrigin = function (o) { return o === window.location.origin || /^https:\/\/(www\.)?prototypeflx\.com$/.test(o) || /^https:\/\/pflx-[a-z0-9-]+\.vercel\.app$/.test(o) || /^https:\/\/x-live[a-z0-9-]*\.vercel\.app$/.test(o) || /^https:\/\/thetomorrowteacher\.github\.io$/.test(o) || /^http:\/\/localhost(:\d+)?$/.test(o); };
+window.addEventListener('message', function (e) {
+  try {
+    if (window.pflxIsPflxOrigin(e.origin || '')) return;
+    var m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (m && typeof m.type === 'string' && /^pflx/i.test(m.type)) e.stopImmediatePropagation();
+  } catch (x) {}
+}, true);
+</script>
+<script>
 // ═══════════ CORE ═══════════
 const SUPABASE_URL = 'https://hyxiagexyptzvetqjmnj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5eGlhZ2V4eXB0enZldHFqbW5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwODM4MTYsImV4cCI6MjA4OTY1OTgxNn0.hqHVlRu775dZfJrKxSFMNEPhANu5EFm7gJpaJ3RnbnY';
@@ -2151,14 +2174,29 @@ function pflxQuestionTimerSecs() {
 }
 
 // ── identity (same platform contract as Battle Arena) ──
+// v295: a Platform link only signs you in once its sign-in pass is verified
+// by pflx-auth; id, brand and role come from the pass, never the URL.
 function adoptFromParams() {
   try {
     const p = new URLSearchParams(location.search);
     if (p.get('sso') !== 'pflx') return false;
-    L.me = { id: p.get('id') || '', brand: p.get('brand') || p.get('user') || 'Host', role: p.get('role') || 'Student' };
+    const tok = p.get('token') || '';
+    if (!tok || !window.pflxAuth) return false;
+    window.pflxAuth.verify(tok).then(function (who) {
+      if (!who) { console.warn('[X-Live] link without a valid sign-in pass'); return; }
+      __xlApplyIdentity(p, who);
+      try { render(); } catch (e) {}
+      try { pflxTryOpenPendingSession(); } catch (e) {}
+    });
+    return true;
+  } catch (e) { return false; }
+}
+function __xlApplyIdentity(p, who) {
+  try {
+    L.me = { id: who.id, brand: who.brand || 'Player', role: who.role || 'Student' };
     { // PATCH X-LIVE -- tiered host access; see pflxResolveHostTier/pflxHostCapabilities
       var __tier = pflxResolveHostTier(L.me.role, null);
-      if (!__tier && p.get('host') === '1') __tier = 'admin'; // existing full-host escape hatch, unchanged
+      // v295: the ?host=1 escape hatch is gone -- host access comes from the verified role only.
       L.isHost = !!__tier;
       L.hostCapabilities = pflxHostCapabilities(__tier);
     }
