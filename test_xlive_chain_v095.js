@@ -26,7 +26,7 @@ const { chromium } = require('playwright'); const assert = require('assert'); co
   const s = await pg.evaluate(() => { const x = xlChain.buildSession({ title: '', opening: 'mindful', mindfulMin: 2, events: ['xc_boost', 'bogus'] }); return JSON.parse(JSON.stringify(x)); });
   ok(s.title === 'X-Live' && s.strictTimer === 'auto' && s.chain.totalMin === 2 + 10 + 10 + 40 + 5, 'session is titled X-Live, uses the auto-advance timer and records its planned length');
   ok(s.slides.length === 5 && s.slides.every(x => x.duration > 0 && x.duration === x.seconds), 'every slide carries its own duration in seconds');
-  ok(s.slides[1].type === 'sub_app' && s.slides[1].subApp === 'arena', 'Nexus Frontiers block embeds the Battle Arena');
+  ok(s.slides[1].type === 'nexus' && s.slides[1].nfMin === 10, 'Nexus Frontiers block is the real Nexus Frontiers activity (v0.96)');
   ok(s.slides[3].type === 'project' && s.slides[3].duration === 2400 && s.slides[4].type === 'exit', "workshop is a Project Work slide of 40 minutes and the chain ends on an Exit Ticket");
   ok(s.sevPlan.length === 1 && s.sevPlan[0].type === 'xc_boost', 'unknown event types are dropped from the System Event plan');
   const total = await pg.evaluate((x) => xlRunOfShow(x).totalPlannedMs, s);

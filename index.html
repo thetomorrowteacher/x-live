@@ -3598,7 +3598,11 @@ const SLIDE_TYPES = [
   { key: 'mindful', label: 'Mindful Moment', icon: '🧘', hasOptions: false, hasTimer: true, timerOnly: false },
   { key: 'social', label: 'Social Sprint', icon: '🤝', hasOptions: false, hasTimer: true, timerOnly: false, hasGroupSize: true },
   { key: 'project', label: 'Project Work', icon: '🛠️', hasOptions: false, hasTimer: true, timerOnly: false },
-  { key: 'exit', label: 'Exit Ticket', icon: '🎫', hasOptions: false, hasTimer: true, timerOnly: false, hasExitType: true }
+  { key: 'exit', label: 'Exit Ticket', icon: '🎫', hasOptions: false, hasTimer: true, timerOnly: false, hasExitType: true },
+  // PATCH X-LIVE v0.96 (Ennis, 20 Oct): Nexus Frontiers as a real session activity. It opens the
+  // Battle Arena already signed in; the host's arena starts the co-op round for THIS activity and
+  // every player's arena drops straight into their squad lobby.
+  { key: 'nexus', label: 'Nexus Frontiers', icon: '🌐', hasOptions: false, hasTimer: false, timerOnly: false, isEmbed: true }
 ];
 function slideTypeMeta(key) { return SLIDE_TYPES.find(function (t) { return t.key === key; }) || SLIDE_TYPES[0]; }
 // PATCH X-LIVE v0.24 -- groups the 17 slide types into the same kind
@@ -3610,7 +3614,8 @@ var PFLX_SLIDE_CATEGORIES = [
   { label: 'Content', keys: ['text', 'media', 'screenshare', 'google_slides', 'google_doc', 'html_embed', 'sub_app'] },
   { label: 'Questions & Polls', keys: ['poll', 'mc', 'quiz', 'quiz_race', 'open_response', 'discussion'] },
   { label: 'Timed Activities', keys: ['timer', 'challenge', 'mindful', 'social', 'project'] },
-  { label: 'Tasks & Wrap-Up', keys: ['push_task', 'exit'] }
+  { label: 'Tasks & Wrap-Up', keys: ['push_task', 'exit'] },
+  { label: 'Games', keys: ['nexus'] }
 ];
 function pflxSlideTypePickerHtml(selectedKey) {
   return PFLX_SLIDE_CATEGORIES.map(function (cat) {
@@ -4973,8 +4978,28 @@ async function liveYtCreateAndGoLive() {
 }
 window.liveYtCreateAndGoLive = liveYtCreateAndGoLive;
 
+function pflxNexusEmbedKey(sl) { return 'nf_' + String(sl.id || 'x').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 40); }
+function pflxNexusEmbedUrl(sl) {
+  var base = PFLX_SUBAPPS.arena.url.replace(/\/$/, ''), q = [];
+  var tok = (window.pflxAuth && window.pflxAuth.token && window.pflxAuth.token()) || '';
+  if (tok) { q.push('sso=pflx'); q.push('token=' + encodeURIComponent(tok)); }
+  q.push('nf=xl'); q.push('nfs=' + encodeURIComponent(pflxNexusEmbedKey(sl)));
+  q.push('nfm=' + Math.max(1, Math.min(10, sl.nfMin | 0 || 10)));
+  q.push('nfd=' + encodeURIComponent(['cadet', 'ranger', 'veteran', 'expert'].indexOf(sl.nfDiff) >= 0 ? sl.nfDiff : 'ranger'));
+  if (sl.nfSolo) q.push('nfo=1');
+  if (sl.nfDeck) q.push('nfk=' + encodeURIComponent(String(sl.nfDeck).slice(0, 80)));
+  q.push('nft=' + encodeURIComponent(String(sl.title || 'Nexus Frontiers').slice(0, 60)));
+  return base + '/?' + q.join('&');
+}
+window.pflxNexusEmbedUrl = pflxNexusEmbedUrl;
 function pflxSlideEmbedHtml(sl) {
   if (!sl) return '';
+  if (sl.type === 'nexus') {
+    var nk = pflxNexusEmbedKey(sl);
+    if (!PFLX_SUBAPPS[nk]) PFLX_SUBAPPS[nk] = { label: 'Nexus Frontiers', url: pflxNexusEmbedUrl(sl), dynamic: true };
+    return '<div class="pflx-embed-wrap" style="position:relative;padding-top:62%;min-height:420px;margin:8px 0 4px;border-radius:10px;overflow:hidden;background:#000"><div data-pflx-embed-slot="1" data-pflx-embed-key="' + esc(nk) + '" style="position:absolute;top:0;left:0;width:100%;height:100%"></div></div>' +
+      '<div style="font-size:11px;color:#8a93b8;margin-top:4px">🌐 Nexus Frontiers · ' + (sl.nfMin | 0 || 10) + ' min round · squads of 2–4, one per studio' + (sl.nfSolo ? ' · 1-player squads allowed' : '') + '. ' + (L.isHost ? 'Your Arena launches the round and opens the squad view.' : 'Your squad lobby opens below — press READY when your squad is in.') + '</div>';
+  }
   if (sl.type === 'sub_app') {
     var app = PFLX_SUBAPPS[sl.subApp];
     if (!app) return '';
@@ -5231,6 +5256,7 @@ function liveSlideTypeChange(type) {
     return;
   }
   L.liveEditingSlide.step = 'fields';
+  if (type === 'nexus') { var __ns = L.liveEditingSlide.slide; if (!__ns.nfMin) __ns.nfMin = 10; if (!__ns.nfDiff) __ns.nfDiff = 'ranger'; if (!__ns.duration) __ns.duration = __ns.nfMin * 60; if (!__ns.title) __ns.title = 'Nexus Frontiers'; }
   renderSlideModal();
 }
 // Back-navigation from the fields popup (or the X-Rush choice screen)
@@ -5361,13 +5387,21 @@ function renderSlideModal() {
   ) : '';
   const subAppHtml = (sl.type === 'sub_app') ? (
     '<label style="margin-top:10px">Which PFLX app?</label><select onchange="L.liveEditingSlide.slide.subApp=this.value"><option value="">Choose one…</option>' +
-    Object.keys(PFLX_SUBAPPS).map(function (k) { return '<option value="' + k + '"' + (sl.subApp === k ? ' selected' : '') + '>' + esc(PFLX_SUBAPPS[k].label) + '</option>'; }).join('') +
+    Object.keys(PFLX_SUBAPPS).filter(function (k) { return !PFLX_SUBAPPS[k].dynamic; }).map(function (k) { return '<option value="' + k + '"' + (sl.subApp === k ? ' selected' : '') + '>' + esc(PFLX_SUBAPPS[k].label) + '</option>'; }).join('') +
     '</select>' +
     '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Embeds the app itself as this activity\'s focal point. Popup mini-activities and live badge-awarding tied to it are not built yet.' +
     ((sl.subApp && PFLX_SUBAPPS[sl.subApp] && PFLX_SUBAPPS[sl.subApp].fullChrome) ? ' This embeds the full Console (host signs in inside the frame, same as any other browser tab) -- not a focused, chrome-free view of one Project yet.' : '') +
     '</div>'
   ) : '';
-  const rewardHtml = !meta.timerOnly ? (
+  const nexusHtml = (sl.type === 'nexus') ? (
+    '<label style="margin-top:10px">Difficulty</label><select onchange="L.liveEditingSlide.slide.nfDiff=this.value">' +
+    [['cadet', 'Cadet'], ['ranger', 'Ranger'], ['veteran', 'Veteran'], ['expert', 'Expert']].map(function (d) { return '<option value="' + d[0] + '"' + ((sl.nfDiff || 'ranger') === d[0] ? ' selected' : '') + '>' + d[1] + '</option>'; }).join('') + '</select>' +
+    '<label style="margin-top:10px">Round length (minutes, max 10)</label><input type="number" min="1" max="10" value="' + (sl.nfMin | 0 || 10) + '" onchange="L.liveEditingSlide.slide.nfMin=Math.max(1,Math.min(10,parseInt(this.value)||10));L.liveEditingSlide.slide.duration=L.liveEditingSlide.slide.nfMin*60"/>' +
+    '<label style="margin-top:10px">Knowledge Deck for the LINK questions (name, optional)</label><input value="' + esc(sl.nfDeck || '') + '" onchange="L.liveEditingSlide.slide.nfDeck=this.value.trim()" placeholder="Blank = the Arena\'s most recent deck"/>' +
+    '<label style="display:flex;gap:6px;align-items:center;margin-top:10px;text-transform:none"><input type="checkbox" style="width:auto"' + (sl.nfSolo ? ' checked' : '') + ' onchange="L.liveEditingSlide.slide.nfSolo=this.checked"/> Allow 1-player squads (small groups or demos)</label>' +
+    '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Squads come from the Teams tab (turn on Nexus Frontiers drafting there). X-Coin, wagers and badges follow the game\'s own rules. For solo practice, players use Side Quests ▸ Danger Room.</div>'
+  ) : '';
+  const rewardHtml = (!meta.timerOnly && sl.type !== 'nexus') ? (
     '<label style="margin-top:10px">Reward XC' + (meta.graded ? ' (correct answer only, granted on Reveal)' : ' (granted on Reveal)') + '</label><input type="number" value="' + (sl.rewardXc || 0) + '" onchange="L.liveEditingSlide.slide.rewardXc=parseInt(this.value)||0"/>' +
     '<label style="margin-top:8px">Reward Badge</label>' + badgeSelectHtml(sl.rewardBadgeId, 'L.liveEditingSlide.slide.rewardBadgeId')
   ) : '';
@@ -5375,8 +5409,8 @@ function renderSlideModal() {
     '<div class="cardT" style="display:flex;align-items:center;gap:8px">' + meta.icon + ' ' + (ed.idx === -1 ? 'Add Activity' : 'Edit Activity') +
     '<button class="bigbtn ghost" style="margin-left:auto;padding:5px 10px;font-size:9px" onclick="liveSlideChangeType()">' + meta.icon + ' ' + esc(meta.label) + ' · CHANGE</button></div>' +
     '<label>Title</label><input value="' + esc(sl.title) + '" onchange="L.liveEditingSlide.slide.title=this.value" placeholder="e.g. Warm-up Question"/>' +
-    (meta.timerOnly || sl.type === 'sub_app' ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
-    subAppHtml + groupSizeHtml + exitTypeHtml + optionsHtml + timerHtml + rewardHtml +
+    (meta.timerOnly || sl.type === 'sub_app' || sl.type === 'nexus' ? '' : ('<label style="margin-top:10px">' + (liveSlideContentLabel(sl.type) || (meta.hasOptions ? 'Prompt' : 'Content')) + '</label><textarea rows="3" onchange="L.liveEditingSlide.slide.prompt=this.value" placeholder="' + esc(liveSlideContentPlaceholder(sl.type)) + '">' + esc(sl.prompt) + '</textarea>')) +
+    subAppHtml + nexusHtml + groupSizeHtml + exitTypeHtml + optionsHtml + timerHtml + rewardHtml +
     '<div style="margin-top:14px;display:flex;gap:8px"><button class="bigbtn gold" onclick="liveSaveSlideForm()">SAVE ACTIVITY</button><button class="bigbtn ghost" onclick="L.liveEditingSlide=null;modalClose()">CANCEL</button></div>'
   );
 }
@@ -15266,7 +15300,7 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
     const B = {
       opening: { role: 'opening', min: om, type: opening === 'mindful' ? 'mindful' : 'text', title: opening === 'mindful' ? 'Mindful Moment' : 'Mission Briefing',
         prompt: opening === 'mindful' ? 'Settle in. Follow the circle: breathe in as it grows, out as it shrinks. Headphones recommended.' : 'Today’s mission, the checkpoint in focus and what you will leave with.' },
-      nexus: { role: 'nexus', min: nm, type: 'sub_app', subApp: 'arena', title: 'Nexus Frontiers · Battle Arena Challenge', prompt: '' },
+      nexus: { role: 'nexus', min: nm, type: 'nexus', title: 'Nexus Frontiers · Battle Arena Challenge', prompt: '' },
       refresh: { role: 'refresh', min: REFRESH_MIN, type: 'media', title: 'Activity Guide · Checkpoint Refresh', prompt: 'You have 1 minute to pick your checkpoint, then watch the Quick Recap or the Full Review until the clock ends.' },
       workshop: { role: 'workshop', min: wm, type: 'project', title: 'Creator’s Workshop', prompt: 'First 5 min: Starting State (details + goals). Last 5 min: Ending State (details + goals for next session). The time between is work time.' },
       exit: { role: 'exit', min: em, type: 'exit', title: 'Exit Ticket', prompt: 'Rate your progress on today’s learning target and share your final thought.' }
@@ -15326,6 +15360,7 @@ body.xs-live #proj{padding-top:calc(30px + var(--xs-barh,0px))}
       sl.title = b.title; sl.prompt = b.prompt; sl.basePrompt = b.prompt; sl.chain = b.role;
       sl.duration = b.min * 60; sl.seconds = b.min * 60;
       if (b.subApp) sl.subApp = b.subApp;
+      if (b.type === 'nexus') { sl.nfMin = b.min; sl.nfDiff = 'ranger'; }
       return sl;
     });
     const types = (f && f.events) || [];
