@@ -4987,6 +4987,8 @@ function pflxNexusEmbedUrl(sl) {
   q.push('nfm=' + Math.max(1, Math.min(10, sl.nfMin | 0 || 10)));
   q.push('nfd=' + encodeURIComponent(['cadet', 'ranger', 'veteran', 'expert'].indexOf(sl.nfDiff) >= 0 ? sl.nfDiff : 'ranger'));
   if (sl.nfSolo) q.push('nfo=1');
+  if (sl.nfLinkSec) q.push('nfls=' + Math.max(20, Math.min(180, sl.nfLinkSec | 0)));
+  if (sl.nfBossSec) q.push('nfbs=' + Math.max(10, Math.min(90, sl.nfBossSec | 0)));
   if (sl.nfDeck) q.push('nfk=' + encodeURIComponent(String(sl.nfDeck).slice(0, 80)));
   q.push('nft=' + encodeURIComponent(String(sl.title || 'Nexus Frontiers').slice(0, 60)));
   return base + '/?' + q.join('&');
@@ -5397,6 +5399,8 @@ function renderSlideModal() {
     '<label style="margin-top:10px">Difficulty</label><select onchange="L.liveEditingSlide.slide.nfDiff=this.value">' +
     [['cadet', 'Cadet'], ['ranger', 'Ranger'], ['veteran', 'Veteran'], ['expert', 'Expert']].map(function (d) { return '<option value="' + d[0] + '"' + ((sl.nfDiff || 'ranger') === d[0] ? ' selected' : '') + '>' + d[1] + '</option>'; }).join('') + '</select>' +
     '<label style="margin-top:10px">Round length (minutes, max 10)</label><input type="number" min="1" max="10" value="' + (sl.nfMin | 0 || 10) + '" onchange="L.liveEditingSlide.slide.nfMin=Math.max(1,Math.min(10,parseInt(this.value)||10));L.liveEditingSlide.slide.duration=L.liveEditingSlide.slide.nfMin*60"/>' +
+    '<label style="margin-top:10px">LINK sprint timer — field reload (seconds)</label><input type="number" min="20" max="180" value="' + (sl.nfLinkSec | 0 || 60) + '" onchange="L.liveEditingSlide.slide.nfLinkSec=Math.max(20,Math.min(180,parseInt(this.value)||60))"/>' +
+    '<label style="margin-top:10px">Boss LINK timer — answers power each boss move (seconds)</label><input type="number" min="10" max="90" value="' + (sl.nfBossSec | 0 || 30) + '" onchange="L.liveEditingSlide.slide.nfBossSec=Math.max(10,Math.min(90,parseInt(this.value)||30))"/>' +
     '<label style="margin-top:10px">Knowledge Deck for the LINK questions (name, optional)</label><input value="' + esc(sl.nfDeck || '') + '" onchange="L.liveEditingSlide.slide.nfDeck=this.value.trim()" placeholder="Blank = the Arena\'s most recent deck"/>' +
     '<label style="display:flex;gap:6px;align-items:center;margin-top:10px;text-transform:none"><input type="checkbox" style="width:auto"' + (sl.nfSolo ? ' checked' : '') + ' onchange="L.liveEditingSlide.slide.nfSolo=this.checked"/> Allow 1-player squads (small groups or demos)</label>' +
     '<div style="font-size:11px;color:#8a93b8;margin-top:4px">Squads come from the Teams tab (turn on Nexus Frontiers drafting there). X-Coin, wagers and badges follow the game\'s own rules. For solo practice, players use Side Quests ▸ Danger Room.</div>'
