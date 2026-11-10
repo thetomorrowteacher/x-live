@@ -3018,7 +3018,8 @@ function grantBadge(players, badgeOrName) {
     ? { id: 'b-lite-' + badgeOrName.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: badgeOrName, xc: 0, image: '', category: 'primary' }
     : badgeOrName;
   players.forEach(p => {
-    postAward(p.id, { badge: { id: badge.id, name: badge.name, category: badge.category || 'primary', xc: badge.xc || 0, image: badge.image || '' }, reason: 'xlive-badge:' + badge.id });
+    // v0.99 -- the Console credits a badge's XC from badge.xcValue only; X-Live sent it as xc, so badges saved with no XC (fixed 10 Nov)
+    postAward(p.id, { badge: { id: badge.id, name: badge.name, category: badge.category || 'primary', xc: badge.xc || 0, xcValue: badge.xc || 0, image: badge.image || '' }, reason: 'xlive-badge:' + badge.id });
     p.badges = (p.badges || 0) + 1;
     if (badge.xc) { p.xc = Math.max(0, (p.xc || 0) + badge.xc); p.totalXc = (p.totalXc || 0) + badge.xc; }
     liteLog(p.id, 'badge', badge.name, badge.xc || 0);
@@ -5531,7 +5532,7 @@ function grantSessionReward(pid, xc, badgeId, reason) {
   if (badgeId) {
     const b = L.badges.find(function (x) { return x.id === badgeId; });
     if (b) {
-      postAward(pid, { badge: { id: b.id, name: b.name, category: b.category || 'primary', xc: b.xc || 0, image: b.image || '' }, reason: reason + ':badge' });
+      postAward(pid, { badge: { id: b.id, name: b.name, category: b.category || 'primary', xc: b.xc || 0, xcValue: b.xc || 0, image: b.image || '' }, reason: reason + ':badge' });
       liteLog(pid, 'session-badge', b.name, b.xc || 0);
     }
   }
